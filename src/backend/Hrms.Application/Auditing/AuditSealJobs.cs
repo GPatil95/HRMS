@@ -28,6 +28,7 @@ public static class AuditSealer
     }
 }
 
+[JobHandler(JobTypes.TenantAuditSeal, true)]
 public sealed class TenantAuditSealJob(ITenantDbContext db, IClock clock) : IJobHandler
 {
     public string JobType => JobTypes.TenantAuditSeal;
@@ -35,6 +36,7 @@ public sealed class TenantAuditSealJob(ITenantDbContext db, IClock clock) : IJob
     public Task ExecuteAsync(string? payload, CancellationToken ct) => AuditSealer.SealAsync(db.AuditEntries, db.AuditSeals, db.SaveChangesAsync, clock, ct);
 }
 
+[JobHandler(JobTypes.PlatformAuditSeal, false)]
 public sealed class PlatformAuditSealJob(IPlatformDbContext db, IClock clock) : IJobHandler
 {
     public string JobType => JobTypes.PlatformAuditSeal;

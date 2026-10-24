@@ -87,6 +87,7 @@ public static class EmailDispatcher
     }
 }
 
+[JobHandler(JobTypes.TenantEmailDispatch, true)]
 public sealed class TenantEmailDispatchJob(ITenantDbContext db, IEmailTransport transport, IClock clock, ILogger<TenantEmailDispatchJob> logger) : IJobHandler
 {
     public string JobType => JobTypes.TenantEmailDispatch;
@@ -94,6 +95,7 @@ public sealed class TenantEmailDispatchJob(ITenantDbContext db, IEmailTransport 
     public Task ExecuteAsync(string? payload, CancellationToken ct) => EmailDispatcher.DispatchAsync(db.EmailMessages, db.SaveChangesAsync, transport, clock, logger, ct);
 }
 
+[JobHandler(JobTypes.PlatformEmailDispatch, false)]
 public sealed class PlatformEmailDispatchJob(IPlatformDbContext db, IEmailTransport transport, IClock clock, ILogger<PlatformEmailDispatchJob> logger) : IJobHandler
 {
     public string JobType => JobTypes.PlatformEmailDispatch;

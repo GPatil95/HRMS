@@ -135,6 +135,7 @@ public static class DependencyInjection
         s.AddScoped<JobRunner>();
         s.TryAddSingleton<IProvisioningFaultInjector, NoopProvisioningFaultInjector>();
         s.TryAddScoped<ITenantActivationHandler, TenantAdminInvitationHandler>();
+        s.TryAddSingleton<JobHandlerCatalog>();
 
         return s.AddHrmsApplication();
     }
@@ -151,7 +152,8 @@ public static class DependencyInjection
 
             if (typeof(IJobHandler).IsAssignableFrom(t))
             {
-                s.AddScoped(typeof(IJobHandler), t);
+                s.AddScoped(t);
+                s.AddSingleton(new JobHandlerType(t));
             }
 
             if (typeof(IReportDefinition).IsAssignableFrom(t))

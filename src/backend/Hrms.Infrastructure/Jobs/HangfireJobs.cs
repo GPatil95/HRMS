@@ -55,7 +55,30 @@ public sealed class JobRunner(IServiceScopeFactory scopes)
         await Handler(sp, jobType, tenantScoped: false).ExecuteAsync(payload, ct);
     }
 
-    private static IJobHandler Handler(IServiceProvider sp, string jobType, bool tenantScoped) =>
-        sp.GetServices<IJobHandler>().SingleOrDefault(h => h.JobType == jobType && h.TenantScoped == tenantScoped)
-        ?? throw new InvalidOperationException($"No handler for job type '{jobType}'.");
+    private static IJobHandler Handler(IServiceProvider sp, string jobType, bool tenantScoped)
+    {
+        var type = sp.GetRequiredService<JobHandlerCatalog>().Find(jobType, tenantScoped)
+            ?? throw new InvalidOperationException($"No {(tenantScoped ? "tenant" : "platform")} job handler registered for '{jobType}'.");
+        return (IJobHandler)sp.GetRequiredService(type);
+    }
+}
+
+public sealed record JobHandlerType(Type Type);
+
+/// <summary>Maps job type + realm to a handler type without constructing handlers (tenant handlers cannot be built in a platform scope).</summary>
+public sealed class JobHandlerCatalog
+{
+    private readonly Dictionary<(string, bool), Type> _types = [];
+
+    public JobHandlerCatalog(IEnumerable<JobHandlerType> types)
+    {
+        foreach (var t in types.Select(x => x.Type))
+        {
+            var a = t.GetCustomAttributes(typeof(JobHandlerAttribute), false).Cast<JobHandlerAttribute>().SingleOrDefault()
+                ?? throw new InvalidOperationException($"Job handler {t.Name} must declare [JobHandler].");
+            _types.Add((a.JobType, a.TenantScoped), t);
+        }
+    }
+
+    public Type? Find(string jobType, bool tenantScoped) => _types.GetValueOrDefault((jobType, tenantScoped));
 }

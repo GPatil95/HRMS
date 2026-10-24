@@ -3,6 +3,7 @@ using Hrms.Application.Jobs;
 namespace Hrms.Application.Tenancy;
 
 /// <summary>Runs (or resumes) a provisioning operation. Payload is the operation id; steps are idempotent.</summary>
+[JobHandler(JobTypes.TenantProvisioning, false)]
 public sealed class TenantProvisioningJob(TenantProvisioningService provisioning) : IJobHandler
 {
     public string JobType => JobTypes.TenantProvisioning;

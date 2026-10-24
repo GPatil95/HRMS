@@ -23,3 +23,11 @@ public static class JobTypes
     public const string PlatformAuditSeal = "audit.seal.platform";
     public const string TenantProvisioning = "tenant.provision";
 }
+
+/// <summary>Declares a job handler's type and realm statically so the runner can resolve only the matching handler.</summary>
+[AttributeUsage(AttributeTargets.Class, Inherited = false)]
+public sealed class JobHandlerAttribute(string jobType, bool tenantScoped) : Attribute
+{
+    public string JobType { get; } = jobType;
+    public bool TenantScoped { get; } = tenantScoped;
+}
