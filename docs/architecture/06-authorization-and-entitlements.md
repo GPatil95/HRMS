@@ -30,7 +30,9 @@ ProblemDetails `type` codes are stable so the UI can show "This module is not pa
 
 Menu/page access: menus and pages are declared in manifests with the permission(s) that make them visible (usually `*.view`); there is no separate "menu permission" to keep in sync, but a dedicated `{module}.menu.access` code exists for top-level module menus where a customer wants to hide a module from a role entirely.
 
-Actions supported: `view`, `create`, `edit`, `delete`, `approve`, `reject`, `import`, `export`, `download`, `process`, `finalize`, `share` (+ module-specific where justified, declared in manifests).
+Actions supported: `view`, `create`, `edit`, `delete`, `approve`, `reject`, `import`, `export`, `download`, `process`, `finalize`, `share`, **`configure`** (module settings/masters) (+ module-specific where justified, e.g. `reopen`, `revise`, `unlock`, declared in manifests).
+
+Menu hierarchy: **menu → sub-menu → page** items are declared in manifests; each item lists the permission(s) that make it visible. A menu/sub-menu is shown if any child page is visible, or explicitly via `{module}.menu.access` / `{module}.{area}.menu.access` codes when a customer wants to hide a whole area from a role.
 
 ### Grants
 
@@ -67,8 +69,9 @@ Sensitive permissions (`is_sensitive`: payroll, salary view, bank details, bulk 
 | `all_reports` | whole reporting tree | `reporting_closure depth >= 1` |
 | `department` | employees in assigned (or own) departments, incl. sub-departments | join on department tree |
 | `branch` | employees in assigned (or own) branches | `branch_id = ANY(@branchIds)` |
+| `company` | employees of assigned (or own) company / legal entity | `company_id = ANY(@companyIds)` |
 | `selected_employees` | explicit employee list | `employee_id = ANY(@ids)` |
-| `tenant` | everything | no filter |
+| `tenant` | everything in the tenant (all companies) | no filter |
 
 Every business record that belongs to a person carries `employee_id` (and where useful denormalised `branch_id`/`department_id` *at time of record* for historical correctness, e.g. payroll). Scope filters are applied through one shared mechanism:
 
@@ -125,3 +128,31 @@ var attendance = attendanceIntegration.IsAvailable
 
 ### 11.5 Attendance without biometric
 `attendance.biometric` is a **sub-module** of `attendance`. Attendance capture sources (`web`, `mobile`, `manual`, `import`, `biometric`) are features; biometric is just one source writing the same punch model.
+
+## 10.5 Grant ceiling rule (no privilege escalation)
+
+A user can never grant more than they hold. Enforced in `identity` application services (not UI):
+
+| Operation | Rule |
+|---|---|
+| Add permission P @ scope S to a role | actor holds `identity.role.edit` **and** holds P with scope ≥ S |
+| Assign role R (with targets) to a user | actor holds `identity.user.role.assign` **and** holds **every** permission of R at ≥ the role's scope level, and the assignment targets (branches/departments/employees/companies) are within the actor's own scope |
+| Create a `grant` override P @ S | actor holds `identity.override.manage` and P @ ≥ S; expiry required for sensitive permissions |
+| Create a `deny` override | actor holds `identity.override.manage` and the target user is within actor's scope (removing access is not escalation) |
+| Self-administration | users cannot change their own roles/overrides; the last Tenant Admin cannot be removed; only Tenant Admins assign the Tenant Admin role |
+| Platform realm | identical rules for platform roles |
+
+Scope comparison uses the partial order `own ⊂ direct_reports ⊂ all_reports`, `department ⊂ branch ⊂ company ⊂ tenant`, `selected_employees` — and when levels are not comparable, the resolved employee set of the granted scope must be a subset of the actor's resolved set at grant time. Violations return 403 `grant-exceeds-own-permission` and are logged as security events.
+
+## 10.6 Worked examples (from the review brief)
+
+| Case | Configuration | Effective result |
+|---|---|---|
+| John, role HR Executive | role: `employee.profile.view @ branch`; override: grant `employee.profile.edit @ branch` (expires 31-Mar, reason) | John can view and edit employees of his branch |
+| Payroll viewer without export | role: `payroll.register.view @ tenant`; override: **deny** `payroll.register.export` | view allowed, export 403 (deny wins) |
+| Manager | `attendance.record.view @ direct_reports` | sees only direct reports' attendance |
+| HR Admin | `attendance.record.view @ tenant` | all attendance in the tenant |
+| Branch HR | `attendance.record.view @ branch` (targets: Pune) | only Pune employees |
+| Employee | `attendance.record.view @ own` | only own attendance |
+
+Every module, widget, report, export, import, work-inbox action, notification payload and AI tool uses this same evaluation — there is one authorization model.

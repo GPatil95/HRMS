@@ -33,3 +33,6 @@ Prevents unpaid/disabled functionality access and data exposure through forgotte
 
 ## Operational impact
 Admin changes propagate within seconds; monitoring of pub/sub health.
+
+## Amendment — final baseline review
+Entitlement also gates: dashboard widgets, reports, imports/exports, work-inbox items, notifications, AI tools and scheduled jobs of the module.

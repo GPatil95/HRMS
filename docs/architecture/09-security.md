@@ -1,5 +1,7 @@
 # 17. Security Architecture
 
+> **Final baseline note:** the full threat model and the per-topic security review are in [23-security-threat-model.md](23-security-threat-model.md); compliance controls in [24](24-compliance-backup-dr-deployment.md).
+
 ## 17.1 Threat model highlights (STRIDE, top items)
 
 | Threat | Example | Primary controls |

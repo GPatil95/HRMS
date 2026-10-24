@@ -34,3 +34,6 @@ Module DB permissions could later be split per schema if a module is extracted.
 
 ## Operational impact
 Migrator applies N module contexts per tenant; version tracked per schema in registry.
+
+## Amendment — final baseline review
+Schema list extended to all modules (see architecture §7.2). Shared masters used by several optional modules (office/floor, work calendars, business partners) are placed in `core.org` so FKs never cross optional modules.

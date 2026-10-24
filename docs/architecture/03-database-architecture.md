@@ -222,3 +222,112 @@ erDiagram
 2. Each run stores an **input snapshot** (attendance/leave days, salary structure version, declarations), the **statutory rule set versions** and the **calculation engine version** used, so any payslip can be recomputed and explained.
 3. Statutory values (slabs, rates, ceilings) are effective-dated reference data published by the platform and copied into the tenant DB on publish; never hard-coded in C# or React.
 4. Every calculated line keeps its formula reference/explanation for audit and employee queries.
+
+## 7.2 Final baseline — complete tenant DB schema map
+
+> Naming: the brief's `HRMS_Platform` / `HRMS_Tenant_1001` are shown in the admin UI as display names; physical names remain lowercase `hrms_platform` / `hrms_tenant_1001` (ADR-037, pending approval).
+
+```mermaid
+flowchart TB
+  subgraph Core["Core schemas (always present, FK targets allowed)"]
+    meta & identity & org & employee & audit & files & notify & workflow & workitems & config & io & reporting & dash & integration
+  end
+  subgraph HR["HR Core sub-modules"]
+    empdocs & letters & exit
+  end
+  subgraph TimePay["Time & Pay"]
+    attendance & biometric & leave & payroll & tax & loans & expense
+  end
+  subgraph Talent["Talent"]
+    recruitment & pms
+  end
+  subgraph Work["Workplace & productivity"]
+    calendar & rooms & workplace & visitors & mailroom & assets & projects & mywork
+  end
+  subgraph Biz["Business & AI"]
+    clientbilling & ai
+  end
+  HR --> Core
+  TimePay --> Core
+  Talent --> Core
+  Work --> Core
+  Biz --> Core
+```
+
+Rules: FKs only from any schema → core schemas; never between optional schemas (IDs + application validation). Detailed per-module tables: HR Core/Documents/Letters [15](15-hr-core-documents-letters.md), Exit/FNF [16](16-exit-and-fnf.md), Time & Pay [17](17-time-and-pay-modules.md), Talent/Workplace/Productivity [18](18-talent-workplace-productivity-modules.md), Workflow/Inbox/Notify [19](19-workflow-inbox-notifications-email.md), Reporting/Import [20](20-dashboards-reporting-import.md), AI [21](21-ai-assistant.md), Client billing [22](22-billing.md).
+
+### Core schema ERD (tenant DB)
+
+```mermaid
+erDiagram
+  companies ||--o{ branches : has
+  branches ||--o{ departments : "optional"
+  locations ||--o{ floors : has
+  branches }o--o{ locations : "operates at"
+  work_calendars ||--o{ holidays : has
+  business_partners ||--o{ partner_contacts : has
+  employees }o--|| companies : employer
+  employees }o--|| branches : branch
+  employees }o--|| departments : department
+  employees }o--|| locations : "work location"
+  employees ||--o{ employment_history : "effective-dated"
+  employees ||--o{ compensation_history : "effective-dated"
+  employees ||--o{ reporting_closure : hierarchy
+  users |o--o| employees : "linked"
+  users ||--o{ user_role_assignments : has
+  roles ||--o{ role_permissions : grants
+  user_role_assignments ||--o{ assignment_scopes : targets
+  users ||--o{ user_permission_overrides : has
+  users ||--o{ sessions : has
+  definition_versions ||--o{ wf_instances : pins
+  wf_instances ||--o{ wf_tasks : has
+  wf_tasks ||--o{ wf_actions : logs
+  work_items }o--|| users : assignee
+  file_objects ||--o{ file_versions : has
+  file_objects ||--o{ file_access_log : logs
+  notifications }o--|| users : recipient
+  email_messages ||--o{ email_events : status
+  import_jobs ||--o{ import_rows : staged
+  retention_policies ||--o{ file_objects : governs
+  legal_holds }o--o{ employees : "may cover"
+```
+
+## 6.1 Final baseline — Platform DB additions
+
+| Schema.table | Purpose |
+|---|---|
+| `billing.billing_accounts`, `subscription_items`, `invoices`, `invoice_lines`, `credit_notes`, `debit_notes`, `payments`, `discounts`, `tax_rates`, `gst_registrations` | SaaS platform billing (§22A) |
+| `ai.ai_plans`, `ai.ai_addons`, `ai.tenant_ai_subscriptions`, `ai.provider_configs`, `ai.ai_usage` | AI commercial & metering (§21) |
+| `ops.incidents`, `ops.incident_tenants` | incident register (§24.1) |
+| `ops.access_review_campaigns`, `ops.access_review_items` | platform user access reviews |
+| `ops.backup_runs`, `ops.restore_tests` | per-tenant backup & restore evidence |
+| `catalog.ai_tools` (synced) | AI tool registry metadata for admin visibility |
+
+```mermaid
+erDiagram
+  tenants ||--o{ tenant_domains : has
+  tenants ||--|| tenant_database_registry : located
+  db_clusters ||--o{ tenant_database_registry : hosts
+  tenants ||--o{ tenant_subscriptions : has
+  billing_accounts ||--o{ tenant_subscriptions : pays
+  subscription_plans ||--o{ tenant_subscriptions : plan
+  tenant_subscriptions ||--o{ subscription_items : items
+  tenant_subscriptions ||--o{ invoices : bills
+  invoices ||--o{ invoice_lines : lines
+  invoices ||--o{ payments : paid
+  invoices ||--o{ credit_notes : adjusts
+  modules ||--o{ features : has
+  modules ||--o{ module_dependencies : declares
+  tenants ||--o{ tenant_module_entitlements : has
+  tenants ||--o{ tenant_feature_entitlements : has
+  tenants ||--o{ tenant_quotas : limits
+  tenants ||--o{ usage_records : usage
+  ai_plans ||--o{ tenant_ai_subscriptions : sold
+  tenants ||--o{ tenant_ai_subscriptions : has
+  tenants ||--o{ support_access_grants : "support on"
+  platform_users ||--o{ support_access_grants : requests
+  platform_users ||--o{ platform_user_roles : has
+  platform_roles ||--o{ platform_role_permissions : grants
+  tenants ||--o{ backup_runs : backups
+  incidents ||--o{ incident_tenants : affects
+```

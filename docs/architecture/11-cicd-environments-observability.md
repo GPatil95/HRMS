@@ -57,3 +57,13 @@ Rolling or blue/green deployment behind the load balancer with readiness probes;
 | Jobs | Hangfire dashboard (platform realm) + metrics & alerts on failures/backlog |
 | Security monitoring | security events stream → SIEM; alerts for anomalies (§17.4) |
 | SLOs (proposed) | 99.9% monthly availability; p95 < 300 ms for interactive reads, < 800 ms writes; payroll run of 10k employees < 15 min |
+
+### Additional monitoring (final baseline)
+
+| Area | Signals |
+|---|---|
+| Tenant provisioning | provisioning operations by status/step, duration, failures (alert), tenants in `provisioning`/`maintenance` > threshold |
+| Migrations | tenants per schema version, wave progress, failed tenants |
+| Integrations | biometric connector heartbeats, last sync per device, ingest error rate, unmapped punches; email/SMS/push provider success & bounce rates; calendar sync failures; payment webhooks; LLM latency/error/token usage |
+| Backups | per-tenant last successful logical backup age (alert > 26 h), restore test results |
+| Security | failed logins, lockouts, `TENANT_MISMATCH`, refresh reuse, support sessions, break-glass, bulk exports, AI denied tool calls |

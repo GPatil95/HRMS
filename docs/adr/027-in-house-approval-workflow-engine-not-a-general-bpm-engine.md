@@ -32,3 +32,6 @@ Approver resolution respects permissions and scopes; all actions audited.
 
 ## Operational impact
 Definition versioning keeps in-flight instances stable.
+
+## Amendment — final baseline review
+Actions finalised: Approve, Reject, Send Back, Delegate, Escalate, Cancel (+ Comment, Withdraw). Conditions over amount, branch, department, designation, employee, manager, role, grade and custom fields using a sandboxed expression evaluator shared with payroll formulas. Every action audited (architecture §19.1).

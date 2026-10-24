@@ -1,5 +1,7 @@
 # 13–16. Common Services, API Versioning, Background Jobs, File Storage
 
+> **Final baseline note:** workflow, work inbox, notifications and email are detailed in [19](19-workflow-inbox-notifications-email.md); dashboards, reporting and import/export in [20](20-dashboards-reporting-import.md); API surfaces in [25](25-api-architecture.md).
+
 All business modules consume these through `Hrms.BuildingBlocks.Application` abstractions; none may implement its own variant.
 
 ## 13.1 Service catalogue

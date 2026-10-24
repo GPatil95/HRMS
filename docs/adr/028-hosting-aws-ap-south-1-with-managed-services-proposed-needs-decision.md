@@ -32,3 +32,6 @@ KMS, IAM roles for tasks, GuardDuty.
 
 ## Operational impact
 Requires cloud ops skills; cost monitoring.
+
+## Amendment — final baseline review
+Still pending approval (OQ1). Deployment topology documented in architecture §24.4.

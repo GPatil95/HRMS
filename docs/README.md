@@ -1,7 +1,7 @@
 # HRMS SaaS Platform — Architecture & Foundation Plan
 
-Status: **PROPOSED — for review**. Nothing here is final until each ADR is marked *Accepted*.
-Scope: platform foundation only. No HRMS business modules (Payroll, Attendance, Leave, Recruitment, PMS, Assets, Projects, Visitors, AI) are designed in detail or built in this phase.
+Status: **FINAL BASELINE — pending approval of the decisions listed in [12 §21.3](architecture/12-roadmap-and-risks.md#213-decisions-still-requiring-approval).** Start with the review summary: [architecture/26-review-findings.md](architecture/26-review-findings.md).
+Scope: the architecture covers the platform foundation and every module at the architecture level. No business module is implemented in this phase.
 
 ## Reading order
 
@@ -21,6 +21,35 @@ Scope: platform foundation only. No HRMS business modules (Payroll, Attendance, 
 | 20–21 | Roadmap, risks | [architecture/12-roadmap-and-risks.md](architecture/12-roadmap-and-risks.md) |
 | 22 | ADR list | [adr/README.md](adr/README.md) |
 
+## Final-baseline deliverables (review brief §43)
+
+| # | Deliverable | Document |
+|---|---|---|
+| 1 | Updated architecture document | [01](architecture/01-architecture-overview.md) + this index |
+| 2 | Module catalogue | [14 §14.2](architecture/14-module-catalogue-and-dependencies.md) |
+| 3 | Module dependency matrix | [14 §14.3](architecture/14-module-catalogue-and-dependencies.md) |
+| 4 | Platform DB ERD | [03 §6, §6.1](architecture/03-database-architecture.md) |
+| 5 | Tenant DB ERD | [03 §7, §7.2](architecture/03-database-architecture.md) + module docs 15–22 |
+| 6 | Security architecture | [09](architecture/09-security.md), [23](architecture/23-security-threat-model.md) |
+| 7 | Authorization model | [06](architecture/06-authorization-and-entitlements.md) |
+| 8 | Tenant isolation model | [04](architecture/04-tenancy.md), [03 §5](architecture/03-database-architecture.md) |
+| 9 | Audit architecture | [07](architecture/07-audit.md) |
+| 10 | Workflow architecture | [19 §19.1–19.2](architecture/19-workflow-inbox-notifications-email.md) |
+| 11 | Notification architecture | [19 §19.3–19.4](architecture/19-workflow-inbox-notifications-email.md) |
+| 12 | File/document architecture | [08 §16](architecture/08-common-services.md), [15 §15.2](architecture/15-hr-core-documents-letters.md) |
+| 13 | AI architecture | [21](architecture/21-ai-assistant.md) |
+| 14 | Billing architecture | [22](architecture/22-billing.md) |
+| 15 | Workplace architecture | [18 §18.4–18.7](architecture/18-talent-workplace-productivity-modules.md) |
+| 16 | Exit/FNF architecture | [16](architecture/16-exit-and-fnf.md) |
+| 17 | API architecture | [25](architecture/25-api-architecture.md), [08 §14](architecture/08-common-services.md) |
+| 18 | Deployment architecture | [24 §24.4](architecture/24-compliance-backup-dr-deployment.md), [11](architecture/11-cicd-environments-observability.md) |
+| 19 | Backup/DR architecture | [24 §24.2–24.3](architecture/24-compliance-backup-dr-deployment.md) |
+| 20 | Testing architecture | [10](architecture/10-testing-strategy.md) |
+| 21 | ADR updates | [adr/README.md](adr/README.md) (ADR-029–039 new; 004/011/012/013/027/028 amended) |
+| 22 | Implementation roadmap | [12](architecture/12-roadmap-and-risks.md) |
+
+Additional documents: [13 Platform & tenant administration](architecture/13-platform-and-tenant-administration.md) · [17 Time & pay modules](architecture/17-time-and-pay-modules.md) · [20 Dashboards, reporting, import](architecture/20-dashboards-reporting-import.md) · [26 Review findings](architecture/26-review-findings.md)
+
 ## Key decisions at a glance
 
 1. **Modular monolith** on **.NET 10 (LTS) / ASP.NET Core / EF Core 10**, one deployable API + one worker + one migrator.
@@ -35,6 +64,11 @@ Scope: platform foundation only. No HRMS business modules (Payroll, Attendance, 
 10. **Object storage** (S3-compatible), shared bucket per environment with tenant prefix, presigned URLs only after authorization, scan-before-use.
 11. **Avoid libraries that recently moved to commercial licences** (MediatR, AutoMapper, MassTransit v9+, EPPlus, Duende IdentityServer, FluentAssertions v8+) unless we decide to buy them.
 
+12. **Dependency classes** Hard / Optional / Integration with a full matrix. Shared masters (offices, work calendars, business partners) live in core.
+13. **Finalized financial results are immutable.** Payroll, FNF, tax and invoices are corrected only through revisions.
+14. **AI works only through a tool gateway, acting as the user.** It has no database access, and sensitive writes need a confirmation.
+15. **Two separate billing domains:** SaaS billing in the platform DB, and tenant client billing as an optional tenant module.
+
 ## Decisions that need your input
 
-See [architecture/12-roadmap-and-risks.md#open-questions-for-the-product-owner](architecture/12-roadmap-and-risks.md#open-questions-for-the-product-owner).
+See [architecture/12-roadmap-and-risks.md §21.3](architecture/12-roadmap-and-risks.md#213-decisions-still-requiring-approval).

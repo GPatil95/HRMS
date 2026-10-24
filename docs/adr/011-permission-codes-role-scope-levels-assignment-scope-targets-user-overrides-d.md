@@ -34,3 +34,6 @@ Deny-wins and no-self-grant rules prevent escalation; 404 outside scope prevents
 
 ## Operational impact
 Tenant admins need good role templates; permission changes audited.
+
+## Amendment — final baseline review
+Added action `configure`; added scope level `company` (multi-company tenants) distinct from `tenant`; formalised the **grant ceiling rule** (architecture §10.5): a user cannot grant a permission, scope or role exceeding what they hold, including assignment targets. Menu → sub-menu → page hierarchy declared in manifests.

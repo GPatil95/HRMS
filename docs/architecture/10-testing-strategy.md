@@ -35,3 +35,19 @@
 - Builders/fixtures in `Hrms.BuildingBlocks.Testing` (`TenantFactory.CreateAsync()` provisions a real tenant DB through the same Migrator code path).
 - No production data in non-production environments; synthetic data generator for UAT/performance.
 - Coverage targets: domain/application ≥ 80% line coverage; 100% of endpoints in authorization matrix.
+
+## 18.4 Additional mandatory tests (final baseline)
+
+| # | Test | Expectation |
+|---|---|---|
+| T9 | Grant ceiling | user with `employee.profile.view @ branch` cannot create a role or override granting `@ tenant` or any permission they lack → 403 `grant-exceeds-own-permission` |
+| T10 | AI cannot bypass permissions | user without `payroll.*` asks AI for salary data → payroll tools not offered; forced tool call returns forbidden; audit shows denied tool call |
+| T11 | AI sensitive write needs confirmation | AI-initiated leave approval without valid confirmation token → rejected |
+| T12 | Widget/report consistency | dashboard widget totals and report rows equal the scoped list endpoint for each persona |
+| T13 | Scheduled report runs with owner's current permissions | after owner loses permission/exits, schedule suspended, no file produced |
+| T14 | Locked financial records | update to finalized payroll/FNF/invoice rejected by domain rule and DB trigger; revision creates new record |
+| T15 | Exit revocation | after LWD job: login fails, sessions/refresh tokens revoked, open work items reassigned, biometric revoke command queued |
+| T16 | Module independence | for each optional module: disable it and run the full API test suite of every other module → all pass (matrix in CI nightly) |
+| T17 | Work inbox is not an authority | user whose scope changed cannot act on a stale work item → module API 404/403 |
+| T18 | Import respects scope | importer with branch scope uploading rows for another branch → rows rejected |
+| T19 | Mass assignment | POST/PUT with extra fields (`tenantId`, `createdBy`, `status`) → 400 unknown property, no change |

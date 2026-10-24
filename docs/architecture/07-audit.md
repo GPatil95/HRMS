@@ -58,3 +58,25 @@ Passwords, password hashes, OTP/TOTP codes, recovery codes, access/refresh token
 ## 12.6 Platform audit
 
 Same model in `hrms_platform.audit`: tenant created/suspended, plan/subscription/entitlement changes, DB provisioning/migration/move, platform user/role changes, support grant lifecycle, platform config and feature-flag changes.
+
+## 12.7 Mandatory audited business events (all modules use the common framework)
+
+| Event | Module | Captured extras |
+|---|---|---|
+| Employee salary/compensation changed | core.employee / payroll | before/after CTC & components, effective date, reason, workflow ref |
+| Employee bank account changed | core.employee | masked before/after, verification, approver |
+| Leave approved/rejected/cancelled | leave + workflow | approver, comment, balance impact |
+| Payroll processed / approved / finalized / reopened | payroll | run id, revision, totals, rule versions, snapshot hash |
+| FNF finalized / revised / paid | employee.exit | revision, totals, snapshot hash |
+| Loan approved / disbursed / closed | loans | amounts, schedule version |
+| Asset assigned / transferred / returned / written off | assets | from/to holder |
+| Role / permission / override changed | core.identity | security event + before/after |
+| Document downloaded / shared | files, empdocs | file id, classification, recipient |
+| Visitor checked in/out | visitors | host, pass id |
+| Seat / room booked / cancelled | workplace / rooms | seat/room, slot |
+| Invoice generated / approved / cancelled | clientbilling (and platform billing in platform audit) | totals, GST split |
+| Workflow action (any) | core.workflow | action, actor, on-behalf-of, comment |
+| AI executed action | ai.assistant | tool, parameters, confirmation token id, `source=ai` |
+| Support session actions | all | `source=support`, grant id, platform actor |
+
+Ordinary users (including Tenant Admins) have **no** update/delete path for audit records in API or DB.

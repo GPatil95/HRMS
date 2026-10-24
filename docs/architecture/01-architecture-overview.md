@@ -1,5 +1,7 @@
 # 1. Architecture Overview
 
+> **Final baseline note:** §1.6 is superseded by [14-module-catalogue-and-dependencies.md](14-module-catalogue-and-dependencies.md) (module codes, dependency classes H/O/I, full matrix). Everything else in this document remains valid.
+
 ## 1.1 Goals and quality attributes (in priority order)
 
 1. **Tenant isolation** — no code path, credential or cache key may let Tenant A read or write Tenant B data.

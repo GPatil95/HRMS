@@ -35,6 +35,20 @@ All ADRs are **Proposed** until reviewed. Items affecting tenant isolation, data
 | [ADR-027](027-in-house-approval-workflow-engine-not-a-general-bpm-engine.md) | In-house approval workflow engine (not a general BPM engine) | Workflow | Proposed |
 | [ADR-028](028-hosting-aws-ap-south-1-with-managed-services-proposed-needs-decision.md) | Hosting: AWS (ap-south-1) with managed services — PROPOSED, needs decision | Infrastructure | Proposed |
 
+| [ADR-029](029-formal-module-dependency-classes-and-shared-masters-in-core.md) | Formal module dependency classes and shared masters in core | Module dependency | Proposed |
+| [ADR-030](030-employee-hr-core-always-on-documents-letters-exit-fnf-as-toggleable-sub-mo.md) | Employee/HR Core always on; Documents, Letters, Exit/FNF as toggleable sub-modules | Module packaging | Proposed |
+| [ADR-031](031-finalized-financial-results-are-immutable-corrections-via-revisions.md) | Finalized financial results are immutable; corrections via revisions | Payroll / Compliance | Proposed |
+| [ADR-032](032-biometric-integration-via-outbound-connector-ingest-api-no-biometric-templ.md) | Biometric integration via outbound connector/ingest API; no biometric templates stored | Integration / Security | Proposed |
+| [ADR-033](033-ai-assistant-through-a-tool-gateway-executing-as-the-user-no-database-acce.md) | AI assistant through a tool gateway executing as the user; no database access | AI / Security | Proposed |
+| [ADR-034](034-two-separate-billing-domains-saas-platform-billing-vs-tenant-client-billin.md) | Two separate billing domains: SaaS platform billing vs tenant client billing | Billing | Proposed |
+| [ADR-035](035-unified-work-inbox-as-a-non-authoritative-projection.md) | Unified work inbox as a non-authoritative projection | Workflow / Authorization | Proposed |
+| [ADR-036](036-retention-legal-hold-and-erasure-by-anonymisation-as-core-compliance-servi.md) | Retention, legal hold and erasure-by-anonymisation as core compliance services | Compliance | Proposed |
+| [ADR-037](037-lowercase-physical-database-names.md) | Lowercase physical database names | Database | Proposed |
+| [ADR-038](038-tenant-level-backup-restore-via-per-tenant-logical-dumps-plus-cluster-pitr.md) | Tenant-level backup/restore via per-tenant logical dumps plus cluster PITR; DR tiers | Backup / DR | Proposed |
+| [ADR-039](039-container-platform-ecs-fargate-proposed-pending-decision.md) | Container platform: ECS Fargate (proposed) — pending decision | Deployment | Proposed |
+
+Amended in final baseline review: ADR-004, 011, 012, 013, 027, 028 (see *Amendment* section in each).
+
 ## Planned ADRs (later phases)
 
 - Payroll calculation engine design and reproducibility

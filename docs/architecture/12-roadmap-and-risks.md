@@ -1,49 +1,90 @@
-# 20–21. Development Roadmap, Risks and Open Questions
+# 20–21. Implementation Roadmap, Risks and Open Questions (final baseline)
 
-## 20. Roadmap (foundation first; each phase ends with a review gate)
+## 20.1 Foundation phases (no business modules), each ends with a review gate
 
 | Phase | Deliverables | Exit criteria |
 |---|---|---|
-| **0. Architecture sign-off** | this document set reviewed; ADRs accepted/amended; open questions answered | ADRs 001–012 accepted |
-| **1. Scaffolding & delivery pipeline** | monorepo, solution + building blocks skeleton, Directory.Build/Packages props, analyzers, docker-compose dev stack, CI (build, test, CodeQL, gitleaks), web/admin/mobile shells boot, OpenAPI → generated client | green CI on `main`; `docker compose up` + one command runs everything |
-| **2. Platform core & tenancy** | Platform DB (tenancy, catalog, subscription schemas), DB registry, clusters, Migrator (provision, migrate waves), tenant resolution middleware, TenantContext, connection factory + `meta.tenant_identity` check, admin APIs for tenants/domains | provision 2 tenants end-to-end; **T1 isolation tests pass** |
-| **3. Identity & authentication** | tenant identity schema, ASP.NET Core Identity + OpenIddict, web BFF login, mobile PKCE login, MFA (TOTP + passkeys), sessions & revocation, lockout & rate limits, platform realm login, security events | login/logout/MFA/revocation tests; T5 passes |
-| **4. Authorization & entitlements** | module manifests & catalog sync, entitlement service + cache invalidation, permission model (roles, scopes, overrides), data scope provider, `/me/session` & `/me/navigation`, admin UI for plans/entitlements, tenant UI for roles/permissions | **T2, T3, T4, T8 pass**; authz matrix covers 100% of endpoints |
-| **5. Audit & common services** | audit interceptor, security audit, append-only protection, hash chain + verifier + WORM export; outbox/inbox; Hangfire worker + tenant job filter; file service with scan pipeline; notifications (in-app/email/push) + templates; config & feature flags; import/export framework; workflow engine core + approval inbox; SignalR | T6, T7 pass; demo: import org data via Excel, approve a sample workflow, download audited file |
-| **6. Org structure + minimal employee core** | companies, branches, departments, designations, employee core + employment history + reporting closure (needed to prove scopes) | scope tests on real hierarchy; UI CRUD with history panel |
-| **7. Hardening** | observability dashboards & alerts, load tests (many tenants, 50k employees), ZAP + external pen test prep, backup/restore drill, runbooks (provisioning, incident, restore, key rotation) | SLOs met in load test; restore drill documented |
-| **Gate → first business module** | proposed order: Employee (full) → Attendance (+biometric) → Leave → Payroll → Tax/TDS → others by commercial priority | business module design reviewed separately |
+| **0. Baseline approval** | this document set; ADRs accepted/amended; pending decisions (§21.3) answered | ADRs 001–039 accepted or amended |
+| **1. Scaffolding & delivery pipeline** | monorepo, solution + building blocks, analyzers, CPM, docker-compose dev stack, CI (build, test, CodeQL, gitleaks, arch tests), web/admin/mobile shells, OpenAPI → generated client | green CI; one-command local start |
+| **2. Platform core & tenancy** | Platform DB (tenancy, catalog, subscription, ops), DB registry & clusters, Migrator (provision, waves), tenant resolution, TenantContext, connection factory + identity check, admin APIs/UI for tenants, domains, limits | 2 tenants provisioned end-to-end; **T1** passes |
+| **3. Identity & authentication** | tenant + platform identity, OpenIddict, BFF web login, mobile PKCE, MFA (TOTP/passkeys), sessions & revocation, lockout & rate limits, security events | auth tests; **T5** |
+| **4. Authorization & entitlements** | manifests & catalog sync, entitlements + cache invalidation, roles/scopes/overrides, **grant ceiling**, data scope provider, `/me/session`, `/me/navigation`, platform admin plans/entitlements UI, tenant roles UI | **T2, T3, T4, T8, T9**; authz matrix 100% |
+| **5. Common services** | audit (interceptor, append-only, hash chain, WORM), outbox/inbox, Hangfire + tenant job filter, files + scanning, notifications + **email** (SMTP/provider, tenant config, templates, queue, status), workflow engine (all actions), work inbox projection, import/export engine, reporting framework, dashboard framework, config/feature flags, retention/legal hold, SignalR | **T6, T7, T12, T13, T17, T18, T19** |
+| **6. Org structure + HR Core skeleton** | companies, branches, departments, designations, grades, locations/floors, cost centres, work calendars, business partners, employee core with effective-dated history & reporting closure | scope tests on real hierarchy |
+| **7. Hardening** | observability & alerts, load tests (500 tenant DBs/cluster, 50k-employee tenant), ZAP, backup/restore drill, DR runbook, pen-test readiness, **platform billing MVP** (plans → invoices → GST → payments) before first paying tenant | SLOs in load test; restore drill passed |
 
-## 21. Risks
+## 20.2 Business module order (after the foundation gate; each module has its own design review)
+
+| Order | Module(s) | Rationale |
+|---|---|---|
+| 1 | **HR Core full** + Employee Documents + Letters | everything depends on employee data; letters needed for joining/exit |
+| 2 | Attendance (+ Biometric connector) | most-demanded; independent |
+| 3 | Leave | independent; feeds payroll optionally |
+| 4 | Payroll + Tax/TDS | highest value & risk; needs statutory rule-pack pipeline; golden-test suite with verified cases |
+| 5 | Loans & Advance, Expense & Reimbursement | payroll inputs |
+| 6 | **Exit & FNF** | uses all previous providers (works earlier with manual inputs if a customer needs it before payroll) |
+| 7 | Recruitment, PMS | talent modules, independent |
+| 8 | Assets | feeds exit clearance |
+| 9 | Calendar, Meeting Rooms, Workplace, Visitors, Mailroom | workplace suite (shares core office/floor masters) |
+| 10 | Projects, My Work | productivity |
+| 11 | Client Billing | needs payroll/attendance/timesheets providers |
+| 12 | AI Assistant | after module tool catalogue is stable; provider decision required |
+| — | Mobile app features | delivered with each module (ESS first: attendance, leave, payslips, approvals) |
+
+## 21.1 Risks
 
 | # | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|---|
-| R1 | **Connection explosion** with hundreds of tenant DBs × API instances | High | High | PgBouncer transaction pooling, small Npgsql pools, cluster sharding, load test in phase 7 |
-| R2 | **Migration fan-out failures** leave tenants on different schemas | Medium | High | expand/contract, waves, per-tenant version tracking, API refuses incompatible schema, automated retries, dashboards |
-| R3 | Operational cost/complexity of DB-per-tenant (backups, monitoring, restores) | High | Medium | automation via Migrator, per-tenant logical backups, cluster capacity planning, managed services |
-| R4 | Cross-tenant analytics & platform reporting harder | High | Low | usage events into platform DB; later analytics warehouse fed by CDC with tenant isolation |
-| R5 | Data-scope filters forgotten in a new query → data leak within tenant | Medium | High | single `ApplyScope` mechanism, generated authz matrix tests, code review checklist, optional EF global filters for "always own-scope" entities |
-| R6 | Module boundary erosion in the monolith | Medium | Medium | Contracts-only references, arch tests, CODEOWNERS |
-| R7 | Self-hosted OIDC server security burden | Medium | High | OpenIddict (mature), minimal flows, key rotation, pen test; can switch to external IdP behind same claims model (ADR-007) |
-| R8 | Entitlement/permission cache staleness after revocation | Low | Medium | versioned keys + pub/sub invalidation + 30 s TTL ceiling; security-critical revocations (user disable) go through session revocation (immediate) |
-| R9 | Statutory/payroll correctness and frequent rule changes | High | High | effective-dated rule packs, snapshots, golden-file regression tests with CA-verified cases (payroll phase) |
-| R10 | Sensitive PII compliance (Aadhaar, bank, health) | Medium | High | field encryption, masking, minimal collection, legal review, DPDP processes |
-| R11 | Hangfire storage becomes hotspot at scale | Low | Medium | dedicated jobs DB, queue separation, dispatcher pattern; can move to Redis storage (Pro) or Quartz later behind `IJobScheduler` |
-| R12 | Licence changes in OSS dependencies | Medium | Medium | prefer Apache/MIT, avoid recently relicensed libs, abstraction at seams, quarterly licence scan |
-| R13 | Mobile version fragmentation vs API evolution | Medium | Medium | 12-month version support, forced-upgrade endpoint, OTA updates |
-| R14 | Cloud choice not yet fixed (S3 requirement implies AWS or S3-compatible service) | Medium | Medium | decide in phase 0 (OQ1) |
+| R1 | Connection explosion with many tenant DBs | High | High | PgBouncer, small pools, cluster sharding, load tests |
+| R2 | Migration fan-out failures / schema drift | Medium | High | expand/contract, waves, per-tenant versions, maintenance mode |
+| R3 | Operational cost of DB-per-tenant | High | Medium | automation, managed services, capacity planning |
+| R4 | Cross-tenant analytics harder | High | Low | usage events; later CDC warehouse |
+| R5 | Data-scope filter forgotten in new queries | Medium | High | single `ApplyScope`, generated authz matrix, widget/report consistency tests |
+| R6 | Module boundary erosion | Medium | Medium | Contracts-only, arch tests, module-independence tests (T16) |
+| R7 | Self-hosted OIDC security burden | Medium | High | OpenIddict, pen test; IdP swappable |
+| R8 | Entitlement/permission cache staleness | Low | Medium | versioned keys + pub/sub, ≤30 s; session revocation immediate |
+| R9 | Payroll/tax/FNF correctness and frequent statutory change | High | High | rule packs, snapshots, golden tests, maker-checker publishing, domain expert sign-off |
+| R10 | Sensitive PII compliance (Aadhaar, bank, health, visitor IDs) | Medium | High | field encryption, masking, retention, legal review |
+| R11 | Hangfire storage hotspot | Low | Medium | dedicated jobs DB, queues, abstraction |
+| R12 | OSS licence changes | Medium | Medium | permissive libs, seams, licence scan |
+| R13 | Mobile version fragmentation | Medium | Medium | 12-month support, forced upgrade, OTA |
+| R14 | Cloud choice open | Medium | Medium | decide OQ1 |
+| R15 | **Scope breadth** (30+ modules) dilutes quality | High | High | strict foundation gate, one module design review at a time, module-independence tests |
+| R16 | AI: prompt injection, data leakage, provider residency, cost | Medium | High | tool gateway (ADR-033), confirmation tokens, minimisation, quotas, red-team tests |
+| R17 | Workflow engine complexity (conditions, parallel, send back, delegation) | Medium | Medium | bounded feature set, versioned definitions, extensive tests |
+| R18 | Biometric vendor diversity & on-prem connector support | High | Medium | adapter model, prioritised vendor list, connector telemetry |
+| R19 | Email deliverability (tenant SMTP/domains), abuse of compose/bulk email | Medium | Medium | domain verification, quotas, suppression lists, audit |
+| R20 | GST/e-invoicing rules for platform and client billing | Medium | Medium | effective-dated tax config, IRP integration point, CA review |
+| R21 | Dashboard/report performance on large tenants | Medium | Medium | pre-aggregation jobs, read replicas per cluster later |
+| R22 | External calendar sync complexity | Medium | Low | one-way publish first |
 
-## Open questions for the product owner
+## 21.3 Decisions still requiring approval
 
-| # | Question | Default if no answer |
+| # | Decision | Recommendation (default) |
 |---|---|---|
-| OQ1 | Cloud provider & region(s)? Any data-residency commitments (India-only)? | AWS ap-south-1, DR in ap-south-2 |
-| OQ2 | Initial statutory scope: India only? | India only |
-| OQ3 | Scale targets: number of tenants year 1/3, largest tenant size? | A4 in overview |
-| OQ4 | Is customer SSO (Entra ID / Google / Okta) required for launch customers? | design now, build after foundation |
-| OQ5 | Can one login belong to multiple tenants (e.g. consultants, group companies)? Group companies could instead be *multiple companies within one tenant*. | no — one account per tenant; group companies = multiple `org.companies` in one tenant |
-| OQ6 | Kubernetes (EKS) or simpler container service (ECS Fargate)? | ECS Fargate (lower ops for a new team) |
-| OQ7 | UI component library preference (MUI vs shadcn/ui)? | MUI core |
-| OQ8 | Willing to pay for commercial libs where they save time (e.g. Hangfire Pro, QuestPDF, a commercial grid)? | no — OSS first |
-| OQ9 | Self-hosted identity (OpenIddict) vs managed IdP (Auth0 / Entra External ID / Keycloak)? | OpenIddict (ADR-007) |
-| OQ10 | Where should the repo be created (GitHub org/name)? | — |
+| OQ1 | Cloud & regions | AWS ap-south-1, DR ap-south-2 (ADR-028) |
+| OQ2 | Statutory scope | India first, rule-pack design for others |
+| OQ3 | Scale targets | 1,000 tenants / 3 years; largest 50k employees |
+| OQ4 | Customer SSO at launch | design now, build after foundation |
+| OQ5 | One login across tenants | no; group companies = multiple companies in one tenant |
+| OQ6 | ECS Fargate vs EKS | ECS Fargate (ADR-039) |
+| OQ7 | UI component library | MUI core |
+| OQ8 | Commercial libraries allowed | OSS first; evaluate QuestPDF/Hangfire Pro case by case |
+| OQ9 | Self-hosted identity vs managed IdP | OpenIddict (ADR-007) |
+| OQ10 | GitHub org / repo name | — |
+| D1 | Physical DB naming (ADR-037) | lowercase `hrms_tenant_1001` |
+| D2 | Packaging of Documents / Letters / Exit (ADR-030) | Documents + Exit in base plan; Letters base or add-on (commercial) |
+| D3 | Is Tax sold separately from Payroll? | included with Payroll, toggleable sub-module |
+| D4 | Comp-off ownership | Attendance earns, Leave holds balance |
+| D5 | Expense "leave reimbursement" meaning | LTA/leave-travel claims; encashment stays in Leave/Payroll/FNF |
+| D6 | AI LLM provider & hosting | in-region managed model (Azure OpenAI India / AWS Bedrock) with no-training, retention-off |
+| D7 | Payment gateway for SaaS billing | Razorpay (India) — confirm |
+| D8 | SaaS billing basis | max active employees in period |
+| D9 | DR tiers & RPO/RTO per plan | as §24.3 |
+| D10 | Default retention periods | legal review |
+| D11 | Aadhaar storage | masked/reference only |
+| D12 | PDF engine | headless Chromium in Worker (OSS) vs QuestPDF (licence threshold) |
+| D13 | E-sign provider | defer |
+| D14 | Custom report builder | out of v1 |
+| D15 | Alumni (ex-employee) portal access | read-only own documents/payslips for configurable period |
+| D16 | Visitor watchlist | feature off by default; enable per tenant after legal check |

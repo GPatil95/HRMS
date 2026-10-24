@@ -32,3 +32,6 @@ Disabled module data not reachable through other modules' integrations.
 
 ## Operational impact
 Dependency graph validated in CI and at startup.
+
+## Amendment — final baseline review
+Dependency classes formalised as Hard / Optional / Integration / None with a full matrix (architecture §14). Sub-modules: `attendance.biometric → attendance`, `payroll.tax → payroll`, `employee.documents|letters|exit → core.employee`.
