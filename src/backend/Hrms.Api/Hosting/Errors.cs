@@ -11,7 +11,7 @@ public static class ApiResults
 {
     public static ObjectResult Problem(Error e)
     {
-        var status = e.Type switch
+        var status = e.Code == "rate-limited" ? StatusCodes.Status429TooManyRequests : e.Type switch
         {
             ErrorType.Validation => StatusCodes.Status400BadRequest,
             ErrorType.NotFound => StatusCodes.Status404NotFound,
