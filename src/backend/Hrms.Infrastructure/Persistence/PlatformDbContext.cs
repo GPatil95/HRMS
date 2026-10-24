@@ -66,6 +66,7 @@ public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> option
             e.Property(x => x.Code).HasMaxLength(32);
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.AdminEmail).HasMaxLength(256);
+            e.Property(x => x.AdminName).HasMaxLength(200);
             e.Property(x => x.Region).HasMaxLength(32);
             e.Property(x => x.TimeZone).HasMaxLength(64);
             e.HasMany(x => x.Domains).WithOne().HasForeignKey(d => d.TenantId).OnDelete(DeleteBehavior.Cascade);

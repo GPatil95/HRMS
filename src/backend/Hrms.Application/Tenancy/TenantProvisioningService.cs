@@ -98,7 +98,7 @@ public sealed partial class TenantProvisioningService(
             TenantNumber = await sequences.NextTenantNumberAsync(ct),
             Code = code,
             Name = cmd.Name.Trim(),
-            AdminEmail = Guard.NormalizeEmail(cmd.AdminEmail),
+            AdminEmail = Guard.NormalizeEmail(cmd.AdminEmail), AdminName = cmd.AdminName.Trim(),
             Status = TenantStatus.Provisioning,
         };
         tenant.Domains.Add(new TenantDomain { TenantId = tenant.Id, HostName = $"{code}.{hosting.Value.BaseDomain}", IsPrimary = true, CreatedAt = now });
@@ -115,7 +115,6 @@ public sealed partial class TenantProvisioningService(
         }
 
         var op = new ProvisioningOperation { TenantId = tenant.Id, Operation = "create", CorrelationId = request.CorrelationId };
-        op.Steps.Add(new ProvisioningStepRecord { Step = "admin", Status = "pending", At = now, Error = cmd.AdminName });
         db.ProvisioningOperations.Add(op);
         securityEvents.Add(SecurityEventTypes.TenantChanged, true, null, null, new { action = "create", tenant = code, plan = planCode });
         await db.SaveChangesAsync(ct);
@@ -167,7 +166,7 @@ public sealed partial class TenantProvisioningService(
         op.StartedAt ??= clock.UtcNow;
         await db.SaveChangesAsync(ct);
 
-        var adminName = op.Steps.FirstOrDefault(s => s.Step == "admin")?.Error ?? tenant.AdminEmail;
+        var adminName = string.IsNullOrWhiteSpace(tenant.AdminName) ? tenant.AdminEmail : tenant.AdminName;
         string? current = null;
         try
         {

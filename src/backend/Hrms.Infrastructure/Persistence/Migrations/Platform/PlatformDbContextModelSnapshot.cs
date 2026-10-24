@@ -1357,6 +1357,12 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Platform
                         .HasColumnType("character varying(256)")
                         .HasColumnName("admin_email");
 
+                    b.Property<string>("AdminName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("admin_name");
+
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(32)

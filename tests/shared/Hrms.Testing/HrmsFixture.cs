@@ -98,6 +98,8 @@ public sealed class HrmsFixture : IAsyncLifetime
                 s.AddSingleton<IEmailTransport>(Emails);
                 s.RemoveAll<IProvisioningFaultInjector>();
                 s.AddSingleton<IProvisioningFaultInjector>(Faults);
+                s.AddSingleton<Hrms.Application.Modules.IModuleDefinition, PayrollProbeModule>();
+                s.AddControllers().AddApplicationPart(typeof(PayrollProbeController).Assembly);
             });
         });
         _ = Factory.Server;

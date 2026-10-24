@@ -22,6 +22,7 @@ public sealed class Tenant : AuditableEntity, IConcurrencyAware
     public string Region { get; set; } = "local";
     public string TimeZone { get; set; } = "Asia/Kolkata";
     public string AdminEmail { get; set; } = string.Empty;
+    public string AdminName { get; set; } = string.Empty;
     public long EntitlementVersion { get; set; } = 1;
     public uint RowVersion { get; set; }
 

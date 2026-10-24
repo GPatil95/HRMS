@@ -1,0 +1,39 @@
+# Local development dependencies. Run the API with `dotnet run` against these, or `--profile app` to run it in a container.
+name: hrms
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: ${HRMS_PG_PASSWORD:-postgres}
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ["1025:1025", "8025:8025"]
+  api:
+    profiles: [app]
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/api.Dockerfile
+      target: api
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Platform: Host=postgres;Port=5432;Database=hrms_platform;Username=postgres;Password=${HRMS_PG_PASSWORD:-postgres}
+      ConnectionStrings__Redis: redis:6379
+      Smtp__Host: mailpit
+      Smtp__Port: "1025"
+      Jobs__Mode: InProcess
+      Secrets__MasterKey: ${HRMS_MASTER_KEY:?set HRMS_MASTER_KEY (base64 32 bytes)}
+    ports: ["8080:8080"]
+volumes:
+  pgdata:
