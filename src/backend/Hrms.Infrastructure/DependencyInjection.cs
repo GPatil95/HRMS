@@ -134,7 +134,7 @@ public static class DependencyInjection
 
         s.AddScoped<JobRunner>();
         s.TryAddSingleton<IProvisioningFaultInjector, NoopProvisioningFaultInjector>();
-        s.TryAddScoped<ITenantActivationHandler, NoopTenantActivationHandler>();
+        s.TryAddScoped<ITenantActivationHandler, TenantAdminInvitationHandler>();
 
         return s.AddHrmsApplication();
     }

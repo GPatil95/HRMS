@@ -20,6 +20,8 @@ builder.Configuration.AddInMemoryCollection([new("Jobs:Mode", "InProcess")]);
 builder.Configuration.AddEnvironmentVariables();
 builder.Services.AddHrmsInfrastructure(builder.Configuration);
 using var host = builder.Build();
+await host.StartAsync();
+var jobQueue = host.Services.GetRequiredService<Hrms.Infrastructure.Jobs.InProcessJobQueue>();
 using var scope = host.Services.CreateScope();
 var sp = scope.ServiceProvider;
 var ct = CancellationToken.None;
@@ -53,6 +55,7 @@ switch (command)
         }
 
         var status = await svc.RunAsync(r.Value.OperationId, ct);
+        await jobQueue.DrainAsync(TimeSpan.FromSeconds(30));
         Console.WriteLine($"Tenant {r.Value.TenantId} provisioning: {status}");
         return status == Hrms.Domain.Platform.ProvisioningStatus.Succeeded ? 0 : 1;
     }
@@ -68,6 +71,7 @@ switch (command)
         }
 
         var status = await svc.RunAsync(r.Value, ct);
+        await jobQueue.DrainAsync(TimeSpan.FromSeconds(30));
         Console.WriteLine($"Provisioning: {status}");
         return status == Hrms.Domain.Platform.ProvisioningStatus.Succeeded ? 0 : 1;
     }
