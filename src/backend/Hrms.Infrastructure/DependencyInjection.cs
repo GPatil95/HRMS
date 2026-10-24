@@ -121,7 +121,17 @@ public static class DependencyInjection
         s.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
         s.AddSingleton<IExcelWriter, ClosedXmlExcelWriter>();
 
-        s.AddScoped<IJobScheduler, HangfireJobScheduler>();
+        if (string.Equals(cfg["Jobs:Mode"], "InProcess", StringComparison.OrdinalIgnoreCase))
+        {
+            s.AddSingleton<InProcessJobQueue>();
+            s.AddScoped<IJobScheduler, InProcessJobScheduler>();
+            s.AddHostedService<InProcessJobWorker>();
+        }
+        else
+        {
+            s.AddScoped<IJobScheduler, HangfireJobScheduler>();
+        }
+
         s.AddScoped<JobRunner>();
         s.TryAddSingleton<IProvisioningFaultInjector, NoopProvisioningFaultInjector>();
         s.TryAddScoped<ITenantActivationHandler, NoopTenantActivationHandler>();
@@ -191,7 +201,8 @@ public static class DependencyInjection
         s.AddScoped<UserAdministrationService>();
         s.AddScoped<OrganizationService>();
         s.AddScoped<FileService>();
-        s.AddScoped<INotificationService, NotificationService>();
+        s.AddScoped<NotificationService>();
+        s.AddScoped<INotificationService>(sp => sp.GetRequiredService<NotificationService>());
         s.AddScoped<DashboardService>();
         s.AddScoped<ReportingService>();
         return s;
