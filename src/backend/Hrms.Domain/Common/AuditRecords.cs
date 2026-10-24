@@ -98,6 +98,7 @@ public enum EmailStatus
     Sent = 2,
     Failed = 3,
     Cancelled = 4,
+    Retrying = 5,
 }
 
 public sealed class EmailMessage

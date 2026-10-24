@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using IdentityOptions = Hrms.Application.Abstractions.IdentityOptions;
+
 namespace Hrms.Application.Identity;
 
 public sealed record LoginCommand(string Email, string Password, string Client = "web");
