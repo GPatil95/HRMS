@@ -110,14 +110,23 @@ public static class AuthSchemes
 
 /// <summary>Authenticated user of the given realm (no specific permission, e.g. own notifications). Realm must match the host realm.</summary>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
-public sealed class AuthenticatedAttribute(string realm) : Attribute, IAsyncActionFilter
+public sealed class AuthenticatedAttribute : Attribute, IAsyncActionFilter
 {
-    public string Realm { get; } = realm;
+    /// <summary>Requires a session in the realm served by the current host (for controllers shared by both realms).</summary>
+    public AuthenticatedAttribute()
+    {
+    }
+
+    public AuthenticatedAttribute(string realm) => Realm = realm;
+
+    public string? Realm { get; }
 
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
         var user = context.HttpContext.RequestServices.GetRequiredService<ICurrentUser>();
-        if (!user.IsAuthenticated || user.Realm != Realm || HostRealm.Of(context.HttpContext) != Realm)
+        var hostRealm = HostRealm.Of(context.HttpContext);
+        var expected = Realm ?? hostRealm;
+        if (!user.IsAuthenticated || user.Realm != expected || hostRealm != expected)
         {
             context.Result = ApiResults.Problem(Shared.Results.Error.Unauthorized("auth.required", "Authentication required."));
             return;

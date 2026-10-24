@@ -58,12 +58,12 @@ public abstract class AuthControllerBase(string realm, AuthService auth, IAntifo
     [HttpPost("verify-email"), AllowAnonymous]
     public async Task<IActionResult> VerifyEmail(TokenRequest req, CancellationToken ct) => (await auth.VerifyEmailAsync(req.Token, ct)).ToActionResult();
 
-    [HttpGet("me")]
+    [HttpGet("me"), AllowAnonymous]
     public IActionResult Me() => !user.IsAuthenticated || user.Realm != realm
         ? ApiResults.Problem(Shared.Results.Error.Unauthorized("auth.required", "Authentication required."))
         : Ok(new { user.UserId, user.Email, user.DisplayName, realm, tenant = tenant.Current is { } t ? new { t.Code, t.Name } : null });
 
-    [HttpPost("logout")]
+    [HttpPost("logout"), AllowAnonymous]
     public async Task<IActionResult> Logout(CancellationToken ct)
     {
         if (user.IsAuthenticated && user.Realm == realm)
@@ -75,17 +75,17 @@ public abstract class AuthControllerBase(string realm, AuthService auth, IAntifo
         return NoContent();
     }
 
-    [HttpPost("change-password")]
+    [HttpPost("change-password"), Authenticated]
     public async Task<IActionResult> ChangePassword(ChangePasswordRequest req, CancellationToken ct) => !Authed() ? Unauth()
         : (await auth.ChangePasswordAsync(user.UserId!.Value, user.SessionId!.Value, req.CurrentPassword, req.NewPassword, ct)).ToActionResult();
 
-    [HttpPost("mfa/setup")]
+    [HttpPost("mfa/setup"), Authenticated]
     public async Task<IActionResult> MfaSetup(CancellationToken ct) => !Authed() ? Unauth() : (await auth.BeginMfaSetupAsync(user.UserId!.Value, ct)).ToActionResult();
 
-    [HttpPost("mfa/enable")]
+    [HttpPost("mfa/enable"), Authenticated]
     public async Task<IActionResult> MfaEnable(CodeRequest req, CancellationToken ct) => !Authed() ? Unauth() : (await auth.EnableMfaAsync(user.UserId!.Value, req.Code, ct)).ToActionResult();
 
-    [HttpPost("mfa/disable")]
+    [HttpPost("mfa/disable"), Authenticated]
     public async Task<IActionResult> MfaDisable(PasswordRequest req, CancellationToken ct) => !Authed() ? Unauth() : (await auth.DisableMfaAsync(user.UserId!.Value, req.Password, ct)).ToActionResult();
 
     private bool Authed() => user.IsAuthenticated && user.Realm == realm;
