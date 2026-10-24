@@ -36,7 +36,7 @@ public static class ApiResults
 }
 
 /// <summary>Maps unhandled exceptions to RFC 7807 responses without leaking internals; correlation id is returned for support.</summary>
-public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IRequestContext request) : IExceptionHandler
+public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(HttpContext ctx, Exception ex, CancellationToken ct)
     {
@@ -58,7 +58,7 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
         {
             Status = status,
             Title = title,
-            Extensions = { ["code"] = code, ["correlationId"] = request.CorrelationId },
+            Extensions = { ["code"] = code, ["correlationId"] = ctx.RequestServices.GetService<IRequestContext>()?.CorrelationId },
         }, (System.Text.Json.JsonSerializerOptions?)null, "application/problem+json", ct);
         return true;
     }
