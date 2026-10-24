@@ -29,6 +29,14 @@ public sealed class PlatformSeedService(IPlatformDbContext db, IModuleCatalog ca
             m.SortOrder = s.SortOrder;
         }
 
+        // Code-defined modules not (yet) in the commercial catalogue are still registered so they can be entitled.
+        foreach (var d in catalog.Modules.Where(d => !modules.ContainsKey(d.Code)))
+        {
+            var m = new CatalogModule { Code = d.Code, Name = d.Name, Kind = d.Kind, ParentCode = d.ParentCode, SortOrder = 10_000 };
+            db.Modules.Add(m);
+            modules[d.Code] = m;
+        }
+
         await db.SaveChangesAsync(ct);
 
         var deps = await db.ModuleDependencies.ToListAsync(ct);
@@ -39,6 +47,19 @@ public sealed class PlatformSeedService(IPlatformDbContext db, IModuleCatalog ca
                 var mid = modules[s.Code].Id;
                 var did = modules[req].Id;
                 if (!deps.Any(d => d.ModuleId == mid && d.DependsOnModuleId == did))
+                {
+                    db.ModuleDependencies.Add(new ModuleDependency { ModuleId = mid, DependsOnModuleId = did, Kind = DependencyKind.Required });
+                }
+            }
+        }
+
+        foreach (var d in catalog.Modules)
+        {
+            foreach (var req in d.RequiredModules.Where(modules.ContainsKey))
+            {
+                var mid = modules[d.Code].Id;
+                var did = modules[req].Id;
+                if (!deps.Any(x => x.ModuleId == mid && x.DependsOnModuleId == did) && !db.ModuleDependencies.Local.Any(x => x.ModuleId == mid && x.DependsOnModuleId == did))
                 {
                     db.ModuleDependencies.Add(new ModuleDependency { ModuleId = mid, DependsOnModuleId = did, Kind = DependencyKind.Required });
                 }
