@@ -3,6 +3,7 @@ using Hrms.Application.Abstractions;
 using Hrms.Application.Auditing;
 using Hrms.Application.Authorization;
 using Hrms.Application.Common;
+using Hrms.Application.Identity;
 using Hrms.Domain.Common;
 using Hrms.Domain.Platform;
 using Hrms.Shared.Primitives;
@@ -13,7 +14,10 @@ using Microsoft.Extensions.Options;
 
 namespace Hrms.Application.Tenancy;
 
-public sealed record CreateTenantCommand(string Code, string Name, string AdminEmail, string AdminName, string? PlanCode);
+/// <summary>AdminPassword is optional: when supplied, the tenant admin is created active with that password (hashed);
+/// when omitted, the admin is created invited and receives the invitation email on activation.
+/// It is transported only through ops.secrets (encrypted) and never persisted in plaintext.</summary>
+public sealed record CreateTenantCommand(string Code, string Name, string AdminEmail, string AdminName, string? PlanCode, string? AdminPassword = null);
 
 /// <summary>Test hook to inject failures into provisioning steps (registered only by tests).</summary>
 public interface IProvisioningFaultInjector
@@ -63,6 +67,7 @@ public sealed partial class TenantProvisioningService(
     IOptions<HostingOptions> hosting,
     IOptions<ProvisioningOptions> options,
     ILogger<TenantProvisioningService> logger,
+    IPasswordPolicy passwordPolicy,
     IEnumerable<IProvisioningFaultInjector> faultInjectors)
 {
     private static readonly HashSet<string> Reserved = new(StringComparer.Ordinal) { "admin", "api", "auth", "www", "app", "platform", "mail", "static" };
@@ -114,9 +119,21 @@ public sealed partial class TenantProvisioningService(
             db.FeatureEntitlements.Add(new TenantFeatureEntitlement { TenantId = tenant.Id, FeatureId = f.FeatureId, Value = f.Value, Source = EntitlementSource.Plan, ValidFrom = today });
         }
 
+        if (!string.IsNullOrEmpty(cmd.AdminPassword))
+        {
+            var errors = passwordPolicy.Validate(cmd.AdminPassword, tenant.AdminEmail);
+            if (errors.Count > 0)
+            {
+                return Error.Validation("password-policy", string.Join(" ", errors));
+            }
+
+            // Stash the initial admin password encrypted until the create_admin step consumes it.
+            await secrets.SetAsync(secrets.BuildRef($"tenants/{tenant.TenantNumber}/admin-init"), cmd.AdminPassword, ct);
+        }
+
         var op = new ProvisioningOperation { TenantId = tenant.Id, Operation = "create", CorrelationId = request.CorrelationId };
         db.ProvisioningOperations.Add(op);
-        securityEvents.Add(SecurityEventTypes.TenantChanged, true, null, null, new { action = "create", tenant = code, plan = planCode });
+        securityEvents.Add(SecurityEventTypes.TenantChanged, true, null, null, new { action = "create", tenant = code, plan = planCode, adminPasswordSet = !string.IsNullOrEmpty(cmd.AdminPassword) });
         await db.SaveChangesAsync(ct);
         return (tenant.Id, op.Id);
     }
@@ -277,8 +294,18 @@ public sealed partial class TenantProvisioningService(
                 await seeder.SeedAsync(tenantDbFactory.CreateForConnection(await AppConnAsync(registryRow!, ct)), ct);
                 break;
             case ProvisioningSteps.CreateAdmin:
-                await TenantSeedService.EnsureTenantAdminAsync(tenantDbFactory.CreateForConnection(await AppConnAsync(registryRow!, ct)), tenant.AdminEmail, adminName, ct);
+            {
+                var initRef = secrets.BuildRef($"tenants/{tenant.TenantNumber}/admin-init");
+                var initPassword = await secrets.GetAsync(initRef, ct);
+                await TenantSeedService.EnsureTenantAdminAsync(tenantDbFactory.CreateForConnection(await AppConnAsync(registryRow!, ct)), tenant.AdminEmail, adminName, initPassword, ct);
+                if (initPassword is not null)
+                {
+                    // Consume the init secret so the plaintext does not persist (no DeleteAsync on the store).
+                    await secrets.SetAsync(initRef, SecureTokens.CreatePassword(), ct);
+                }
+
                 break;
+            }
             case ProvisioningSteps.Verify:
                 if (!await provisioner.VerifyAsync(await AppConnAsync(registryRow!, ct), tenant.Id, ct))
                 {

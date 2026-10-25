@@ -4,6 +4,7 @@ using Hrms.Application.Modules;
 using Hrms.Domain.Common;
 using Hrms.Domain.Tenant;
 using Hrms.Shared.Security;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace Hrms.Application.Tenancy;
@@ -127,7 +128,9 @@ public sealed class TenantSeedService(IModuleCatalog catalog)
         await db.SaveChangesAsync(ct);
     }
 
-    public static async Task<TenantUser> EnsureTenantAdminAsync(ITenantDbContext db, string email, string displayName, CancellationToken ct)
+    /// <summary>Creates the tenant admin (idempotent). With <paramref name="initialPassword"/> the user is created
+    /// active with a properly hashed password; without it the user is invited and must accept the emailed invitation.</summary>
+    public static async Task<TenantUser> EnsureTenantAdminAsync(ITenantDbContext db, string email, string displayName, string? initialPassword, CancellationToken ct)
     {
         var normalized = email.Trim().ToLowerInvariant();
         var user = await db.Users.FirstOrDefaultAsync(u => u.Email == normalized, ct);
@@ -135,6 +138,16 @@ public sealed class TenantSeedService(IModuleCatalog catalog)
         {
             user = new TenantUser { Email = normalized, DisplayName = displayName, Status = UserStatus.Invited };
             db.Users.Add(user);
+        }
+
+        if (!string.IsNullOrEmpty(initialPassword))
+        {
+            user.PasswordHash = new PasswordHasher<IdentityUserBase>().HashPassword(user, initialPassword);
+            user.Status = UserStatus.Active;
+            user.EmailConfirmed = true;
+            user.PasswordChangedAt = DateTimeOffset.UtcNow;
+            user.LockoutEndUtc = null;
+            user.AccessFailedCount = 0;
         }
 
         var role = await db.Roles.FirstAsync(r => r.Code == SystemRoles.TenantAdmin, ct);

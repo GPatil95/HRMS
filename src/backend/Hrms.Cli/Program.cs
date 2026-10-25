@@ -47,7 +47,7 @@ switch (command)
     case "create-tenant":
     {
         var svc = sp.GetRequiredService<TenantProvisioningService>();
-        var r = await svc.CreateTenantAsync(new CreateTenantCommand(Req(opts, "code"), Req(opts, "name"), Req(opts, "admin-email"), Req(opts, "admin-name"), opts.GetValueOrDefault("plan")), ct);
+        var r = await svc.CreateTenantAsync(new CreateTenantCommand(Req(opts, "code"), Req(opts, "name"), Req(opts, "admin-email"), Req(opts, "admin-name"), opts.GetValueOrDefault("plan"), opts.GetValueOrDefault("admin-password")), ct);
         if (!r.IsSuccess)
         {
             Console.Error.WriteLine($"{r.Error!.Code}: {r.Error.Message}");

@@ -2380,6 +2380,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{id}/admin/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ResetAdminPasswordCommand"];
+                    "text/json": components["schemas"]["ResetAdminPasswordCommand"];
+                    "application/*+json": components["schemas"]["ResetAdminPasswordCommand"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{id}/modules": {
         parameters: {
             query?: never;
@@ -2874,6 +2915,7 @@ export interface components {
             adminEmail: string;
             adminName: string;
             planCode: null | string;
+            adminPassword?: null | string;
         };
         CreateUserCommand: {
             email: string;
@@ -2907,6 +2949,9 @@ export interface components {
             accessLevel: components["schemas"]["SupportAccessLevel"];
             /** Format: int32 */
             durationMinutes: number | string;
+        };
+        ResetAdminPasswordCommand: {
+            password: null | string;
         };
         ResetPasswordRequest: {
             token: string;

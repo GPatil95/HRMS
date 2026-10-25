@@ -1,10 +1,19 @@
-import { ArrowBack, PauseCircle, PlayCircle, Sync } from '@mui/icons-material'
+import { ArrowBack, ContentCopy, Key, PauseCircle, PlayCircle, Sync, Visibility, VisibilityOff } from '@mui/icons-material'
 import {
   Alert,
   Box,
   Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
+  IconButton,
+  InputAdornment,
   MenuItem,
   Paper,
+  Radio,
+  RadioGroup,
   Switch,
   Table,
   TableBody,
@@ -22,6 +31,17 @@ import { platformApi, type TenantStatus } from '../../api/platform'
 import { ReasonDialog } from '../../components/ReasonDialog'
 import { useToast } from '../../components/toast'
 import { CenteredSpinner, EmptyState, ErrorAlert, SectionCard, StatusChip, TenantAvatar } from '../../components/ui'
+
+function generatePassword(): string {
+  const letters = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ'
+  const all = letters + '23456789'
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  const chars = Array.from(bytes, (b) => all[b % all.length])
+  chars[0] = letters[bytes[0] % letters.length]
+  chars[15] = String(2 + (bytes[15] % 8))
+  return chars.join('')
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -43,9 +63,13 @@ export function TenantDetailPage() {
     refetchInterval: (qq) =>
       ['Provisioning', 'Pending', 'Running'].includes(qq.state.data?.provisioningStatus ?? '') || qq.state.data?.tenant.status === 'Provisioning' ? 5000 : false,
   })
-  const [dialog, setDialog] = useState<null | 'suspend' | 'activate' | 'retry' | 'subscription' | { module: string; enabled: boolean }>(null)
+  const [dialog, setDialog] = useState<null | 'suspend' | 'activate' | 'retry' | 'subscription' | 'adminPw' | { module: string; enabled: boolean }>(null)
   const [subStatus, setSubStatus] = useState('Active')
   const [subEndsOn, setSubEndsOn] = useState('')
+  const [pwMode, setPwMode] = useState<'email' | 'set'>('email')
+  const [pwValue, setPwValue] = useState('')
+  const [pwShow, setPwShow] = useState(false)
+  const [pwDone, setPwDone] = useState<null | { password?: string }>(null)
 
   const done = (msg: string) => { toast(msg); void q.refetch(); void qc.invalidateQueries({ queryKey: ['tenants'] }) }
   const fail = (e: unknown) => toast(e instanceof ApiError ? e.message : 'Action failed', 'error')
@@ -65,6 +89,11 @@ export function TenantDetailPage() {
   const subMut = useMutation({
     mutationFn: (p: { status: string; endsOn: string | null; reason: string }) => platformApi.setSubscription(id, p.status, p.endsOn, p.reason),
     onSuccess: () => done('Subscription updated'), onError: fail, onSettled: () => setDialog(null),
+  })
+  const pwMut = useMutation({
+    mutationFn: () => platformApi.resetAdminPassword(id, pwMode === 'set' ? pwValue : undefined),
+    onSuccess: () => setPwDone(pwMode === 'set' ? { password: pwValue } : {}),
+    onError: fail,
   })
 
   if (q.isPending) return <CenteredSpinner />
@@ -94,6 +123,7 @@ export function TenantDetailPage() {
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {provFailed && <Button variant="contained" color="warning" startIcon={<Sync />} onClick={() => setDialog('retry')} disabled={busy}>Retry provisioning</Button>}
+          <Button variant="outlined" startIcon={<Key />} onClick={() => { setPwDone(null); setPwMode('email'); setPwValue(''); setDialog('adminPw') }} disabled={busy}>Reset admin password</Button>
           {t.status === 'Active'
             ? <Button variant="outlined" color="error" startIcon={<PauseCircle />} onClick={() => setDialog('suspend')} disabled={busy}>Suspend</Button>
             : <Button variant="outlined" color="success" startIcon={<PlayCircle />} onClick={() => setDialog('activate')} disabled={busy}>Activate</Button>}
@@ -107,6 +137,11 @@ export function TenantDetailPage() {
           <Box sx={{ px: 3, pb: 1.5 }}>
             <Field label="Status"><StatusChip value={t.status} /></Field>
             <Field label="Tenant number">{t.tenantNumber}</Field>
+            <Field label="Admin">
+              <Typography component="span" variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12.5 }}>
+                {d.adminName ?? '—'}{d.adminEmail ? ` · ${d.adminEmail}` : ''}
+              </Typography>
+            </Field>
             <Field label="Database">
               <Typography component="span" variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12.5 }}>{d.databaseName ?? '—'}</Typography>
               <StatusChip value={d.databaseStatus} />
@@ -181,6 +216,63 @@ export function TenantDetailPage() {
           confirmLabel={dialog.enabled ? 'Enable' : 'Disable'} onClose={() => setDialog(null)}
           onConfirm={(r) => moduleMut.mutate({ module: dialog.module, enabled: dialog.enabled, reason: r })} />
       )}
+      <Dialog open={dialog === 'adminPw'} onClose={() => setDialog(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Reset admin password</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2 }}>
+          {pwDone ? (
+            <>
+              <Alert severity="success">
+                {pwDone.password ? 'Password updated — all admin sessions were signed out.' : `Reset email sent to ${d.adminEmail}.`}
+              </Alert>
+              {pwDone.password && (
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                  <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>{pwDone.password}</Typography>
+                  <IconButton size="small" onClick={() => void navigator.clipboard.writeText(pwDone.password!)}><ContentCopy fontSize="small" /></IconButton>
+                </Box>
+              )}
+              {pwDone.password && <Alert severity="warning" variant="outlined">Shown only here — it is not stored anywhere.</Alert>}
+            </>
+          ) : (
+            <>
+              <Typography variant="body2" color="text.secondary">
+                Tenant admin: <Box component="span" sx={{ fontFamily: 'monospace' }}>{d.adminEmail ?? '—'}</Box>
+              </Typography>
+              <RadioGroup value={pwMode} onChange={(e) => setPwMode(e.target.value as 'email' | 'set')}>
+                <FormControlLabel value="email" control={<Radio size="small" />} label="Email a password-reset link" />
+                <FormControlLabel value="set" control={<Radio size="small" />} label="Set a temporary password now" />
+              </RadioGroup>
+              {pwMode === 'set' && (
+                <TextField label="New password" type={pwShow ? 'text' : 'password'} value={pwValue}
+                  onChange={(e) => setPwValue(e.target.value)} required
+                  error={pwValue.length > 0 && pwValue.length < 12}
+                  helperText="At least 12 characters, with a letter and a digit. All existing sessions are signed out."
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <Button size="small" onClick={() => setPwValue(generatePassword())}>Generate</Button>
+                          <IconButton size="small" onClick={() => setPwShow((s) => !s)}>{pwShow ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}</IconButton>
+                        </InputAdornment>
+                      ),
+                    },
+                  }} />
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          {pwDone
+            ? <Button onClick={() => setDialog(null)}>Done</Button>
+            : (
+              <>
+                <Button onClick={() => setDialog(null)}>Cancel</Button>
+                <Button variant="contained" disabled={pwMut.isPending || (pwMode === 'set' && pwValue.length < 12)} onClick={() => pwMut.mutate()}>
+                  {pwMut.isPending ? 'Working…' : pwMode === 'email' ? 'Send reset email' : 'Set password'}
+                </Button>
+              </>
+            )}
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

@@ -26,6 +26,8 @@ export interface TenantModule {
 
 export interface TenantDetail {
   tenant: TenantSummary
+  adminEmail?: string | null
+  adminName?: string | null
   databaseName?: string | null
   databaseStatus?: 'Provisioning' | 'Online' | 'Maintenance' | 'Offline' | null
   schemaVersion?: string | null
@@ -98,8 +100,10 @@ export const platformApi = {
     api<{ items: TenantSummary[]; page: number; pageSize: number; totalCount: number }>(
       `/api/v1/platform/tenants?page=${page}&pageSize=${pageSize}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
   tenant: (id: string) => api<TenantDetail>(`/api/v1/platform/tenants/${id}`),
-  createTenant: (b: { code: string; name: string; adminEmail: string; adminName: string; planCode?: string }) =>
+  createTenant: (b: { code: string; name: string; adminEmail: string; adminName: string; planCode?: string; adminPassword?: string }) =>
     post<{ tenantId: string; operationId: string }>('/api/v1/platform/tenants', b),
+  resetAdminPassword: (id: string, password?: string) =>
+    post(`/api/v1/platform/tenants/${id}/admin/password`, { password: password ?? null }),
   setTenantStatus: (id: string, status: TenantStatus, reason: string) =>
     post(`/api/v1/platform/tenants/${id}/status`, { status, reason }),
   retryProvisioning: (id: string) => post(`/api/v1/platform/tenants/${id}/retry-provisioning`),

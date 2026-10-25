@@ -66,6 +66,12 @@ public sealed class TenantsController(TenantManagementService tenants, TenantPro
         return (await tenants.ChangeStatusAsync(id, cmd, ct)).ToActionResult();
     }
 
+    /// <summary>Resets the tenant admin's credentials. Empty body → sends the tenant password-reset email;
+    /// { "password": "..." } → sets the admin password directly (hashed) and revokes sessions.</summary>
+    [HttpPost("{id:guid}/admin/password"), RequirePlatformPermission(PP.TenantDbManage)]
+    public async Task<IActionResult> ResetAdminPassword(Guid id, ResetAdminPasswordCommand cmd, CancellationToken ct)
+        => (await tenants.ResetAdminPasswordAsync(id, cmd.Password, ct)).ToActionResult();
+
     [HttpPut("{id:guid}/modules"), RequirePlatformPermission(PP.ModuleEntitlementManage)]
     public async Task<IActionResult> Module(Guid id, SetModuleEntitlementCommand cmd, CancellationToken ct) => (await tenants.SetModuleEntitlementAsync(id, cmd, ct)).ToActionResult();
 

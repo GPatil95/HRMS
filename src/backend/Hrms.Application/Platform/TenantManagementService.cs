@@ -1,12 +1,18 @@
 using Hrms.Application.Abstractions;
 using Hrms.Application.Auditing;
 using Hrms.Application.Authorization;
+using Hrms.Application.Identity;
+using Hrms.Application.Tenancy;
 using Hrms.Domain.Common;
 using Hrms.Domain.Platform;
+using Hrms.Shared.Auditing;
 using Hrms.Shared.Paging;
 using Hrms.Shared.Primitives;
 using Hrms.Shared.Results;
+using Hrms.Shared.Security;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Hrms.Application.Platform;
 
@@ -16,6 +22,8 @@ public sealed record TenantModuleDto(string Code, string Name, ModuleKind Kind, 
 
 public sealed record TenantDetailDto(
     TenantSummaryDto Tenant,
+    string? AdminEmail,
+    string? AdminName,
     string? DatabaseName,
     TenantDatabaseStatus? DatabaseStatus,
     string? SchemaVersion,
@@ -24,6 +32,10 @@ public sealed record TenantDetailDto(
     ProvisioningStatus? ProvisioningStatus,
     string? ProvisioningError,
     IReadOnlyList<TenantModuleDto> Modules);
+
+/// <summary>Password null/empty → a tenant-realm password-reset email is sent to the admin;
+/// otherwise the admin's password is set directly (hashed) and all sessions are revoked.</summary>
+public sealed record ResetAdminPasswordCommand(string? Password);
 
 public sealed record SetModuleEntitlementCommand(string ModuleCode, bool Enabled, string Reason, DateOnly? ValidTo);
 
@@ -40,7 +52,10 @@ public sealed class TenantManagementService(
     ITenantRegistry registry,
     IAuditWriter audit,
     ISecurityEventWriter securityEvents,
-    IClock clock)
+    IClock clock,
+    IServiceScopeFactory scopes,
+    IRequestContext request,
+    IPasswordPolicy passwordPolicy)
 {
     public async Task<PagedResult<TenantSummaryDto>> ListAsync(PageRequest page, string? search, CancellationToken ct)
     {
@@ -80,7 +95,82 @@ public sealed class TenantManagementService(
             return new TenantModuleDto(m.Code, m.Name, m.Kind, effective.IsModuleEnabled(m.Code), e?.Source, e?.ValidTo);
         }).ToList();
         var summary = new TenantSummaryDto(t.Id, t.TenantNumber, t.Code, t.Name, t.Status, t.Domains.FirstOrDefault(d => d.IsPrimary)?.HostName, t.CreatedAt);
-        return new TenantDetailDto(summary, tdb?.DatabaseName, tdb?.Status, tdb?.SchemaVersion, plan, sub?.Status, op?.Status, op?.Error, moduleDtos);
+        return new TenantDetailDto(summary, t.AdminEmail, t.AdminName, tdb?.DatabaseName, tdb?.Status, tdb?.SchemaVersion, plan, sub?.Status, op?.Status, op?.Error, moduleDtos);
+    }
+
+    /// <summary>Platform-admin reset of the tenant admin's credentials. Runs inside the tenant's own context/database:
+    /// with a password → hashes it via the tenant auth mechanism and revokes all sessions; without → sends the
+    /// tenant password-reset email. The admin username is the tenant admin email (login identifier).</summary>
+    public async Task<Result> ResetAdminPasswordAsync(Guid tenantId, string? newPassword, CancellationToken ct)
+    {
+        var t = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(x => x.Id == tenantId, ct);
+        if (t is null)
+        {
+            return Error.NotFound("tenant-not-found", "Tenant not found.");
+        }
+
+        if (!await db.TenantDatabases.AnyAsync(d => d.TenantId == tenantId && d.Status == TenantDatabaseStatus.Online, ct))
+        {
+            return Error.Rule("tenant-db-not-online", "Tenant database is not online yet.");
+        }
+
+        if (!string.IsNullOrEmpty(newPassword))
+        {
+            var errors = passwordPolicy.Validate(newPassword, t.AdminEmail);
+            if (errors.Count > 0)
+            {
+                return Error.Validation("password-policy", string.Join(" ", errors));
+            }
+        }
+
+        using var scope = scopes.CreateScope();
+        var sp = scope.ServiceProvider;
+        sp.GetRequiredService<ExecutionContextState>().SetRequest(request.CorrelationId, null, null, AuditSources.System);
+        var tenant = await sp.GetRequiredService<ITenantRegistry>().FindByIdAsync(tenantId, ct);
+        if (tenant is null)
+        {
+            return Error.NotFound("tenant-not-found", "Tenant not found.");
+        }
+
+        sp.GetRequiredService<ITenantContextAccessor>().Set(tenant);
+        await sp.GetRequiredService<ITenantDatabaseResolver>().EnsureResolvedAsync(tenant, ct);
+        var tdb = sp.GetRequiredService<ITenantDbContext>();
+        var adminEmail = t.AdminEmail.Trim().ToLowerInvariant();
+        var admin = await tdb.Users.FirstOrDefaultAsync(u => u.Email == adminEmail, ct);
+        if (admin is null)
+        {
+            return Error.NotFound("admin-not-found", "Tenant admin user not found.");
+        }
+
+        var auth = sp.GetRequiredKeyedService<AuthService>(Realms.Tenant);
+        var tenantEvents = sp.GetRequiredService<ISecurityEventWriter>();
+        if (string.IsNullOrEmpty(newPassword))
+        {
+            await auth.ForgotPasswordAsync(adminEmail, ct);
+            securityEvents.Add(SecurityEventTypes.TenantChanged, true, null, null,
+                new { action = "admin_password_reset_email", tenant = t.Code, admin = adminEmail });
+            await db.SaveChangesAsync(ct);
+            return Result.Success();
+        }
+
+        admin.PasswordHash = new PasswordHasher<IdentityUserBase>().HashPassword(admin, newPassword);
+        admin.PasswordChangedAt = clock.UtcNow;
+        admin.LockoutEndUtc = null;
+        admin.AccessFailedCount = 0;
+        admin.RotateSecurityStamp();
+        if (admin.Status is UserStatus.Invited)
+        {
+            admin.Status = UserStatus.Active;
+            admin.EmailConfirmed = true;
+        }
+
+        tenantEvents.Add(SecurityEventTypes.PasswordResetCompleted, true, admin.Id, admin.Email, new { via = "platform_admin" });
+        await tdb.SaveChangesAsync(ct);
+        await auth.RevokeAllSessionsAsync(admin.Id, "platform_admin_reset", ct);
+        securityEvents.Add(SecurityEventTypes.TenantChanged, true, null, null,
+            new { action = "admin_password_reset", tenant = t.Code, admin = adminEmail });
+        await db.SaveChangesAsync(ct);
+        return Result.Success();
     }
 
     public async Task<Result> ChangeStatusAsync(Guid tenantId, ChangeTenantStatusCommand cmd, CancellationToken ct)
