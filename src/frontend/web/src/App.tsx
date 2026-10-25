@@ -14,10 +14,16 @@ import { OperationsPage } from './pages/admin/OperationsPage'
 import { SupportAccessPage } from './pages/admin/SupportAccessPage'
 import { TenantDetailPage } from './pages/admin/TenantDetailPage'
 import { TenantsPage } from './pages/admin/TenantsPage'
-import { HomePage, NotFoundPage, TenantsPage as LegacyTenants, UsersPage } from './pages/AppPages'
+import { NotFoundPage } from './pages/AppPages'
 import { ForgotPasswordPage, LoginPage, SetPasswordPage } from './pages/AuthPages'
-
-void LegacyTenants
+import { DashboardPage } from './pages/tenant/DashboardPage'
+import { EmployeeDetailPage, EmployeesPage } from './pages/tenant/EmployeesPage'
+import { AuditPage as TenantAuditPage, SecurityEventsPage, TemplatesPage } from './pages/tenant/NotAvailablePage'
+import { NotificationsPage } from './pages/tenant/NotificationsPage'
+import { BranchesPage, CompaniesPage, DepartmentsPage } from './pages/tenant/OrgPages'
+import { ReportsPage } from './pages/tenant/ReportsPage'
+import { RolesPage } from './pages/tenant/RolesPage'
+import { UsersPage } from './pages/tenant/UsersPage'
 
 function RequireSession({ children }: { children: ReactNode }) {
   const { me } = useAuth()
@@ -55,8 +61,20 @@ export default function App() {
           </>
         ) : (
           <>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/users" element={<UsersPage />} />
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/org/companies" element={<CompaniesPage />} />
+            <Route path="/org/branches" element={<BranchesPage />} />
+            <Route path="/org/departments" element={<DepartmentsPage />} />
+            <Route path="/employees" element={<EmployeesPage />} />
+            <Route path="/employees/:id" element={<EmployeeDetailPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/admin/users" element={<UsersPage />} />
+            <Route path="/users" element={<Navigate to="/admin/users" replace />} />
+            <Route path="/admin/roles" element={<RolesPage />} />
+            <Route path="/admin/audit" element={<TenantAuditPage />} />
+            <Route path="/admin/security-events" element={<SecurityEventsPage />} />
+            <Route path="/admin/templates" element={<TemplatesPage />} />
           </>
         )}
         <Route path="*" element={<NotFoundPage />} />

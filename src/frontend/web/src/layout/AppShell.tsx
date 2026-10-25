@@ -5,14 +5,18 @@ import {
   alpha, useMediaQuery, useTheme,
 } from '@mui/material'
 import {
-  Brightness4, Brightness7, ChevronLeft, ChevronRight, ExpandMore, KeyboardArrowDown,
-  Logout, Menu as MenuIcon, NotificationsNone, Search, SettingsSuggest, Tune, ViewSidebar,
+  AccountTree, Apartment, Assessment, Badge as BadgeIcon, Brightness4, Brightness7,
+  Business, ChevronLeft, ChevronRight, Dashboard as DashboardIcon, ExpandMore, History,
+  KeyboardArrowDown, List as ListIcon, Logout, MailOutlined, Menu as MenuIcon,
+  NotificationsNone, People, Search, Security, Settings, SettingsSuggest, Shield, Store,
+  Tune, ViewSidebar,
 } from '@mui/icons-material'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api, isPlatform, type NavigationItem } from '../api/client'
 import { platformApi } from '../api/platform'
+import { tenantApi } from '../api/tenant'
 import { useAuth } from '../auth/AuthProvider'
 import { useThemePrefs } from '../theme/tokens'
 import { EmptyState, StatusChip } from '../components/ui'
@@ -99,6 +103,19 @@ function AdminNav({ collapsed }: { collapsed: boolean }) {
   )
 }
 
+const tenantIcon = (icon?: string | null) => {
+  const m: Record<string, ReactNode> = {
+    dashboard: <DashboardIcon fontSize="small" />, people: <People fontSize="small" />,
+    security: <Security fontSize="small" />, apartment: <Apartment fontSize="small" />,
+    business: <Business fontSize="small" />, store: <Store fontSize="small" />,
+    account_tree: <AccountTree fontSize="small" />, badge: <BadgeIcon fontSize="small" />,
+    history: <History fontSize="small" />, shield: <Shield fontSize="small" />,
+    mail: <MailOutlined fontSize="small" />, assessment: <Assessment fontSize="small" />,
+    list: <ListIcon fontSize="small" />, settings: <Settings fontSize="small" />,
+  }
+  return icon ? m[icon] ?? <ListIcon fontSize="small" /> : undefined
+}
+
 function TenantNavList({ items, depth = 0 }: { items: NavigationItem[]; depth?: number }) {
   const { pathname } = useLocation()
   return (
@@ -106,8 +123,10 @@ function TenantNavList({ items, depth = 0 }: { items: NavigationItem[]; depth?: 
       {[...items].sort((a, b) => a.order - b.order).map((i) => (
         <Box key={i.code}>
           {i.route ? (
-            <ListItemButton component={Link} to={i.route} selected={pathname === i.route}
+            <ListItemButton component={Link} to={i.route} selected={pathname === i.route || (i.route !== '/' && pathname.startsWith(i.route + '/'))}
               sx={{ pl: 2 + depth * 2, py: 0.9, mx: 1.5, color: 'text.secondary', '&.Mui-selected': { bgcolor: (t) => alpha(t.palette.primary.main, 0.08), color: 'primary.main' } }}>
+              {depth === 0 && i.icon && <ListItemIcon sx={{ minWidth: 34, color: 'inherit' }}>{tenantIcon(i.icon)}</ListItemIcon>}
+              {depth > 0 && i.icon && <ListItemIcon sx={{ minWidth: 32, color: 'inherit' }}>{tenantIcon(i.icon)}</ListItemIcon>}
               <ListItemText primary={i.title} slotProps={{ primary: { sx: { fontSize: 13 } } }} />
             </ListItemButton>
           ) : (
@@ -119,6 +138,76 @@ function TenantNavList({ items, depth = 0 }: { items: NavigationItem[]; depth?: 
         </Box>
       ))}
     </List>
+  )
+}
+
+const tenantCrumbs: [RegExp, string[]][] = [
+  [/^\/$/, ['Dashboard']],
+  [/^\/org\/(companies|branches|departments)/, ['Organization']],
+  [/^\/employees/, ['People', 'Employees']],
+  [/^\/admin\/users/, ['Administration', 'Users']],
+  [/^\/admin\/roles/, ['Administration', 'Roles & Permissions']],
+  [/^\/admin\/audit/, ['Administration', 'Audit Log']],
+  [/^\/admin\/security-events/, ['Administration', 'Security Events']],
+  [/^\/admin\/templates/, ['Administration', 'Notification Templates']],
+  [/^\/reports/, ['Reports']],
+  [/^\/notifications/, ['Notifications']],
+]
+
+function tenantBreadcrumbFor(pathname: string): string[] {
+  for (const [re, crumbs] of tenantCrumbs) {
+    if (re.test(pathname)) {
+      if (crumbs.length === 2) return crumbs
+      const leaf = pathname.split('/').filter(Boolean).pop() ?? ''
+      const label = leaf === 'security-events' ? 'Security Events' : leaf === 'templates' ? 'Notification Templates' : leaf.charAt(0).toUpperCase() + leaf.slice(1)
+      return pathname === '/' ? crumbs : [...crumbs, label]
+    }
+  }
+  return []
+}
+
+function TenantNotificationsMenu() {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null)
+  const list = useQuery({ queryKey: ['notifications', 'bell'], queryFn: tenantApi.notifications, refetchInterval: 60_000 })
+  const latest = (list.data ?? []).slice(0, 6)
+  const unread = (list.data ?? []).filter((n) => !n.isRead).length
+  return (
+    <>
+      <Tooltip title="Notifications">
+        <IconButton onClick={(e: MouseEvent<HTMLElement>) => setAnchor(e.currentTarget)} aria-label="Notifications" sx={{ color: 'text.secondary' }}>
+          <Badge badgeContent={unread || undefined} color="primary"><NotificationsNone /></Badge>
+        </IconButton>
+      </Tooltip>
+      <Popover
+        anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        slotProps={{ paper: { sx: { width: 380, mt: 1 } } }}
+      >
+        <Box sx={{ px: 2.5, py: 1.75, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="subtitle2">Notifications</Typography>
+          <MLink component={Link} to="/notifications" variant="caption" onClick={() => setAnchor(null)} sx={{ fontWeight: 600 }}>View all</MLink>
+        </Box>
+        <Divider />
+        {latest.length === 0 ? (
+          <EmptyState title="No notifications" hint={list.error ? 'Could not load notifications.' : "You're all caught up."} />
+        ) : (
+          <List dense disablePadding>
+            {latest.map((n) => (
+              <ListItemButton key={n.id} component={Link} to="/notifications" onClick={() => setAnchor(null)} sx={{ alignItems: 'flex-start', py: 1.25 }}>
+                <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                  <Typography variant="body2" sx={{ fontWeight: n.isRead ? 400 : 650 }} noWrap>{n.title}</Typography>
+                  <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
+                    {new Date(n.createdAt).toLocaleString()}
+                  </Typography>
+                </Box>
+                {!n.isRead && <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'primary.main', mt: 0.5, flexShrink: 0 }} />}
+              </ListItemButton>
+            ))}
+          </List>
+        )}
+      </Popover>
+    </>
   )
 }
 
@@ -277,7 +366,7 @@ export function AppShell() {
   const width = collapsed ? DRAWER_FOLDED_W : DRAWER_W
   const railWidth = foldedMode ? DRAWER_FOLDED_W : DRAWER_W
 
-  const crumbs = isPlatform ? breadcrumbFor(pathname) : []
+  const crumbs = isPlatform ? breadcrumbFor(pathname) : tenantBreadcrumbFor(pathname)
   const containerMax = prefs.container === 'boxed' ? 1200 : prefs.container === 'fluid' ? '100%' : 1440
 
   const drawer = (
@@ -360,7 +449,7 @@ export function AppShell() {
           )}
           <Box sx={{ flexGrow: 1 }} />
           {isPlatform && <SearchField />}
-          {isPlatform && <NotificationsMenu />}
+          {isPlatform ? <NotificationsMenu /> : <TenantNotificationsMenu />}
           <Tooltip title={theme.palette.mode === 'dark' ? 'Switch to light' : 'Switch to dark'}>
             <IconButton
               onClick={() => prefs.setMode(theme.palette.mode === 'dark' ? 'light' : 'dark')}
