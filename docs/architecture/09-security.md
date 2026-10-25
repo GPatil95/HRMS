@@ -62,16 +62,42 @@ SAST (CodeQL), secrets scanning (gitleaks), dependency & container scanning, DAS
 
 ## 17.5 Local secret-store master key (dev runbook)
 
-`ops.secrets` ciphertexts are AES-256-GCM under `Secrets:MasterKey`. If the key changes between the run that
+`ops.secrets` ciphertexts are AES-256-GCM under the platform master key. If the key changes between the run that
 *wrote* a secret and the run that *reads* it, decryption fails with
 `AuthenticationTagMismatchException` (the error seen when tenant provisioning fails at `create_roles`).
 
-**Key resolution order** (`DbSecretStore`):
+**Single source of truth** — `IPlatformMasterKeyProvider` (`PlatformMasterKeyProvider` in Infrastructure).
+API, CLI and provisioning all resolve the key through this one provider; there is no duplicate key-loading
+logic anywhere. Resolution order:
 
-1. `Secrets__MasterKey` env var, when set (base64, 32 bytes).
-2. `Secrets__MasterKeyFile` — path to a file holding the key; auto-generated (mode 600) on first use. Docker Compose maps this to `/keys/master.key` on the `keydata` volume so the key survives container rebuilds/restarts.
-3. Development fallback: `~/.hrms-dev-masterkey` (per-user) so `dotnet run` and the CLI share one key. Production with no key configured fails fast.
+1. `Secrets__MasterKey` — inline base64 32-byte key (secret-manager injection; compat path).
+2. `Secrets__MasterKeyFile` — path to a file holding the key. The authoritative source for Docker:
+   `/keys/master.key` on the `hrms_keydata` volume. The file must exist — it is **never auto-generated**;
+   first-time setup is `hrms-cli initialize-master-key` (idempotent, mode 600).
+3. `/keys/master.key` — container convention when neither option is set (CLI containers mount the same volume).
+4. Development fallback: `~/.hrms-dev-masterkey` (per-user) so `dotnet run` and the CLI share one key.
+   Production with no key configured fails fast.
 
-**Rotation — old key known**: `Hrms.Cli rekey --old-key <base64>` re-encrypts every `ops.secrets` row under the currently configured key; rows not decryptable with the old key are reported and skipped.
+Setting **both** `MasterKey` and `MasterKeyFile` is a hard configuration error — the app refuses to start
+rather than silently picking one. The API resolves the key at startup and logs only a short SHA-256
+fingerprint; key material never reaches logs, responses, or source control. `verify-master-key` prints the
+same fingerprint for the CLI — compare them when diagnosing crypto failures.
 
-**Recovery — old key lost**: `Hrms.Cli repair-secrets` (requires `HRMS_CLUSTER_ADMIN_PASSWORD`) re-stores the cluster admin secret under the current key, then regenerates every tenant's app/migrator role passwords via `ALTER ROLE` and re-encrypts them. Tenant data is untouched; no tenant is deleted or recreated.
+**Pre-flight validation**: `CreateTenantAsync` validates master-key resolution + cluster-admin-secret
+decryptability *before* any tenant row is written, so a broken key surfaces as a clear 400 instead of a
+half-provisioned tenant at `create_roles`. The `/health/ready` `crypto` check reports key source/fingerprint
+and how many stored secrets decrypt.
+
+**Rotation — key file**: `Hrms.Cli rotate-master-key [--new-key <base64>]` decrypts every `ops.secrets` row
+under the current key (aborts if ANY fails — no partial rotation), re-encrypts all under the new key, verifies
+round-trips, then atomically swaps the key file. File-based key only. `rekey --old-key <base64>` re-encrypts
+rows from a known previous key to the configured key (rows not decryptable are reported and skipped).
+
+**Recovery — old key lost**: `Hrms.Cli repair-secrets` first *verifies* every stored secret against the
+configured key and reports undecryptable refs without modifying ciphertext. `repair-secrets --fix` (requires
+`HRMS_CLUSTER_ADMIN_PASSWORD`) is the explicit lost-key recovery: it regenerates ONLY the undecryptable rows —
+re-stores the cluster admin secret and re-issues tenant app/migrator role passwords via `ALTER ROLE`.
+Tenant data is untouched; no tenant is deleted or recreated.
+
+**Volumes**: `hrms_keydata` → `/keys` (platform secret encryption) and `hrms_dpkeys` → `/app/.data`
+(ASP.NET Data Protection ring for CSRF/session/invitation tokens) are separate, pinned-name volumes.

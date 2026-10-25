@@ -46,6 +46,7 @@ public static class ApiSetup
         var platformCs = cfg.GetConnectionString("Platform")!;
         var redisCs = cfg.GetConnectionString("Redis");
         var health = s.AddHealthChecks().AddNpgSql(platformCs, name: "platform-db", tags: ["ready"]);
+        health.AddCheck<CryptoHealthCheck>("crypto", tags: ["ready"]);
         if (!string.IsNullOrWhiteSpace(redisCs))
         {
             health.AddRedis(redisCs, name: "redis", tags: ["ready"]);

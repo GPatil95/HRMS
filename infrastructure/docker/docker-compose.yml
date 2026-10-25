@@ -33,8 +33,9 @@ services:
       Smtp__Host: mailpit
       Smtp__Port: "1025"
       Jobs__Mode: InProcess
-      # Key resolution order: HRMS_MASTER_KEY env (if set) > persistent key file in the
-      # `keydata` volume (auto-generated on first run, survives rebuilds/restarts).
+      # Authoritative master key: persistent file in the `hrms_keydata` volume. Create it once
+      # with `hrms-cli initialize-master-key`; it is never auto-generated or overwritten.
+      # HRMS_MASTER_KEY (inline key) is a legacy/compat source — setting BOTH fails fast.
       Secrets__MasterKey: ${HRMS_MASTER_KEY:-}
       Secrets__MasterKeyFile: /keys/master.key
       # ASP.NET Data Protection key ring (CSRF/auth cookies) — must be writable by
@@ -44,5 +45,6 @@ services:
     ports: ["8080:8080"]
 volumes:
   pgdata:
-  keydata:
-  dpkeys:
+  # Pinned names so the master key and Data Protection ring survive across projects/rebuilds.
+  keydata: { name: hrms_keydata }
+  dpkeys: { name: hrms_dpkeys }

@@ -57,6 +57,7 @@ public sealed partial class TenantProvisioningService(
     ITenantDbContextFactory tenantDbFactory,
     TenantSeedService seeder,
     ISecretStore secrets,
+    IPlatformMasterKeyProvider masterKey,
     IDistributedLockProvider locks,
     ISecurityEventWriter securityEvents,
     IEntitlementService entitlements,
@@ -94,6 +95,35 @@ public sealed partial class TenantProvisioningService(
         if (plan is null)
         {
             return Error.Validation("plan-not-found", "Subscription plan not found or not published.");
+        }
+
+        // Pre-flight: fail before any tenant state exists if the crypto/cluster prerequisites cannot provision.
+        // A misconfigured master key used to surface only at create_roles, leaving half-created tenants.
+        try
+        {
+            _ = masterKey.Key;
+        }
+        catch (Exception ex)
+        {
+            return Error.Validation("preflight-master-key", $"Tenant provisioning cannot start: platform master key validation failed. {ex.Message}");
+        }
+
+        var cluster = await db.DbClusters.Where(c => c.IsActive).OrderBy(c => c.CreatedAt).FirstOrDefaultAsync(ct);
+        if (cluster is null)
+        {
+            return Error.Validation("preflight-cluster", "Tenant provisioning cannot start: no active database cluster is registered.");
+        }
+
+        try
+        {
+            if (await secrets.GetAsync(cluster.AdminSecretRef, ct) is null)
+            {
+                return Error.Validation("preflight-secrets", "Tenant provisioning cannot start: cluster admin secret is missing — run seed-platform (or repair-secrets --fix after a lost-key recovery).");
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return Error.Validation("preflight-secrets", $"Tenant provisioning cannot start: cluster admin secret cannot be decrypted with the configured platform master key ({ex.GetType().Name}).");
         }
 
         var now = clock.UtcNow;

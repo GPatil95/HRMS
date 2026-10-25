@@ -128,7 +128,7 @@ export function TenantDetailPage() {
           </Box>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center', width: { xs: '100%', sm: 'auto' } }}>
-          {tenantUrl && (
+          {tenantUrl && t.status === 'Active' && (
             <Button variant="outlined" size="small" href={tenantUrl} target="_blank" rel="noreferrer" endIcon={<OpenInNew sx={{ fontSize: 16 }} />}>
               Open Tenant
             </Button>

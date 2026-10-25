@@ -95,7 +95,7 @@ export function TenantsPage() {
 
   const tenantUrl = (t: TenantSummary) => t.primaryHost ? `${window.location.protocol}//${t.primaryHost}${window.location.port ? `:${window.location.port}` : ''}` : null
   const rowActions = (t: TenantSummary) => [
-    t.primaryHost && { key: 'open', label: 'Open tenant', icon: <OpenInNew fontSize="small" />, run: () => window.open(tenantUrl(t)!, '_blank') },
+    t.primaryHost && t.status === 'Active' && { key: 'open', label: 'Open tenant', icon: <OpenInNew fontSize="small" />, run: () => window.open(tenantUrl(t)!, '_blank') },
     (t.status === 'ProvisioningFailed') && { key: 'retry', label: 'Retry provisioning', icon: <Sync fontSize="small" />, run: () => setReasonDlg({ action: 'retry', t }) },
     { key: 'reset', label: 'Reset admin password', icon: <Key fontSize="small" />, run: () => setResetPw(t) },
     t.status === 'Active' && { key: 'suspend', label: 'Suspend', icon: <PauseCircle fontSize="small" />, run: () => setReasonDlg({ action: 'suspend', t }) },

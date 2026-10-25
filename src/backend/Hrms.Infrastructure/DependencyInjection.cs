@@ -72,6 +72,7 @@ public static class DependencyInjection
 
         s.AddMemoryCache();
         s.AddHybridCache();
+        s.TryAddSingleton<IPlatformMasterKeyProvider, PlatformMasterKeyProvider>();
         s.AddScoped<ISecretStore, DbSecretStore>();
         s.AddSingleton<ITenantDatabaseProvisioner, PostgresTenantDatabaseProvisioner>();
         s.AddScoped<ITenantDatabaseResolver, TenantDatabaseResolver>();

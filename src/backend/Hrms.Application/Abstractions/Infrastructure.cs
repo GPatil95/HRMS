@@ -10,6 +10,23 @@ public interface ISecretStore
     string BuildRef(string name);
 }
 
+/// <summary>The resolved platform master key plus safe diagnostics. Key material never leaves the process.</summary>
+public sealed record MasterKeyInfo(byte[] Key, string Source, string Fingerprint);
+
+/// <summary>Master-key configuration is missing, conflicting or invalid — a hard failure, never silently worked around.</summary>
+public sealed class MasterKeyException(string message) : InvalidOperationException(message);
+
+/// <summary>
+/// Single source of truth for the platform master key. Implementations resolve it from the configured
+/// source (env var, key file, or — in production — an external secret provider); callers never re-implement
+/// key loading. Key access fails fast on any misconfiguration.
+/// </summary>
+public interface IPlatformMasterKeyProvider
+{
+    /// <summary>Resolved key + source description + short SHA-256 fingerprint (safe to log/display).</summary>
+    MasterKeyInfo Key { get; }
+}
+
 public interface ITenantRegistry
 {
     Task<TenantContext?> FindByHostAsync(string host, CancellationToken ct);
