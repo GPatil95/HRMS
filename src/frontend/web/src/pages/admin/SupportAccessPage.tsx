@@ -1,9 +1,10 @@
-import { Box, Button, Paper, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material'
+import { Shield } from '@mui/icons-material'
+import { Box, Button, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { ApiError } from '../../api/client'
 import { platformApi } from '../../api/platform'
 import { useToast } from '../../components/toast'
-import { CenteredSpinner, EmptyState, ErrorAlert, PageHeader, StatusChip } from '../../components/ui'
+import { EmptyState, ErrorAlert, PageHeader, SectionCard, StatusChip, TableSkeleton } from '../../components/ui'
 
 export function SupportAccessPage() {
   const toast = useToast()
@@ -15,14 +16,12 @@ export function SupportAccessPage() {
     onError: (e) => toast(e instanceof ApiError ? e.message : 'Action failed', 'error'),
   })
 
-  if (q.isPending) return <CenteredSpinner />
-  if (q.error) return <ErrorAlert error={q.error} onRetry={() => void q.refetch()} />
-
   return (
     <Box>
       <PageHeader title="Support access" subtitle="Time-limited, approval-based platform access to tenant data — every access is audited" />
-      {(q.data ?? []).length === 0 ? <EmptyState title="No support grants" hint="Requests for tenant-data access appear here for approval." /> : (
-        <Paper variant="outlined" sx={{ overflowX: 'auto' }}>
+      <SectionCard sx={{ overflowX: 'auto' }}>
+        {q.isPending ? <TableSkeleton columns={7} /> : q.error ? <Box sx={{ p: 3 }}><ErrorAlert error={q.error} onRetry={() => void q.refetch()} /></Box>
+        : (q.data ?? []).length === 0 ? <EmptyState title="No support grants" hint="Requests for tenant-data access appear here for approval." icon={<Shield />} /> : (
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -32,13 +31,13 @@ export function SupportAccessPage() {
             </TableHead>
             <TableBody>
               {q.data!.map((g) => (
-                <TableRow key={g.id}>
-                  <TableCell>{g.ticketRef || '—'}</TableCell>
-                  <TableCell><Typography variant="caption" component="code">{g.tenantId.slice(0, 8)}…</Typography></TableCell>
+                <TableRow key={g.id} hover>
+                  <TableCell><Typography variant="body2" sx={{ fontWeight: 600 }}>{g.ticketRef || '—'}</Typography></TableCell>
+                  <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12.5 }} color="text.secondary">{g.tenantId.slice(0, 8)}…</Typography></TableCell>
                   <TableCell><StatusChip value={g.accessLevel} /></TableCell>
                   <TableCell>{g.durationMinutes}m</TableCell>
                   <TableCell><StatusChip value={g.status} /></TableCell>
-                  <TableCell>{g.expiresAt ? new Date(g.expiresAt).toLocaleString() : '—'}</TableCell>
+                  <TableCell><Typography variant="body2" color="text.secondary">{g.expiresAt ? new Date(g.expiresAt).toLocaleString() : '—'}</Typography></TableCell>
                   <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                     {g.status === 'Requested' && (
                       <>
@@ -52,8 +51,8 @@ export function SupportAccessPage() {
               ))}
             </TableBody>
           </Table>
-        </Paper>
-      )}
+        )}
+      </SectionCard>
     </Box>
   )
 }

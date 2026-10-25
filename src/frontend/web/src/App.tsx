@@ -46,11 +46,11 @@ export default function App() {
             <Route path="/admin/audit" element={<AuditPage />} />
             <Route path="/admin/support-access" element={<SupportAccessPage />} />
             <Route path="/admin/health" element={<HealthPage />} />
-            <Route path="/admin/features" element={<ComingSoonPage title="Features" />} />
-            <Route path="/admin/users" element={<ComingSoonPage title="Platform users" />} />
-            <Route path="/admin/roles" element={<ComingSoonPage title="Roles & permissions" />} />
-            <Route path="/admin/clusters" element={<ComingSoonPage title="Database clusters" />} />
-            <Route path="/admin/settings" element={<ComingSoonPage title="Settings" />} />
+            <Route path="/admin/features" element={<ComingSoonPage title="Features" description="Granular feature flags per tenant" />} />
+            <Route path="/admin/users" element={<ComingSoonPage title="Platform users" description="Manage platform admin accounts" />} />
+            <Route path="/admin/roles" element={<ComingSoonPage title="Roles & permissions" description="Platform-level roles and permission assignment" />} />
+            <Route path="/admin/clusters" element={<ComingSoonPage title="Database clusters" description="PostgreSQL cluster topology and capacity" />} />
+            <Route path="/admin/settings" element={<ComingSoonPage title="Settings" description="Platform-wide configuration" />} />
             <Route path="/" element={<Navigate to="/admin" replace />} />
           </>
         ) : (
