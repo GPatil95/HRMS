@@ -24,6 +24,32 @@ export interface TenantModule {
   validTo?: string | null
 }
 
+export type ProvisioningStatus = 'Pending' | 'Running' | 'Succeeded' | 'Failed'
+
+export interface ProvisioningStep {
+  step: string
+  status: string
+  at?: string | null
+  error?: string | null
+}
+
+export interface ProvisioningOperation {
+  id: string
+  tenantId: string
+  tenantCode?: string | null
+  tenantName?: string | null
+  operation: string
+  status: ProvisioningStatus
+  attempt: number
+  currentStep?: string | null
+  steps: ProvisioningStep[]
+  error?: string | null
+  correlationId?: string | null
+  createdAt: string
+  startedAt?: string | null
+  completedAt?: string | null
+}
+
 export interface TenantDetail {
   tenant: TenantSummary
   adminEmail?: string | null
@@ -33,8 +59,9 @@ export interface TenantDetail {
   schemaVersion?: string | null
   planCode?: string | null
   subscriptionStatus?: SubscriptionStatus | null
-  provisioningStatus?: 'Pending' | 'Running' | 'Succeeded' | 'Failed' | null
+  provisioningStatus?: ProvisioningStatus | null
   provisioningError?: string | null
+  operation?: ProvisioningOperation | null
   modules: TenantModule[]
 }
 
@@ -115,6 +142,8 @@ export const platformApi = {
   plans: () => api<SubscriptionPlan[]>('/api/v1/platform/plans'),
   audit: () => api<AuditEntry[]>('/api/v1/platform/audit'),
   securityEvents: () => api<SecurityEvent[]>('/api/v1/platform/security-events'),
+  operations: (page = 1, pageSize = 50) => api<{ items: ProvisioningOperation[]; page: number; pageSize: number; totalCount: number }>(`/api/v1/platform/operations?page=${page}&pageSize=${pageSize}`),
+  operation: (id: string) => api<ProvisioningOperation>(`/api/v1/platform/operations/${id}`),
   supportGrants: () => api<SupportGrant[]>('/api/v1/platform/support-grants'),
   decideGrant: (id: string, approve: boolean) => post(`/api/v1/platform/support-grants/${id}/${approve ? 'approve' : 'reject'}`),
   revokeGrant: (id: string) => post(`/api/v1/platform/support-grants/${id}/revoke`),

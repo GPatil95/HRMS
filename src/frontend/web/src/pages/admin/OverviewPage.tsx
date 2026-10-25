@@ -77,10 +77,23 @@ function EventRow({ e }: { e: SecurityEvent }) {
   )
 }
 
+function HealthRow({ label, ok, detail }: { label: string; ok: boolean | null; detail?: string }) {
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 0.9, borderBottom: 1, borderColor: 'divider', '&:last-of-type': { borderBottom: 0 } }}>
+      <Typography variant="body2" color="text.secondary">{label}</Typography>
+      {ok === null
+        ? <Typography variant="caption" color="text.disabled">{detail ?? 'Not monitored'}</Typography>
+        : <StatusChip value={ok ? 'Active' : 'Failed'} />}
+    </Box>
+  )
+}
+
 export function OverviewPage() {
   const navigate = useNavigate()
   const tenants = useQuery({ queryKey: ['tenants', 'overview'], queryFn: () => platformApi.tenants(1, 200) })
   const events = useQuery({ queryKey: ['security-events'], queryFn: platformApi.securityEvents })
+  const ops = useQuery({ queryKey: ['operations', 'overview'], queryFn: () => platformApi.operations(1, 50), refetchInterval: 15000 })
+  const health = useQuery({ queryKey: ['health', 'ready'], queryFn: () => platformApi.health('ready'), retry: 0 })
 
   if (tenants.isPending) {
     return (
@@ -120,6 +133,33 @@ export function OverviewPage() {
         <KpiCard label="Provisioning" value={count('Provisioning')} icon={<Sync />} tone="info" hint="Setup in progress" to="/admin/operations" />
         <KpiCard label="Provisioning failed" value={failed} icon={<WarningAmber />} tone={failed ? 'error' : 'primary'} hint={failed ? 'Needs retry' : 'None'} to="/admin/operations" />
         <KpiCard label="Suspended / inactive" value={suspended} icon={<PauseCircle />} tone={suspended ? 'warning' : 'primary'} hint="Access blocked" to="/admin/tenants" />
+      </Box>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.2fr 1fr' }, gap: 2.5, mb: 2.5 }}>
+        <SectionCard title="Provisioning health" subtitle="Latest provisioning operations" actions={<ViewAllLink to="/admin/operations" />}>
+          {ops.isPending && <TableSkeleton columns={3} />}
+          {ops.error && <Box sx={{ p: 3 }}><ErrorAlert error={ops.error} /></Box>}
+          {ops.data && (
+            <Box sx={{ px: 3, py: 2, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
+              {(['Succeeded', 'Running', 'Failed'] as const).map((s) => {
+                const n = ops.data.items.filter((o) => o.status === s || (s === 'Running' && o.status === 'Pending')).length
+                return (
+                  <Box key={s} sx={{ textAlign: 'center', py: 1.5, borderRadius: 2, border: 1, borderColor: 'divider' }}>
+                    <Typography variant="h4" sx={{ fontWeight: 700, color: s === 'Failed' && n ? 'error.main' : s === 'Succeeded' ? 'success.main' : 'info.main' }}>{n}</Typography>
+                    <Typography variant="caption" color="text.secondary">{s === 'Running' ? 'In progress' : s}</Typography>
+                  </Box>
+                )
+              })}
+            </Box>
+          )}
+        </SectionCard>
+        <SectionCard title="System health" subtitle="Live readiness signals">
+          <Box sx={{ px: 3, pb: 1.5 }}>
+            <HealthRow label="API" ok={true} detail="Responding" />
+            <HealthRow label="PostgreSQL / Redis" ok={health.isPending ? null : !health.error} detail={health.isPending ? 'Checking…' : health.error ? 'Unreachable' : 'Ready'} />
+            <HealthRow label="Mail service" ok={null} />
+            <HealthRow label="Background jobs" ok={null} />
+          </Box>
+        </SectionCard>
       </Box>
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.2fr 1fr' }, gap: 2.5 }}>
         <SectionCard title="Recent tenants" subtitle="Newest tenants on the platform" actions={<ViewAllLink to="/admin/tenants" />}>

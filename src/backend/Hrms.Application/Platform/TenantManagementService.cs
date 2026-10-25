@@ -20,6 +20,24 @@ public sealed record TenantSummaryDto(Guid Id, int TenantNumber, string Code, st
 
 public sealed record TenantModuleDto(string Code, string Name, ModuleKind Kind, bool Enabled, EntitlementSource? Source, DateOnly? ValidTo);
 
+public sealed record ProvisioningStepDto(string Step, string Status, DateTimeOffset At, string? Error);
+
+public sealed record ProvisioningOperationDto(
+    Guid Id,
+    Guid TenantId,
+    string? TenantCode,
+    string? TenantName,
+    string Operation,
+    ProvisioningStatus Status,
+    int Attempt,
+    string? CurrentStep,
+    IReadOnlyList<ProvisioningStepDto> Steps,
+    string? Error,
+    string? CorrelationId,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? StartedAt,
+    DateTimeOffset? CompletedAt);
+
 public sealed record TenantDetailDto(
     TenantSummaryDto Tenant,
     string? AdminEmail,
@@ -31,6 +49,7 @@ public sealed record TenantDetailDto(
     SubscriptionStatus? SubscriptionStatus,
     ProvisioningStatus? ProvisioningStatus,
     string? ProvisioningError,
+    ProvisioningOperationDto? Operation,
     IReadOnlyList<TenantModuleDto> Modules);
 
 /// <summary>Password null/empty → a tenant-realm password-reset email is sent to the admin;
@@ -95,8 +114,39 @@ public sealed class TenantManagementService(
             return new TenantModuleDto(m.Code, m.Name, m.Kind, effective.IsModuleEnabled(m.Code), e?.Source, e?.ValidTo);
         }).ToList();
         var summary = new TenantSummaryDto(t.Id, t.TenantNumber, t.Code, t.Name, t.Status, t.Domains.FirstOrDefault(d => d.IsPrimary)?.HostName, t.CreatedAt);
-        return new TenantDetailDto(summary, t.AdminEmail, t.AdminName, tdb?.DatabaseName, tdb?.Status, tdb?.SchemaVersion, plan, sub?.Status, op?.Status, op?.Error, moduleDtos);
+        var opDto = op is null ? null : ToOperationDto(op, t.Code, t.Name);
+        return new TenantDetailDto(summary, t.AdminEmail, t.AdminName, tdb?.DatabaseName, tdb?.Status, tdb?.SchemaVersion, plan, sub?.Status, op?.Status, op?.Error, opDto, moduleDtos);
     }
+
+    /// <summary>Provisioning operations, newest first, with tenant code/name for display.</summary>
+    public async Task<PagedResult<ProvisioningOperationDto>> ListOperationsAsync(PageRequest page, CancellationToken ct)
+    {
+        var q = db.ProvisioningOperations.AsNoTracking();
+        var total = await q.CountAsync(ct);
+        var items = await q.OrderByDescending(o => o.CreatedAt).Skip(page.Skip).Take(page.SafePageSize).ToListAsync(ct);
+        var tenantIds = items.Select(o => o.TenantId).Distinct().ToList();
+        var tenants = await db.Tenants.AsNoTracking().Where(t => tenantIds.Contains(t.Id))
+            .ToDictionaryAsync(t => t.Id, t => new { t.Code, t.Name }, ct);
+        var dtos = items.Select(o => ToOperationDto(o, tenants.GetValueOrDefault(o.TenantId)?.Code, tenants.GetValueOrDefault(o.TenantId)?.Name)).ToList();
+        return new PagedResult<ProvisioningOperationDto>(dtos, page.SafePage, page.SafePageSize, total);
+    }
+
+    public async Task<Result<ProvisioningOperationDto>> GetOperationAsync(Guid id, CancellationToken ct)
+    {
+        var o = await db.ProvisioningOperations.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (o is null)
+        {
+            return Error.NotFound("operation-not-found", "Provisioning operation not found.");
+        }
+
+        var t = await db.Tenants.AsNoTracking().Where(x => x.Id == o.TenantId).Select(x => new { x.Code, x.Name }).FirstOrDefaultAsync(ct);
+        return ToOperationDto(o, t?.Code, t?.Name);
+    }
+
+    private static ProvisioningOperationDto ToOperationDto(ProvisioningOperation o, string? code, string? name) => new(
+        o.Id, o.TenantId, code, name, o.Operation, o.Status, o.Attempt, o.CurrentStep,
+        o.Steps.Select(s => new ProvisioningStepDto(s.Step, s.Status, s.At, s.Error)).ToList(),
+        o.Error, o.CorrelationId, o.CreatedAt, o.StartedAt, o.CompletedAt);
 
     /// <summary>Platform-admin reset of the tenant admin's credentials. Runs inside the tenant's own context/database:
     /// with a password → hashes it via the tenant auth mechanism and revokes all sessions; without → sends the

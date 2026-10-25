@@ -1,25 +1,33 @@
-import { ArrowBack, ContentCopy, Key, PauseCircle, PlayCircle, Sync, Visibility, VisibilityOff } from '@mui/icons-material'
+import {
+  ArrowBack,
+  ContentCopy,
+  ExpandMore,
+  Key,
+  MoreVert,
+  OpenInNew,
+  PauseCircle,
+  PlayCircle,
+  Shield,
+  Sync,
+} from '@mui/icons-material'
 import {
   Alert,
+  AlertTitle,
   Box,
   Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControlLabel,
+  Collapse,
   IconButton,
-  InputAdornment,
+  Menu,
   MenuItem,
   Paper,
-  Radio,
-  RadioGroup,
   Switch,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
+  Tabs,
   TextField,
   Typography,
 } from '@mui/material'
@@ -28,50 +36,42 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { platformApi, type TenantStatus } from '../../api/platform'
+import { ProvisioningTimeline, stepLabel } from '../../components/ProvisioningTimeline'
 import { ReasonDialog } from '../../components/ReasonDialog'
+import { ResetAdminPasswordDialog } from '../../components/ResetAdminPasswordDialog'
 import { useToast } from '../../components/toast'
 import { CenteredSpinner, EmptyState, ErrorAlert, SectionCard, StatusChip, TenantAvatar } from '../../components/ui'
 
-function generatePassword(): string {
-  const letters = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ'
-  const all = letters + '23456789'
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-  const chars = Array.from(bytes, (b) => all[b % all.length])
-  chars[0] = letters[bytes[0] % letters.length]
-  chars[15] = String(2 + (bytes[15] % 8))
-  return chars.join('')
-}
-
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, py: 0.75, borderBottom: 1, borderColor: 'divider', '&:last-of-type': { borderBottom: 0 } }}>
-      <Typography variant="body2" color="text.secondary">{label}</Typography>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, textAlign: 'right' }}>
-        <Typography variant="body2" component="span" sx={{ fontFamily: 'inherit' }}>{children}</Typography>
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, py: 0.9, borderBottom: 1, borderColor: 'divider', '&:last-of-type': { borderBottom: 0 } }}>
+      <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>{label}</Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, textAlign: 'right', minWidth: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <Typography variant="body2" component="span">{children}</Typography>
       </Box>
     </Box>
   )
 }
 
+const dbStateLabel: Record<string, string> = { Online: 'Ready', Provisioning: 'Provisioning', Maintenance: 'Maintenance', Offline: 'Offline' }
+
 export function TenantDetailPage() {
   const { id = '' } = useParams()
   const qc = useQueryClient()
   const toast = useToast()
+  const [tab, setTab] = useState(0)
   const q = useQuery({
     queryKey: ['tenant', id], queryFn: () => platformApi.tenant(id),
     refetchInterval: (qq) =>
-      ['Provisioning', 'Pending', 'Running'].includes(qq.state.data?.provisioningStatus ?? '') || qq.state.data?.tenant.status === 'Provisioning' ? 5000 : false,
+      ['Pending', 'Running'].includes(qq.state.data?.provisioningStatus ?? '') || qq.state.data?.tenant.status === 'Provisioning' ? 5000 : false,
   })
   const [dialog, setDialog] = useState<null | 'suspend' | 'activate' | 'retry' | 'subscription' | 'adminPw' | { module: string; enabled: boolean }>(null)
+  const [menuEl, setMenuEl] = useState<HTMLElement | null>(null)
   const [subStatus, setSubStatus] = useState('Active')
   const [subEndsOn, setSubEndsOn] = useState('')
-  const [pwMode, setPwMode] = useState<'email' | 'set'>('email')
-  const [pwValue, setPwValue] = useState('')
-  const [pwShow, setPwShow] = useState(false)
-  const [pwDone, setPwDone] = useState<null | { password?: string }>(null)
+  const [techOpen, setTechOpen] = useState(false)
 
-  const done = (msg: string) => { toast(msg); void q.refetch(); void qc.invalidateQueries({ queryKey: ['tenants'] }) }
+  const done = (msg: string) => { toast(msg); void q.refetch(); void qc.invalidateQueries({ queryKey: ['tenants'] }); void qc.invalidateQueries({ queryKey: ['operations'] }) }
   const fail = (e: unknown) => toast(e instanceof ApiError ? e.message : 'Action failed', 'error')
 
   const statusMut = useMutation({
@@ -90,105 +90,230 @@ export function TenantDetailPage() {
     mutationFn: (p: { status: string; endsOn: string | null; reason: string }) => platformApi.setSubscription(id, p.status, p.endsOn, p.reason),
     onSuccess: () => done('Subscription updated'), onError: fail, onSettled: () => setDialog(null),
   })
-  const pwMut = useMutation({
-    mutationFn: () => platformApi.resetAdminPassword(id, pwMode === 'set' ? pwValue : undefined),
-    onSuccess: () => setPwDone(pwMode === 'set' ? { password: pwValue } : {}),
-    onError: fail,
-  })
 
   if (q.isPending) return <CenteredSpinner />
-  if (q.error) return <ErrorAlert error={q.error} />
+  if (q.error) return <ErrorAlert error={q.error} onRetry={() => void q.refetch()} />
   const d = q.data!
   const t = d.tenant
+  const op = d.operation ?? null
   const provFailed = d.provisioningStatus === 'Failed' || t.status === 'ProvisioningFailed'
+  const provRunning = d.provisioningStatus === 'Pending' || d.provisioningStatus === 'Running' || t.status === 'Provisioning'
+  const adminExists = op?.steps?.some((s) => s.step === 'create_admin' && s.status === 'completed') ?? false
+  const failedStep = op?.steps.find((s) => s.status === 'failed') ?? (op?.status === 'Failed' && op.currentStep ? { step: op.currentStep, status: 'failed', at: null, error: op.error } : null)
   const busy = statusMut.isPending || retryMut.isPending || moduleMut.isPending || subMut.isPending
+  const tenantUrl = t.primaryHost ? `${window.location.protocol}//${t.primaryHost}${window.location.port ? `:${window.location.port}` : ''}` : null
+
+  const canSuspend = t.status === 'Active'
+  const canActivate = t.status === 'Suspended' || t.status === 'Inactive'
+  const dbLabel = d.databaseStatus === 'Provisioning' && provFailed ? 'Provisioning incomplete' : (d.databaseStatus ? dbStateLabel[d.databaseStatus] ?? d.databaseStatus : '—')
 
   return (
     <Box>
       <Button component={Link} to="/admin/tenants" startIcon={<ArrowBack />} size="small" sx={{ mb: 1.5, color: 'text.secondary' }}>
         All tenants
       </Button>
-      <Paper variant="outlined" sx={{ p: 3, mb: 2.5, display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center', justifyContent: 'space-between' }}>
+
+      {/* ── Header ─────────────────────────────────────────────────── */}
+      <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 }, mb: 2.5, display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: { sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
           <TenantAvatar code={t.code} name={t.name} size={52} />
           <Box sx={{ minWidth: 0 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, flexWrap: 'wrap' }}>
-              <Typography variant="h5" sx={{ fontWeight: 700 }}>{t.name}</Typography>
+              <Typography variant="h5" component="h1">{t.name}</Typography>
               <StatusChip value={t.status} />
             </Box>
-            <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace', fontSize: 13 }}>
-              {t.code}{t.primaryHost ? ` · ${t.primaryHost}` : ''} · #{t.tenantNumber}
+            <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace', fontSize: 12.5 }}>
+              {t.code}{t.primaryHost ? ` · ${t.primaryHost}` : ''} · Tenant #{t.tenantNumber}
             </Typography>
           </Box>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {provFailed && <Button variant="contained" color="warning" startIcon={<Sync />} onClick={() => setDialog('retry')} disabled={busy}>Retry provisioning</Button>}
-          <Button variant="outlined" startIcon={<Key />} onClick={() => { setPwDone(null); setPwMode('email'); setPwValue(''); setDialog('adminPw') }} disabled={busy}>Reset admin password</Button>
-          {t.status === 'Active'
-            ? <Button variant="outlined" color="error" startIcon={<PauseCircle />} onClick={() => setDialog('suspend')} disabled={busy}>Suspend</Button>
-            : <Button variant="outlined" color="success" startIcon={<PlayCircle />} onClick={() => setDialog('activate')} disabled={busy}>Activate</Button>}
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center', width: { xs: '100%', sm: 'auto' } }}>
+          {tenantUrl && (
+            <Button variant="outlined" size="small" href={tenantUrl} target="_blank" rel="noreferrer" endIcon={<OpenInNew sx={{ fontSize: 16 }} />}>
+              Open Tenant
+            </Button>
+          )}
+          {provFailed && (
+            <Button variant="contained" color="warning" size="small" startIcon={<Sync />} onClick={() => setDialog('retry')} disabled={busy}>
+              Retry provisioning
+            </Button>
+          )}
+          {adminExists && (
+            <Button variant="outlined" size="small" startIcon={<Key />} onClick={() => setDialog('adminPw')} disabled={busy}>
+              Reset admin password
+            </Button>
+          )}
+          {canSuspend && <Button variant="outlined" color="error" size="small" startIcon={<PauseCircle />} onClick={() => setDialog('suspend')} disabled={busy}>Suspend</Button>}
+          {canActivate && <Button variant="outlined" color="success" size="small" startIcon={<PlayCircle />} onClick={() => setDialog('activate')} disabled={busy}>Activate</Button>}
+          <IconButton aria-label="More actions" size="small" onClick={(e) => setMenuEl(e.currentTarget)}>
+            <MoreVert />
+          </IconButton>
+          <Menu anchorEl={menuEl} open={!!menuEl} onClose={() => setMenuEl(null)}>
+            <MenuItem onClick={() => { setMenuEl(null); setSubStatus(d.subscriptionStatus ?? 'Active'); setDialog('subscription') }}>Change subscription</MenuItem>
+          </Menu>
         </Box>
       </Paper>
 
-      {provFailed && d.provisioningError && <Alert severity="error" sx={{ mb: 2.5 }}>Provisioning failed: {d.provisioningError}</Alert>}
+      {/* ── Failure banner ─────────────────────────────────────────── */}
+      {provFailed && (
+        <Alert severity="error" sx={{ mb: 2.5 }} action={
+          <Button color="inherit" size="small" startIcon={<Sync />} onClick={() => setDialog('retry')} disabled={busy}>Retry</Button>
+        }>
+          <AlertTitle sx={{ fontWeight: 600 }}>Provisioning failed</AlertTitle>
+          {failedStep
+            ? <>Tenant provisioning stopped while <strong>{stepLabel(failedStep.step).toLowerCase()}</strong>. Retry provisioning to continue.</>
+            : 'Tenant provisioning could not be completed. Retry provisioning to continue.'}
+          <Box sx={{ mt: 1 }}>
+            <Button
+              size="small" variant="text" color="inherit" endIcon={<ExpandMore sx={{ transform: techOpen ? 'rotate(180deg)' : 'none', transition: '150ms' }} />}
+              onClick={() => setTechOpen((o) => !o)}
+            >
+              Technical details
+            </Button>
+            <Collapse in={techOpen}>
+              <Box sx={{ mt: 0.5, p: 1.5, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.15)' }}>
+                {(d.provisioningError ?? op?.error) && (
+                  <Typography variant="caption" component="pre" sx={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', display: 'block', mb: 0.5 }}>
+                    {d.provisioningError ?? op?.error}
+                  </Typography>
+                )}
+                {op?.correlationId && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>Correlation: {op.correlationId}</Typography>
+                    <IconButton size="small" aria-label="Copy correlation ID" onClick={() => void navigator.clipboard.writeText(op.correlationId!)}>
+                      <ContentCopy sx={{ fontSize: 13 }} />
+                    </IconButton>
+                  </Box>
+                )}
+              </Box>
+            </Collapse>
+          </Box>
+        </Alert>
+      )}
+      {provRunning && (
+        <Alert severity="info" sx={{ mb: 2.5 }}>
+          Provisioning in progress{op?.currentStep ? ` — ${stepLabel(op.currentStep).toLowerCase()}` : ''}. This page refreshes automatically.
+        </Alert>
+      )}
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2.5, mb: 2.5 }}>
-        <SectionCard title="Tenant" subtitle="Identity and database">
+      {/* ── Tabs ───────────────────────────────────────────────────── */}
+      <Tabs value={tab} onChange={(_, v) => setTab(v as number)} variant="scrollable" scrollButtons="auto" sx={{ mb: 2.5, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab label="Overview" />
+        <Tab label="Database" />
+        <Tab label="Provisioning" />
+        <Tab label="Modules" />
+        <Tab label="Security" />
+      </Tabs>
+
+      {tab === 0 && (
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2.5 }}>
+          <SectionCard title="Tenant" subtitle="Identity and lifecycle">
+            <Box sx={{ px: 3, pb: 1.5 }}>
+              <Field label="Status"><StatusChip value={t.status} /></Field>
+              <Field label="Tenant number">#{t.tenantNumber}</Field>
+              <Field label="Administrator">
+                <Typography component="span" variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12.5 }}>
+                  {d.adminName ?? '—'}{d.adminEmail ? ` · ${d.adminEmail}` : ''}
+                </Typography>
+              </Field>
+              <Field label="Domain">
+                <Typography component="span" variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12.5 }}>{t.primaryHost ?? '—'}</Typography>
+              </Field>
+              <Field label="Created">{new Date(t.createdAt).toLocaleString()}</Field>
+            </Box>
+          </SectionCard>
+          <SectionCard title="Subscription" subtitle="Plan and billing state"
+            actions={<Button size="small" variant="outlined" onClick={() => { setSubStatus(d.subscriptionStatus ?? 'Active'); setDialog('subscription') }}>Change</Button>}>
+            <Box sx={{ px: 3, pb: 1.5 }}>
+              <Field label="Plan"><Typography component="span" variant="body2" sx={{ fontFamily: 'monospace' }}>{d.planCode ?? 'Platform default'}</Typography></Field>
+              <Field label="Subscription"><StatusChip value={d.subscriptionStatus} /></Field>
+              <Field label="Provisioning"><StatusChip value={d.provisioningStatus} /></Field>
+            </Box>
+          </SectionCard>
+        </Box>
+      )}
+
+      {tab === 1 && (
+        <SectionCard title="Database" subtitle="Tenant database placement and state">
           <Box sx={{ px: 3, pb: 1.5 }}>
-            <Field label="Status"><StatusChip value={t.status} /></Field>
-            <Field label="Tenant number">{t.tenantNumber}</Field>
-            <Field label="Admin">
-              <Typography component="span" variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12.5 }}>
-                {d.adminName ?? '—'}{d.adminEmail ? ` · ${d.adminEmail}` : ''}
-              </Typography>
-            </Field>
             <Field label="Database">
               <Typography component="span" variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12.5 }}>{d.databaseName ?? '—'}</Typography>
-              <StatusChip value={d.databaseStatus} />
             </Field>
+            <Field label="Status"><StatusChip value={dbLabel === 'Ready' ? 'Online' : dbLabel === 'Provisioning incomplete' ? 'ProvisioningFailed' : d.databaseStatus} /></Field>
+            {d.databaseStatus === 'Provisioning' && provFailed && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', pb: 1 }}>
+                The database may already exist, but provisioning did not complete — retry provisioning to finish setup.
+              </Typography>
+            )}
             <Field label="Schema version">{d.schemaVersion ?? '—'}</Field>
-            <Field label="Created">{new Date(t.createdAt).toLocaleString()}</Field>
-          </Box>
-        </SectionCard>
-        <SectionCard title="Subscription & provisioning" subtitle="Plan and billing state"
-          actions={<Button size="small" variant="outlined" onClick={() => { setSubStatus(d.subscriptionStatus ?? 'Active'); setDialog('subscription') }}>Change</Button>}>
-          <Box sx={{ px: 3, pb: 1.5 }}>
-            <Field label="Plan"><Typography component="span" variant="body2" sx={{ fontFamily: 'monospace' }}>{d.planCode ?? 'Platform default'}</Typography></Field>
-            <Field label="Subscription"><StatusChip value={d.subscriptionStatus} /></Field>
             <Field label="Provisioning"><StatusChip value={d.provisioningStatus} /></Field>
           </Box>
         </SectionCard>
-      </Box>
+      )}
 
-      <SectionCard title="Module entitlements" subtitle="Core modules are always on. Optional modules can be purchased and enabled per tenant.">
-        {d.modules.length === 0 ? <EmptyState title="No modules in catalogue" /> : (
-          <Table size="small">
-            <TableHead>
-              <TableRow><TableCell>Module</TableCell><TableCell>Kind</TableCell><TableCell>Source</TableCell><TableCell>Valid to</TableCell><TableCell align="right">Enabled</TableCell></TableRow>
-            </TableHead>
-            <TableBody>
-              {d.modules.map((m) => (
-                <TableRow key={m.code} hover>
-                  <TableCell>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{m.name}</Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>{m.code}</Typography>
-                  </TableCell>
-                  <TableCell><StatusChip value={m.kind} /></TableCell>
-                  <TableCell><Typography variant="body2" color="text.secondary">{m.source ?? '—'}</Typography></TableCell>
-                  <TableCell><Typography variant="body2" color="text.secondary">{m.validTo ?? '—'}</Typography></TableCell>
-                  <TableCell align="right">
-                    <Switch
-                      size="small" checked={m.enabled} disabled={m.kind === 'Core' || busy}
-                      onChange={(e) => setDialog({ module: m.code, enabled: e.target.checked })}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </SectionCard>
+      {tab === 2 && (
+        <SectionCard title="Provisioning progress" subtitle={op ? `Operation ${op.operation} · attempt ${op.attempt || 1}` : undefined}>
+          {op ? (
+            <Box sx={{ px: 3, py: 2.5 }}>
+              <ProvisioningTimeline operation={op} />
+            </Box>
+          ) : (
+            <EmptyState title="No provisioning operation recorded" icon={<Sync />} />
+          )}
+        </SectionCard>
+      )}
 
+      {tab === 3 && (
+        <SectionCard title="Module entitlements" subtitle="Core modules are always on. Optional modules can be enabled per tenant.">
+          {d.modules.length === 0 ? <EmptyState title="No modules in catalogue" /> : (
+            <Box sx={{ overflowX: 'auto' }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow><TableCell>Module</TableCell><TableCell>Kind</TableCell><TableCell>Source</TableCell><TableCell>Valid to</TableCell><TableCell align="right">Enabled</TableCell></TableRow>
+                </TableHead>
+                <TableBody>
+                  {d.modules.map((m) => (
+                    <TableRow key={m.code} hover>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{m.name}</Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>{m.code}</Typography>
+                      </TableCell>
+                      <TableCell><StatusChip value={m.kind} /></TableCell>
+                      <TableCell><Typography variant="body2" color="text.secondary">{m.source ?? '—'}</Typography></TableCell>
+                      <TableCell><Typography variant="body2" color="text.secondary">{m.validTo ?? '—'}</Typography></TableCell>
+                      <TableCell align="right">
+                        <Switch size="small" checked={m.enabled} disabled={m.kind === 'Core' || busy}
+                          onChange={(e) => setDialog({ module: m.code, enabled: e.target.checked })} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Box>
+          )}
+        </SectionCard>
+      )}
+
+      {tab === 4 && (
+        <SectionCard title="Administrator credentials" subtitle="Actions apply to the tenant admin account only">
+          {adminExists ? (
+            <Box sx={{ px: 3, py: 2.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
+                <Shield color="action" />
+                <Box>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{d.adminName ?? 'Tenant admin'}</Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>{d.adminEmail}</Typography>
+                </Box>
+              </Box>
+              <Button variant="outlined" size="small" startIcon={<Key />} onClick={() => setDialog('adminPw')}>Reset admin password</Button>
+            </Box>
+          ) : (
+            <EmptyState title="No admin user yet" hint="The tenant admin is created by the 'Create admin' provisioning step." icon={<Shield />} />
+          )}
+        </SectionCard>
+      )}
+
+      {/* ── Dialogs ────────────────────────────────────────────────── */}
       <ReasonDialog open={dialog === 'suspend'} title="Suspend tenant" danger busy={statusMut.isPending}
         description={`Suspending ${t.code} blocks every user in this tenant from signing in and using the product. This is recorded in the platform audit log.`}
         confirmLabel="Suspend tenant" onClose={() => setDialog(null)} onConfirm={(r) => statusMut.mutate({ status: 'Suspended', reason: r })} />
@@ -216,63 +341,7 @@ export function TenantDetailPage() {
           confirmLabel={dialog.enabled ? 'Enable' : 'Disable'} onClose={() => setDialog(null)}
           onConfirm={(r) => moduleMut.mutate({ module: dialog.module, enabled: dialog.enabled, reason: r })} />
       )}
-      <Dialog open={dialog === 'adminPw'} onClose={() => setDialog(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Reset admin password</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2 }}>
-          {pwDone ? (
-            <>
-              <Alert severity="success">
-                {pwDone.password ? 'Password updated — all admin sessions were signed out.' : `Reset email sent to ${d.adminEmail}.`}
-              </Alert>
-              {pwDone.password && (
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-                  <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>{pwDone.password}</Typography>
-                  <IconButton size="small" onClick={() => void navigator.clipboard.writeText(pwDone.password!)}><ContentCopy fontSize="small" /></IconButton>
-                </Box>
-              )}
-              {pwDone.password && <Alert severity="warning" variant="outlined">Shown only here — it is not stored anywhere.</Alert>}
-            </>
-          ) : (
-            <>
-              <Typography variant="body2" color="text.secondary">
-                Tenant admin: <Box component="span" sx={{ fontFamily: 'monospace' }}>{d.adminEmail ?? '—'}</Box>
-              </Typography>
-              <RadioGroup value={pwMode} onChange={(e) => setPwMode(e.target.value as 'email' | 'set')}>
-                <FormControlLabel value="email" control={<Radio size="small" />} label="Email a password-reset link" />
-                <FormControlLabel value="set" control={<Radio size="small" />} label="Set a temporary password now" />
-              </RadioGroup>
-              {pwMode === 'set' && (
-                <TextField label="New password" type={pwShow ? 'text' : 'password'} value={pwValue}
-                  onChange={(e) => setPwValue(e.target.value)} required
-                  error={pwValue.length > 0 && pwValue.length < 12}
-                  helperText="At least 12 characters, with a letter and a digit. All existing sessions are signed out."
-                  slotProps={{
-                    input: {
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <Button size="small" onClick={() => setPwValue(generatePassword())}>Generate</Button>
-                          <IconButton size="small" onClick={() => setPwShow((s) => !s)}>{pwShow ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}</IconButton>
-                        </InputAdornment>
-                      ),
-                    },
-                  }} />
-              )}
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          {pwDone
-            ? <Button onClick={() => setDialog(null)}>Done</Button>
-            : (
-              <>
-                <Button onClick={() => setDialog(null)}>Cancel</Button>
-                <Button variant="contained" disabled={pwMut.isPending || (pwMode === 'set' && pwValue.length < 12)} onClick={() => pwMut.mutate()}>
-                  {pwMut.isPending ? 'Working…' : pwMode === 'email' ? 'Send reset email' : 'Set password'}
-                </Button>
-              </>
-            )}
-        </DialogActions>
-      </Dialog>
+      <ResetAdminPasswordDialog open={dialog === 'adminPw'} tenantId={id} adminEmail={d.adminEmail} onClose={() => setDialog(null)} />
     </Box>
   )
 }

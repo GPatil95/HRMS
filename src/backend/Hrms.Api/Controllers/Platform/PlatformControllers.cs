@@ -96,6 +96,12 @@ public sealed class PlatformCatalogController(TenantManagementService tenants) :
 
     [HttpGet("security-events"), RequirePlatformPermission(PP.AuditView)]
     public async Task<IActionResult> SecurityEvents(CancellationToken ct) => Ok(await tenants.RecentSecurityEventsAsync(100, ct));
+
+    [HttpGet("operations"), RequirePlatformPermission(PP.TenantView)]
+    public async Task<IActionResult> Operations([FromQuery] PageRequest page, CancellationToken ct) => Ok(await tenants.ListOperationsAsync(page, ct));
+
+    [HttpGet("operations/{id:guid}"), RequirePlatformPermission(PP.TenantView)]
+    public async Task<IActionResult> Operation(Guid id, CancellationToken ct) => (await tenants.GetOperationAsync(id, ct)).ToActionResult();
 }
 
 [ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/platform/support-grants")]
