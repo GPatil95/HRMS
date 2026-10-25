@@ -37,8 +37,12 @@ services:
       # `keydata` volume (auto-generated on first run, survives rebuilds/restarts).
       Secrets__MasterKey: ${HRMS_MASTER_KEY:-}
       Secrets__MasterKeyFile: /keys/master.key
-    volumes: [keydata:/keys]
+      # ASP.NET Data Protection key ring (CSRF/auth cookies) — must be writable by
+      # $APP_UID and persist across container recreation or issued tokens go stale.
+      DataProtection__KeysPath: /app/.data/keys
+    volumes: [keydata:/keys, dpkeys:/app/.data]
     ports: ["8080:8080"]
 volumes:
   pgdata:
   keydata:
+  dpkeys:

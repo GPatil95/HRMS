@@ -11,7 +11,7 @@ WORKDIR /app
 # libgssapi-krb5-2 silences Npgsql's Kerberos probing warning (not used; PostgreSQL auth is password-based).
 RUN apt-get update && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /keys && chown $APP_UID:$APP_UID /keys
+    && mkdir -p /keys /app/.data/keys && chown -R $APP_UID:$APP_UID /keys /app/.data
 COPY --from=build /out .
 USER $APP_UID
 ENV ASPNETCORE_URLS=http://+:8080 ASPNETCORE_ENVIRONMENT=Production
@@ -23,7 +23,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS cli
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /keys && chown $APP_UID:$APP_UID /keys
+    && mkdir -p /keys /app/.data/keys && chown -R $APP_UID:$APP_UID /keys /app/.data
 COPY --from=build /out-cli .
 USER $APP_UID
 ENTRYPOINT ["dotnet", "Hrms.Cli.dll"]
