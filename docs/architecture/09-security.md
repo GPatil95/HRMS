@@ -59,3 +59,19 @@
 ## 17.4 Security testing & operations
 
 SAST (CodeQL), secrets scanning (gitleaks), dependency & container scanning, DAST (OWASP ZAP baseline on UAT each release), authorization matrix & tenant isolation suites in CI, annual external penetration test before GA and after major changes, security event alerting (failed-login spikes, `TENANT_MISMATCH`, refresh-token reuse, break-glass usage, bulk exports), incident response runbook.
+
+## 17.5 Local secret-store master key (dev runbook)
+
+`ops.secrets` ciphertexts are AES-256-GCM under `Secrets:MasterKey`. If the key changes between the run that
+*wrote* a secret and the run that *reads* it, decryption fails with
+`AuthenticationTagMismatchException` (the error seen when tenant provisioning fails at `create_roles`).
+
+**Key resolution order** (`DbSecretStore`):
+
+1. `Secrets__MasterKey` env var, when set (base64, 32 bytes).
+2. `Secrets__MasterKeyFile` — path to a file holding the key; auto-generated (mode 600) on first use. Docker Compose maps this to `/keys/master.key` on the `keydata` volume so the key survives container rebuilds/restarts.
+3. Development fallback: `~/.hrms-dev-masterkey` (per-user) so `dotnet run` and the CLI share one key. Production with no key configured fails fast.
+
+**Rotation — old key known**: `Hrms.Cli rekey --old-key <base64>` re-encrypts every `ops.secrets` row under the currently configured key; rows not decryptable with the old key are reported and skipped.
+
+**Recovery — old key lost**: `Hrms.Cli repair-secrets` (requires `HRMS_CLUSTER_ADMIN_PASSWORD`) re-stores the cluster admin secret under the current key, then regenerates every tenant's app/migrator role passwords via `ALTER ROLE` and re-encrypts them. Tenant data is untouched; no tenant is deleted or recreated.

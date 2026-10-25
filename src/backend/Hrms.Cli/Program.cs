@@ -76,8 +76,83 @@ switch (command)
         return status == Hrms.Domain.Platform.ProvisioningStatus.Succeeded ? 0 : 1;
     }
 
+    case "rekey":
+    {
+        // Re-encrypt every ops.secrets row from a previous master key to the currently configured one.
+        // Use after rotating Secrets:MasterKey/MasterKeyFile so existing ciphertext keeps decrypting.
+        var oldKey = Convert.FromBase64String(Req(opts, "old-key"));
+        if (oldKey.Length != 32)
+        {
+            Console.Error.WriteLine("--old-key must be 32 bytes (base64).");
+            return 1;
+        }
+
+        var db = sp.GetRequiredService<PlatformDbContext>();
+        var store = sp.GetRequiredService<Hrms.Application.Abstractions.ISecretStore>();
+        var rows = await db.Secrets.ToListAsync(ct);
+        var migrated = 0;
+        var skipped = 0;
+        foreach (var row in rows)
+        {
+            try
+            {
+                using var aes = new System.Security.Cryptography.AesGcm(oldKey, 16);
+                var plain = new byte[row.Ciphertext.Length];
+                aes.Decrypt(row.Nonce, row.Ciphertext, row.Tag, plain, System.Text.Encoding.UTF8.GetBytes(row.Ref));
+                await store.SetAsync(row.Ref, System.Text.Encoding.UTF8.GetString(plain), ct);
+                migrated++;
+            }
+            catch (System.Security.Cryptography.AuthenticationTagMismatchException)
+            {
+                skipped++;
+                Console.Error.WriteLine($"skipped (not encrypted with --old-key): {row.Ref}");
+            }
+        }
+
+        Console.WriteLine($"Rekeyed {migrated} secret(s); {skipped} skipped.");
+        return skipped > 0 && migrated == 0 ? 1 : 0;
+    }
+
+    case "repair-secrets":
+    {
+        // Recovery when the old master key is LOST: re-stores the cluster admin secret under the current key,
+        // then regenerates every tenant's app/migrator role passwords (ALTER ROLE) and re-encrypts them.
+        // Tenant data is untouched; existing tenant databases and roles are kept.
+        var db = sp.GetRequiredService<PlatformDbContext>();
+        var store = sp.GetRequiredService<Hrms.Application.Abstractions.ISecretStore>();
+        var provisioner = sp.GetRequiredService<Hrms.Application.Abstractions.ITenantDatabaseProvisioner>();
+        var adminPassword = Env("HRMS_CLUSTER_ADMIN_PASSWORD");
+
+        var cluster = opts.TryGetValue("cluster", out var cname)
+            ? await db.DbClusters.FirstOrDefaultAsync(c => c.Name == cname, ct) ?? throw new InvalidOperationException($"Cluster '{cname}' not found.")
+            : await db.DbClusters.Where(c => c.IsActive).OrderBy(c => c.CreatedAt).FirstOrDefaultAsync(ct) ?? throw new InvalidOperationException("No active cluster.");
+
+        if (opts.TryGetValue("cluster-host", out var h)) { cluster.Host = h; }
+        if (opts.TryGetValue("cluster-port", out var p)) { cluster.Port = int.Parse(p, System.Globalization.CultureInfo.InvariantCulture); }
+        if (opts.TryGetValue("cluster-user", out var u)) { cluster.AdminUsername = u; }
+
+        await store.SetAsync(cluster.AdminSecretRef, adminPassword, ct);
+        var admin = new Hrms.Application.Abstractions.ClusterConnection(cluster.Host, cluster.Port, cluster.AdminUsername, adminPassword);
+        Console.WriteLine($"Cluster '{cluster.Name}' admin secret re-encrypted under the current master key.");
+
+        var tenants = await db.TenantDatabases.Include(d => d.Cluster).Where(d => d.ClusterId == cluster.Id).ToListAsync(ct);
+        foreach (var t in tenants)
+        {
+            var migratorPw = Hrms.Application.Common.SecureTokens.CreatePassword();
+            var appPw = Hrms.Application.Common.SecureTokens.CreatePassword();
+            await provisioner.EnsureRoleAsync(admin, t.MigratorRoleName, migratorPw, ct);
+            await provisioner.EnsureRoleAsync(admin, t.AppRoleName, appPw, ct);
+            await store.SetAsync(t.MigratorSecretRef, migratorPw, ct);
+            await store.SetAsync(t.AppSecretRef, appPw, ct);
+            Console.WriteLine($"Repaired role secrets for {t.DatabaseName}");
+        }
+
+        Console.WriteLine($"Repair complete: cluster admin + {tenants.Count} tenant(s) re-secured under the current master key.");
+        return 0;
+    }
+
     default:
-        Console.WriteLine("Commands: migrate-platform | seed-platform | create-tenant | retry-tenant");
+        Console.WriteLine("Commands: migrate-platform | seed-platform | create-tenant | retry-tenant | rekey | repair-secrets");
         return command == "help" ? 0 : 1;
 }
 
