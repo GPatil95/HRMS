@@ -108,6 +108,12 @@ export function OverviewPage() {
         subtitle="Tenants, provisioning status and recent security activity"
         actions={<Button component={Link} to="/admin/tenants/new" variant="contained" startIcon={<AddBusiness />}>Create tenant</Button>}
       />
+      <Box sx={{ display: 'flex', gap: 1, mb: 3, flexWrap: 'wrap' }}>
+        <Button component={Link} to="/admin/tenants/new" size="small" variant="outlined" startIcon={<AddBusiness fontSize="small" />}>New tenant</Button>
+        <Button component={Link} to="/admin/tenants" size="small" variant="outlined" startIcon={<TableRows fontSize="small" />}>All tenants</Button>
+        <Button component={Link} to="/admin/operations" size="small" variant="outlined" startIcon={<Sync fontSize="small" />}>Operations</Button>
+        <Button component={Link} to="/admin/audit" size="small" variant="outlined" startIcon={<Key fontSize="small" />}>Audit logs</Button>
+      </Box>
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 2, mb: 3.5 }}>
         <KpiCard label="Total tenants" value={tenants.data?.totalCount ?? all.length} icon={<TableRows />} hint="Every tenant has its own database" to="/admin/tenants" />
         <KpiCard label="Active" value={count('Active')} icon={<CheckCircle />} tone="success" hint="Serving traffic" to="/admin/tenants" />
