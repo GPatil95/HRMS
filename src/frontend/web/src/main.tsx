@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { AuthProvider } from './auth/AuthProvider'
+import { ToastProvider } from './components/toast'
 import { ErrorBoundary } from './pages/AppPages'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } })
@@ -16,9 +17,11 @@ createRoot(document.getElementById('root')!).render(
       <ErrorBoundary>
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
+            <ToastProvider>
             <AuthProvider>
               <App />
             </AuthProvider>
+          </ToastProvider>
           </BrowserRouter>
         </QueryClientProvider>
       </ErrorBoundary>

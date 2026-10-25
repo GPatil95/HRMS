@@ -1,6 +1,6 @@
 import { Alert, Box, Button, Paper, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material'
 import { useQuery } from '@tanstack/react-query'
-import { Component, type ReactNode } from 'react'
+import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError, api, isPlatform, itemsOf, type Paged } from '../api/client'
 
@@ -80,6 +80,10 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { failed: 
 
   static getDerivedStateFromError() {
     return { failed: true }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('Unhandled UI error', error, info.componentStack)
   }
 
   render() {

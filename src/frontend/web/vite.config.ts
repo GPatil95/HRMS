@@ -9,6 +9,9 @@ export default defineConfig({
   server: {
     host: true,
     allowedHosts: ['.localhost'],
-    proxy: { '/api': { target: process.env.HRMS_API_URL ?? 'http://localhost:5180', changeOrigin: false } },
+    proxy: {
+      '/api': { target: process.env.HRMS_API_URL ?? 'http://localhost:8080', changeOrigin: false },
+      '/health': { target: process.env.HRMS_API_URL ?? 'http://localhost:8080', changeOrigin: false },
+    },
   },
 })
