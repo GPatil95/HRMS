@@ -19,7 +19,7 @@ EXPOSE 8080
 ENTRYPOINT ["dotnet", "Hrms.Api.dll"]
 
 # Operator tooling (migrate-platform, seed-platform, create-tenant, retry-tenant). Secrets via environment only.
-FROM mcr.microsoft.com/dotnet/runtime:10.0 AS cli
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS cli
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
     && rm -rf /var/lib/apt/lists/* \
