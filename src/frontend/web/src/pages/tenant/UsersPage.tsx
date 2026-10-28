@@ -1,13 +1,13 @@
 import { useState, type ReactNode } from 'react'
 import {
-  Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Divider,
+  Avatar, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Divider,
   Drawer, FormControl, FormControlLabel, InputLabel, List, ListItemButton, ListItemText,
-  MenuItem, Select, Switch, Table, TableBody, TableCell, TableHead, TableRow,
-  TextField, Typography,
+  MenuItem, Select, Switch, TextField, Typography,
 } from '@mui/material'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { tenantApi, type Role, type UserDetail, type UserSummary } from '../../api/tenant'
 import { EmptyState, ErrorAlert, PageHeader, SectionCard, StatusChip, TableSkeleton } from '../../components/ui'
+import { DataList } from '../../components/tenant'
 import { useToast } from '../../components/toast'
 
 function DetailRow({ label, children }: { label: string; children: ReactNode }) {
@@ -175,33 +175,38 @@ export function UsersPage() {
       {users.isPending ? <TableSkeleton columns={4} /> : filtered.length === 0 ? (
         <EmptyState title="No users" hint={query ? 'No users match your search.' : 'Create the first user.'} />
       ) : (
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>User</TableCell>
-              <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Last sign-in</TableCell>
-              <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>MFA</TableCell>
-              <TableCell>Status</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filtered.map((u) => (
-              <TableRow key={u.id} hover sx={{ cursor: 'pointer' }} onClick={() => setSelected(u)}>
-                <TableCell>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{u.displayName}</Typography>
-                  <Typography variant="caption" color="text.secondary">{u.email}</Typography>
-                </TableCell>
-                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
-                  <Typography variant="body2" color="text.secondary">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'Never'}</Typography>
-                </TableCell>
-                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                  <Chip size="small" label={u.mfaEnabled ? 'On' : 'Off'} variant="outlined" color={u.mfaEnabled ? 'success' : 'default'} />
-                </TableCell>
-                <TableCell><StatusChip value={u.status} /></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <DataList<UserSummary>
+          columns={['User', 'Last sign-in', 'MFA', 'Status']}
+          rows={filtered}
+          rowKey={(u) => u.id}
+          onRowClick={(u) => setSelected(u)}
+          renderRow={(u) => [
+            <Box key="u" sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+              <Avatar sx={{ width: 32, height: 32, fontSize: 13, fontWeight: 700, bgcolor: 'primary.main' }}>
+                {u.displayName.split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()}
+              </Avatar>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>{u.displayName}</Typography>
+                <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>{u.email}</Typography>
+              </Box>
+            </Box>,
+            <Typography key="l" variant="body2" color="text.secondary">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'Never'}</Typography>,
+            <Chip key="m" size="small" label={u.mfaEnabled ? 'On' : 'Off'} variant="outlined" color={u.mfaEnabled ? 'success' : 'default'} />,
+            <StatusChip key="s" value={u.status} />,
+          ]}
+          renderCard={(u) => (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Avatar sx={{ width: 36, height: 36, fontSize: 14, fontWeight: 700, bgcolor: 'primary.main' }}>
+                {u.displayName.split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()}
+              </Avatar>
+              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                <Typography variant="body2" sx={{ fontWeight: 650 }} noWrap>{u.displayName}</Typography>
+                <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>{u.email}</Typography>
+              </Box>
+              <StatusChip value={u.status} />
+            </Box>
+          )}
+        />
       )}
       <UserDrawer user={selected} onClose={() => setSelected(null)} />
 

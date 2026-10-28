@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
-  Box, Chip, List, ListItemButton, ListItemText, Table, TableBody,
-  TableCell, TableHead, TableRow, Typography,
+  Box, Chip, List, ListItemButton, ListItemText, Typography,
 } from '@mui/material'
+import { AssessmentOutlined } from '@mui/icons-material'
 import { useQuery } from '@tanstack/react-query'
 import { tenantApi } from '../../api/tenant'
 import { EmptyState, ErrorAlert, PageHeader, SectionCard, TableSkeleton } from '../../components/ui'
+import { DataList } from '../../components/tenant'
 
 export function ReportsPage() {
   const reports = useQuery({ queryKey: ['reports'], queryFn: tenantApi.reports })
@@ -14,7 +15,7 @@ export function ReportsPage() {
 
   return (
     <Box>
-      <PageHeader title="Reports" subtitle="Run and export reports for this tenant" />
+      <PageHeader title="Reports" subtitle="View the reports available to your role." />
       {reports.error && <ErrorAlert error={reports.error} onRetry={() => reports.refetch()} />}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '280px 1fr' }, gap: 2 }}>
         <SectionCard title="Available reports">
@@ -23,8 +24,12 @@ export function ReportsPage() {
           ) : (
             <List dense disablePadding>
               {(reports.data ?? []).map((r) => (
-                <ListItemButton key={r.code} selected={code === r.code} onClick={() => setCode(r.code)}>
-                  <ListItemText primary={r.title} secondary={r.moduleCode} />
+                <ListItemButton key={r.code} selected={code === r.code} onClick={() => setCode(r.code)} sx={{ py: 1.5 }}>
+                  <ListItemText
+                    primary={r.title}
+                    secondary={<Chip label={r.moduleCode} size="small" variant="outlined" sx={{ mt: 0.5, height: 20, fontSize: 11 }} />}
+                    slotProps={{ primary: { variant: 'body2', sx: { fontWeight: code === r.code ? 650 : 500 } } }}
+                  />
                 </ListItemButton>
               ))}
             </List>
@@ -34,7 +39,7 @@ export function ReportsPage() {
           title={code ? (reports.data ?? []).find((r) => r.code === code)?.title ?? 'Report' : 'Results'}
           actions={code && <Chip size="small" label={code} variant="outlined" />}>
           {!code ? (
-            <EmptyState title="Select a report" hint="Choose a report on the left to see results." />
+            <EmptyState title="Select a report" hint="Choose a report on the left to see results." icon={<AssessmentOutlined />} />
           ) : result.isPending ? <TableSkeleton columns={4} /> : result.error ? (
             <Box sx={{ p: 2 }}><ErrorAlert error={result.error} onRetry={() => result.refetch()} /></Box>
           ) : result.data ? (
@@ -42,33 +47,22 @@ export function ReportsPage() {
               <Box sx={{ px: 3, pb: 1 }}>
                 <Typography variant="caption" color="text.secondary">{result.data.totalCount} rows</Typography>
               </Box>
-              <Box sx={{ overflowX: 'auto' }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      {result.data.columns.map((c) => <TableCell key={c}><Typography variant="caption" sx={{ fontWeight: 700 }}>{c}</Typography></TableCell>)}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {result.data.rows.map((row, i) => (
-                      <TableRow key={i} hover>
-                        {row.map((cell, j) => <TableCell key={j}><Typography variant="body2">{cell ?? '—'}</Typography></TableCell>)}
-                      </TableRow>
-                    ))}
-                    {result.data.rows.length === 0 && (
-                      <TableRow><TableCell colSpan={result.data.columns.length}><EmptyState title="No rows" hint="The report returned no data." /></TableCell></TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </Box>
+              {result.data.rows.length === 0 ? (
+                <EmptyState title="No rows" hint="The report returned no data." />
+              ) : (
+                <Box sx={{ px: 2, pb: 2 }}>
+                  <DataList
+                    columns={result.data.columns}
+                    rows={result.data.rows.map((cells, i) => ({ key: i, cells }))}
+                    rowKey={(r) => r.key}
+                    renderRow={(r) => r.cells as ReactNode[]}
+                    pageSize={25}
+                  />
+                </Box>
+              )}
             </>
           ) : null}
         </SectionCard>
-      </Box>
-      <Box sx={{ mt: 1 }}>
-        <Typography variant="caption" color="text.secondary">
-          Export is available on reports where you have export permission, via the report code (e.g. <code>GET /api/v1/reports/{`{code}`}/export</code>).
-        </Typography>
       </Box>
     </Box>
   )

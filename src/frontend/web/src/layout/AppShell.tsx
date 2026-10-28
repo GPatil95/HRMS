@@ -116,28 +116,76 @@ const tenantIcon = (icon?: string | null) => {
   return icon ? m[icon] ?? <ListIcon fontSize="small" /> : undefined
 }
 
-function TenantNavList({ items, depth = 0 }: { items: NavigationItem[]; depth?: number }) {
+// Bucket backend-driven nav leaves into the product's section taxonomy.
+// Anything the backend doesn't emit simply never appears.
+const TENANT_SECTIONS: { title: string; match: (code: string) => boolean }[] = [
+  { title: 'Workspace', match: (c) => c === 'dashboard' },
+  { title: 'Organization', match: (c) => c === 'employees' || c.startsWith('org.') },
+  { title: 'Management', match: (c) => c === 'reports' || c === 'admin.users' || c === 'admin.roles' || c === 'admin.templates' },
+  { title: 'Security', match: (c) => c === 'admin.audit' || c === 'admin.security-events' },
+]
+
+function tenantNavSections(items: NavigationItem[]): { title: string; items: NavigationItem[] }[] {
+  const leaves: NavigationItem[] = []
+  const walk = (list: NavigationItem[]) => list.forEach((i) => { if (i.route) leaves.push(i); if (i.children.length) walk(i.children) })
+  walk(items)
+  const used = new Set<NavigationItem>()
+  const sections = TENANT_SECTIONS.map((s) => {
+    const mine = leaves.filter((l) => !used.has(l) && s.match(l.code))
+    mine.forEach((l) => used.add(l))
+    return { title: s.title, items: mine }
+  }).filter((s) => s.items.length > 0)
+  const rest = leaves.filter((l) => !used.has(l))
+  if (rest.length) sections.push({ title: 'More', items: rest })
+  return sections
+}
+
+function TenantNavButton({ item, collapsed }: { item: NavigationItem; collapsed: boolean }) {
   const { pathname } = useLocation()
+  const theme = useTheme()
+  const selected = !!item.route && (pathname === item.route || (item.route !== '/' && pathname.startsWith(item.route + '/')))
+  const btn = (
+    <ListItemButton
+      component={item.route ? Link : 'div'}
+      to={item.route ?? undefined}
+      selected={selected}
+      sx={{
+        mx: 1.5, mb: 0.25, py: 0.75, px: collapsed ? 0 : 1.25, minHeight: 38,
+        justifyContent: collapsed ? 'center' : 'flex-start',
+        color: 'text.secondary',
+        '&.Mui-selected': {
+          bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.16 : 0.08),
+          color: 'primary.main',
+          boxShadow: `inset 2px 0 0 ${theme.palette.primary.main}`,
+          '& .MuiListItemIcon-root': { color: 'primary.main' },
+          '&:hover': { bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.22 : 0.12) },
+        },
+      }}
+    >
+      <ListItemIcon sx={{ minWidth: collapsed ? 0 : 32, color: 'text.disabled', '& .MuiSvgIcon-root': { fontSize: 19 } }}>
+        {tenantIcon(item.icon)}
+      </ListItemIcon>
+      {!collapsed && <ListItemText primary={item.title} slotProps={{ primary: { sx: { fontSize: 13, fontWeight: selected ? 650 : 500 } } }} />}
+    </ListItemButton>
+  )
+  return collapsed ? <Tooltip title={item.title} placement="right">{btn}</Tooltip> : btn
+}
+
+function TenantNav({ items, collapsed }: { items: NavigationItem[]; collapsed: boolean }) {
+  const sections = tenantNavSections(items)
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
   return (
-    <List dense disablePadding>
-      {[...items].sort((a, b) => a.order - b.order).map((i) => (
-        <Box key={i.code}>
-          {i.route ? (
-            <ListItemButton component={Link} to={i.route} selected={pathname === i.route || (i.route !== '/' && pathname.startsWith(i.route + '/'))}
-              sx={{ pl: 2 + depth * 2, py: 0.9, mx: 1.5, color: 'text.secondary', '&.Mui-selected': { bgcolor: (t) => alpha(t.palette.primary.main, 0.08), color: 'primary.main' } }}>
-              {depth === 0 && i.icon && <ListItemIcon sx={{ minWidth: 34, color: 'inherit' }}>{tenantIcon(i.icon)}</ListItemIcon>}
-              {depth > 0 && i.icon && <ListItemIcon sx={{ minWidth: 32, color: 'inherit' }}>{tenantIcon(i.icon)}</ListItemIcon>}
-              <ListItemText primary={i.title} slotProps={{ primary: { sx: { fontSize: 13 } } }} />
-            </ListItemButton>
-          ) : (
-            <Typography variant="overline" sx={{ pl: 2 + depth * 2, display: 'block', mt: 1, fontSize: 10, letterSpacing: 1.4, color: 'text.disabled' }}>
-              {i.title}
-            </Typography>
-          )}
-          {i.children.length > 0 && <TenantNavList items={i.children} depth={depth + 1} />}
-        </Box>
-      ))}
-    </List>
+    <>
+      {sections.map((s) => {
+        const open = openGroups[s.title] ?? true
+        return (
+          <Section key={s.title} title={s.title} collapsed={collapsed} open={open}
+            onToggle={() => setOpenGroups((g) => ({ ...g, [s.title]: !open }))}>
+            {s.items.map((i) => <TenantNavButton key={i.code} item={i} collapsed={collapsed} />)}
+          </Section>
+        )
+      })}
+    </>
   )
 }
 
@@ -383,7 +431,7 @@ export function AppShell() {
         )}
       </Toolbar>
       <Box sx={{ flexGrow: 1, overflowY: 'auto', overflowX: 'hidden', pb: 1 }}>
-        {isPlatform ? <AdminNav collapsed={collapsed} /> : <TenantNavList items={nav.data ?? []} />}
+        {isPlatform ? <AdminNav collapsed={collapsed} /> : <TenantNav items={nav.data ?? []} collapsed={collapsed} />}
       </Box>
       <Divider />
       <Box sx={{ py: 1 }}><UserCard collapsed={collapsed} onCustomize={() => setCustomizeOpen(true)} /></Box>
@@ -463,6 +511,11 @@ export function AppShell() {
               <SettingsSuggest />
             </IconButton>
           </Tooltip>
+          {!isPlatform && (
+            <Box sx={{ ml: 0.5 }}>
+              <UserCard collapsed onCustomize={() => setCustomizeOpen(true)} />
+            </Box>
+          )}
         </Toolbar>
       </AppBar>
 

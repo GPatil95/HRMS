@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import {
-  Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem,
-  Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography,
+  Avatar, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem,
+  TextField, Typography,
 } from '@mui/material'
+import { AccountTree, Apartment, Store } from '@mui/icons-material'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { tenantApi, type Branch, type Company, type Department } from '../../api/tenant'
 import { EmptyState, ErrorAlert, PageHeader, StatusChip, TableSkeleton } from '../../components/ui'
+import { DataList } from '../../components/tenant'
 import { useToast } from '../../components/toast'
 
 interface EntityRow { id: string; code: string; name: string; isActive: boolean; extra?: string }
@@ -101,27 +103,40 @@ function OrgPage({ kind, title, subtitle, extraHeader }: {
       </Box>
       {error && <ErrorAlert error={error} onRetry={refetch} />}
       {pending ? <TableSkeleton columns={4} /> : filtered.length === 0 ? (
-        <EmptyState title={query ? 'No matches' : `No ${kind} yet`} hint={query ? 'Try a different search.' : 'Create the first one to get started.'} />
+        <EmptyState
+          title={query ? 'No matches' : `No ${kind} yet`}
+          hint={query ? 'Try a different search.' : {
+            companies: 'Create your first company to start organizing your HRMS.',
+            branches: 'Add a branch to represent an office or business unit.',
+            departments: 'Add a department to organize teams.',
+          }[kind]}
+          icon={kind === 'companies' ? <Apartment /> : kind === 'branches' ? <Store /> : <AccountTree />}
+          action={!query ? <Button variant="contained" size="small" onClick={() => setCreateOpen(true)}>Create {kind === 'companies' ? 'company' : kind === 'branches' ? 'branch' : 'department'}</Button> : undefined}
+        />
       ) : (
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Code</TableCell><TableCell>Name</TableCell>
-              {extraHeader && <TableCell>{extraHeader}</TableCell>}
-              <TableCell>Status</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filtered.map((r) => (
-              <TableRow key={r.id} hover>
-                <TableCell><Typography variant="body2" sx={{ fontFamily: "monospace" }}>{r.code}</Typography></TableCell>
-                <TableCell><Typography variant="body2" sx={{ fontWeight: 600 }}>{r.name}</Typography></TableCell>
-                {extraHeader && <TableCell><Typography variant="body2" color="text.secondary">{r.extra ?? '—'}</Typography></TableCell>}
-                <TableCell><StatusChip value={r.isActive ? 'Active' : 'Inactive'} /></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <DataList<EntityRow>
+          columns={['Code', 'Name', ...(extraHeader ? [extraHeader] : []), 'Status']}
+          rows={filtered}
+          rowKey={(r) => r.id}
+          renderRow={(r) => [
+            <Typography key="c" variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12 }}>{r.code}</Typography>,
+            <Typography key="n" variant="body2" sx={{ fontWeight: 600 }}>{r.name}</Typography>,
+            ...(extraHeader ? [<Typography key="x" variant="body2" color="text.secondary">{r.extra ?? '—'}</Typography>] : []),
+            <StatusChip key="s" value={r.isActive ? 'Active' : 'Inactive'} />,
+          ]}
+          renderCard={(r) => (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Avatar sx={{ width: 34, height: 34, fontSize: 12, fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary' }}>{r.code.slice(0, 3)}</Avatar>
+              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                <Typography variant="body2" sx={{ fontWeight: 650 }} noWrap>{r.name}</Typography>
+                <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
+                  {r.code}{r.extra ? ` · ${r.extra}` : ''}
+                </Typography>
+              </Box>
+              <StatusChip value={r.isActive ? 'Active' : 'Inactive'} />
+            </Box>
+          )}
+        />
       )}
       <CreateDialog kind={kind} open={createOpen} onClose={() => setCreateOpen(false)} companies={companies} branches={branches} />
     </Box>
