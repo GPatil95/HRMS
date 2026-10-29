@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><UserSecretsId>hrms-api-dev</UserSecretsId></PropertyGroup>
+  <ItemGroup><ProjectReference Include="..\Hrms.Infrastructure\Hrms.Infrastructure.csproj" /></ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design"><PrivateAssets>all</PrivateAssets></PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+</Project>

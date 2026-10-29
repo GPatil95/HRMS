@@ -1,0 +1,24 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/backend/">
+    <Project Path="src/backend/Hrms.Api/Hrms.Api.csproj" />
+    <Project Path="src/backend/Hrms.Application/Hrms.Application.csproj" />
+    <Project Path="src/backend/Hrms.Cli/Hrms.Cli.csproj" />
+    <Project Path="src/backend/Hrms.Domain/Hrms.Domain.csproj" />
+    <Project Path="src/backend/Hrms.Infrastructure/Hrms.Infrastructure.csproj" />
+    <Project Path="src/backend/Hrms.Shared/Hrms.Shared.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/api/">
+    <Project Path="tests/api/Hrms.ApiTests/Hrms.ApiTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/integration/">
+    <Project Path="tests/integration/Hrms.IntegrationTests/Hrms.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/shared/">
+    <Project Path="tests/shared/Hrms.Testing/Hrms.Testing.csproj" />
+  </Folder>
+  <Folder Name="/tests/unit/">
+    <Project Path="tests/unit/Hrms.UnitTests/Hrms.UnitTests.csproj" />
+  </Folder>
+</Solution>
