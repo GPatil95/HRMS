@@ -3,12 +3,12 @@ import {
   Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
   MenuItem, Tab, Tabs, TextField, Typography,
 } from '@mui/material'
-import { Add, Apartment, ArrowBack } from '@mui/icons-material'
+import { Add, Apartment, Close } from '@mui/icons-material'
+import { Drawer, IconButton } from '@mui/material'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useParams } from 'react-router-dom'
 import { tenantApi, type BranchDetail, type CompanyDetail, type DepartmentDetail, type Employee } from '../../api/tenant'
 import { ApiError } from '../../api/client'
-import { CenteredSpinner, ErrorAlert, PageHeader, SectionCard, StatusChip } from '../../components/ui'
+import { CenteredSpinner, ErrorAlert, SectionCard, StatusChip } from '../../components/ui'
 import { DataList } from '../../components/tenant'
 import { useToast } from '../../components/toast'
 import {
@@ -64,9 +64,7 @@ function useDetailSave<T extends { rowVersion?: number; code: string; name: stri
 
 // ============================== COMPANY ==============================
 
-export function CompanyDetailPage() {
-  const { id = '' } = useParams()
-  const navigate = useNavigate()
+export function CompanyDetailBody({ id }: { id: string }) {
   const [tab, setTab] = useState(0)
   const perms = usePermissions()
   const canEdit = perms.has('org.company.edit')
@@ -81,10 +79,8 @@ export function CompanyDetailPage() {
 
   return (
     <Box>
-      <PageHeader
-        title={c.name}
-        subtitle={`${c.code}${c.legalName ? ` · ${c.legalName}` : ''}`}
-        actions={<Button startIcon={<ArrowBack />} onClick={() => navigate('/org/companies')}>Companies</Button>} />
+      <Typography variant="h6" sx={{ mb: 0.5 }}>{c.name}</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{c.code}{c.legalName ? ` · ${c.legalName}` : ''}</Typography>
       <Box sx={{ mb: 2, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
         <StatusChip value={c.isActive ? 'Active' : 'Inactive'} />
         {c.parentCompanyName && <Chip size="small" variant="outlined" icon={<Apartment />} label={`Parent: ${c.parentCompanyName}`} />}
@@ -193,9 +189,7 @@ export function CompanyDetailPage() {
 
 // ============================== BRANCH ==============================
 
-export function BranchDetailPage() {
-  const { id = '' } = useParams()
-  const navigate = useNavigate()
+export function BranchDetailBody({ id }: { id: string }) {
   const [tab, setTab] = useState(0)
   const perms = usePermissions()
   const canEdit = perms.has('org.branch.edit')
@@ -212,8 +206,8 @@ export function BranchDetailPage() {
 
   return (
     <Box>
-      <PageHeader title={b.name} subtitle={`${b.code}${b.companyName ? ` · ${b.companyName}` : ''}`}
-        actions={<Button startIcon={<ArrowBack />} onClick={() => navigate('/org/branches')}>Branches</Button>} />
+      <Typography variant="h6" sx={{ mb: 0.5 }}>{b.name}</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{b.code}{b.companyName ? ` · ${b.companyName}` : ''}</Typography>
       <Box sx={{ mb: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
         <StatusChip value={b.isActive ? 'Active' : 'Inactive'} />
         {b.branchType && <Chip size="small" variant="outlined" label={b.branchType.replace(/_/g, ' ')} />}
@@ -364,9 +358,7 @@ function AssignRoleDialog({ departmentId, open, onClose, employees }: {
   )
 }
 
-export function DepartmentDetailPage() {
-  const { id = '' } = useParams()
-  const navigate = useNavigate()
+export function DepartmentDetailBody({ id }: { id: string }) {
   const [tab, setTab] = useState(0)
   const [assignOpen, setAssignOpen] = useState(false)
   const perms = usePermissions()
@@ -396,8 +388,8 @@ export function DepartmentDetailPage() {
 
   return (
     <Box>
-      <PageHeader title={d.name} subtitle={`${d.code}${d.branchName ? ` · ${d.branchName}` : ''}${d.parentDepartmentName ? ` · under ${d.parentDepartmentName}` : ''}`}
-        actions={<Button startIcon={<ArrowBack />} onClick={() => navigate('/org/departments')}>Departments</Button>} />
+      <Typography variant="h6" sx={{ mb: 0.5 }}>{d.name}</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{d.code}{d.branchName ? ` · ${d.branchName}` : ''}{d.parentDepartmentName ? ` · under ${d.parentDepartmentName}` : ''}</Typography>
       <Box sx={{ mb: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
         <StatusChip value={d.isActive ? 'Active' : 'Inactive'} />
         {d.departmentType && <Chip size="small" variant="outlined" label={d.departmentType} />}
@@ -542,5 +534,24 @@ export function DepartmentDetailPage() {
         </SectionCard>
       )}
     </Box>
+  )
+}
+
+
+export function OrgDetailDrawer({ kind, id, onClose }: { kind: 'companies' | 'branches' | 'departments'; id: string | null; onClose: () => void }) {
+  return (
+    <Drawer anchor="right" open={!!id} onClose={onClose}
+      sx={{ zIndex: (t) => t.zIndex.drawer + 2 }}
+      slotProps={{ paper: { sx: { width: { xs: '100%', sm: 720, md: 960 }, maxWidth: '100%' } } }}>
+      <Box sx={{ height: '100%', overflowY: 'auto', p: { xs: 1.5, sm: 2.5 }, position: 'relative' }}>
+        <IconButton onClick={onClose} aria-label="Close" size="small"
+          sx={{ position: 'absolute', top: 10, right: 10, zIndex: 1 }}>
+          <Close />
+        </IconButton>
+        {id && kind === 'companies' && <CompanyDetailBody id={id} />}
+        {id && kind === 'branches' && <BranchDetailBody id={id} />}
+        {id && kind === 'departments' && <DepartmentDetailBody id={id} />}
+      </Box>
+    </Drawer>
   )
 }

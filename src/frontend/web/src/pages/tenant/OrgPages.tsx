@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { OrgDetailDrawer } from './OrgDetails'
 import {
   Avatar, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem,
   TextField, Typography,
@@ -92,7 +92,7 @@ function OrgPage({ kind, title, subtitle, extraHeader }: {
   const { rows, pending, error, refetch, companies, branches } = useOrgData(kind)
   const [query, setQuery] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
-  const navigate = useNavigate()
+  const [selected, setSelected] = useState<string | null>(null)
   const filtered = rows.filter((r) =>
     !query || r.name.toLowerCase().includes(query.toLowerCase()) || r.code.toLowerCase().includes(query.toLowerCase()))
 
@@ -120,7 +120,7 @@ function OrgPage({ kind, title, subtitle, extraHeader }: {
           columns={['Code', 'Name', ...(extraHeader ? [extraHeader] : []), 'Status']}
           rows={filtered}
           rowKey={(r) => r.id}
-          onRowClick={(r) => navigate(`/org/${kind}/${r.id}`)}
+          onRowClick={(r) => setSelected(r.id)}
           renderRow={(r) => [
             <Typography key="c" variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12 }}>{r.code}</Typography>,
             <Typography key="n" variant="body2" sx={{ fontWeight: 600 }}>{r.name}</Typography>,
@@ -142,6 +142,7 @@ function OrgPage({ kind, title, subtitle, extraHeader }: {
         />
       )}
       <CreateDialog kind={kind} open={createOpen} onClose={() => setCreateOpen(false)} companies={companies} branches={branches} />
+      <OrgDetailDrawer kind={kind} id={selected} onClose={() => setSelected(null)} />
     </Box>
   )
 }
