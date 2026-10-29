@@ -33,6 +33,44 @@ switch (command)
         Console.WriteLine("Platform database migrated.");
         return 0;
 
+    case "migrate-tenants":
+    {
+        // Applies pending tenant-schema migrations to every provisioned (Online) tenant database.
+        var pdb = sp.GetRequiredService<PlatformDbContext>();
+        var provisioner = sp.GetRequiredService<Hrms.Application.Abstractions.ITenantDatabaseProvisioner>();
+        var store = sp.GetRequiredService<Hrms.Application.Abstractions.ISecretStore>();
+        var rows = await pdb.TenantDatabases.Include(r => r.Cluster)
+            .Where(r => r.Status == Hrms.Domain.Platform.TenantDatabaseStatus.Online).ToListAsync(ct);
+        var migrated = 0;
+        foreach (var row in rows)
+        {
+            var password = await store.GetAsync(row.MigratorSecretRef, ct);
+            if (password is null)
+            {
+                Console.Error.WriteLine($"{row.DatabaseName}: migrator secret missing - skipped.");
+                continue;
+            }
+
+            var conn = provisioner.BuildConnectionString(row.Cluster!, row.DatabaseName, row.MigratorRoleName, password);
+            var pending = await provisioner.GetPendingMigrationsAsync(conn, ct);
+            if (pending.Count == 0)
+            {
+                Console.WriteLine($"{row.DatabaseName}: up to date.");
+                continue;
+            }
+
+            await provisioner.MigrateAsync(conn, ct);
+            row.LastMigratedAt = DateTimeOffset.UtcNow;
+            row.SchemaVersion = (await provisioner.GetAppliedMigrationsAsync(conn, ct)).LastOrDefault();
+            migrated++;
+            Console.WriteLine($"{row.DatabaseName}: applied {pending.Count} migration(s) -> {row.SchemaVersion}.");
+        }
+
+        await pdb.SaveChangesAsync(ct);
+        Console.WriteLine(migrated == 0 && rows.Count == 0 ? "No online tenant databases." : $"Migrated {migrated} tenant database(s).");
+        return 0;
+    }
+
     case "seed-platform":
     {
         var seed = sp.GetRequiredService<PlatformSeedService>();
@@ -314,7 +352,7 @@ switch (command)
     }
 
     default:
-        Console.WriteLine("Commands: migrate-platform | seed-platform | create-tenant | retry-tenant | initialize-master-key | verify-master-key | repair-secrets [--fix] | rekey | rotate-master-key");
+        Console.WriteLine("Commands: migrate-platform | migrate-tenants | seed-platform | create-tenant | retry-tenant | initialize-master-key | verify-master-key | repair-secrets [--fix] | rekey | rotate-master-key");
         return command == "help" ? 0 : 1;
 }
 

@@ -473,11 +473,534 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("AddressLine1")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("address_line1");
+
+                    b.Property<string>("AddressLine2")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("address_line2");
+
+                    b.Property<string>("AttendanceMode")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("attendance_mode");
+
+                    b.Property<string>("AttendancePolicyCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("attendance_policy_code");
+
+                    b.Property<string>("BranchType")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("branch_type");
+
+                    b.Property<int?>("BreakMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("break_minutes");
+
+                    b.Property<string>("City")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("city");
+
+                    b.Property<string>("ClientSiteRef")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("client_site_ref");
+
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)")
                         .HasColumnName("code");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<string>("ContactEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("contact_email");
+
+                    b.Property<string>("ContactPhone")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("contact_phone");
+
+                    b.Property<string>("CostCentre")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("cost_centre");
+
+                    b.Property<string>("Country")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("country");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("DefaultShiftName")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("default_shift_name");
+
+                    b.Property<string>("District")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("district");
+
+                    b.Property<int?>("GeofenceRadiusMeters")
+                        .HasColumnType("integer")
+                        .HasColumnName("geofence_radius_meters");
+
+                    b.Property<int?>("GraceMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("grace_minutes");
+
+                    b.Property<string>("HolidayCalendarCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("holiday_calendar_code");
+
+                    b.Property<Guid?>("HrEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hr_employee_id");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("latitude");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("longitude");
+
+                    b.Property<Guid?>("ManagerEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("manager_employee_id");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<DateOnly?>("OpeningDate")
+                        .HasColumnType("date")
+                        .HasColumnName("opening_date");
+
+                    b.Property<bool?>("OvertimeAllowed")
+                        .HasColumnType("boolean")
+                        .HasColumnName("overtime_allowed");
+
+                    b.Property<int?>("PayrollDay")
+                        .HasColumnType("integer")
+                        .HasColumnName("payroll_day");
+
+                    b.Property<string>("PinCode")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
+                        .HasColumnName("pin_code");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("State")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("state");
+
+                    b.Property<string>("TimeZone")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("time_zone");
+
+                    b.Property<string>("WeeklyOffConfigJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("weekly_off_config_json");
+
+                    b.Property<string>("WeeklyOffPattern")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("weekly_off_pattern");
+
+                    b.Property<TimeOnly?>("WorkEnd")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("work_end");
+
+                    b.Property<string>("WorkLocationType")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("work_location_type");
+
+                    b.Property<TimeOnly?>("WorkStart")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("work_start");
+
+                    b.HasKey("Id")
+                        .HasName("pk_branches");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_branches_code");
+
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("ix_branches_company_id");
+
+                    b.HasIndex("HrEmployeeId")
+                        .HasDatabaseName("ix_branches_hr_employee_id");
+
+                    b.HasIndex("ManagerEmployeeId")
+                        .HasDatabaseName("ix_branches_manager_employee_id");
+
+                    b.ToTable("branches", "org");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.Company", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Cin")
+                        .HasMaxLength(25)
+                        .HasColumnType("character varying(25)")
+                        .HasColumnName("cin");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("code");
+
+                    b.Property<string>("CompanyType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("company_type");
+
+                    b.Property<string>("ContactNumber")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("contact_number");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("DefaultAttendancePolicyCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("default_attendance_policy_code");
+
+                    b.Property<string>("DefaultHolidayCalendarCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("default_holiday_calendar_code");
+
+                    b.Property<string>("DefaultLeavePolicyCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("default_leave_policy_code");
+
+                    b.Property<string>("DefaultShiftName")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("default_shift_name");
+
+                    b.Property<string>("EsicEmployerCode")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("esic_employer_code");
+
+                    b.Property<string>("FactoryLicenceNo")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("factory_licence_no");
+
+                    b.Property<int?>("FinancialYearStartMonth")
+                        .HasColumnType("integer")
+                        .HasColumnName("financial_year_start_month");
+
+                    b.Property<int?>("GraceMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("grace_minutes");
+
+                    b.Property<DateOnly?>("IncorporationDate")
+                        .HasColumnType("date")
+                        .HasColumnName("incorporation_date");
+
+                    b.Property<string>("Industry")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("industry");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("LegalName")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("legal_name");
+
+                    b.Property<Guid?>("LogoFileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("logo_file_id");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("MsmeUdyamRegNo")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("msme_udyam_reg_no");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("OfficialEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("official_email");
+
+                    b.Property<string>("Pan")
+                        .HasMaxLength(15)
+                        .HasColumnType("character varying(15)")
+                        .HasColumnName("pan");
+
+                    b.Property<Guid?>("ParentCompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("parent_company_id");
+
+                    b.Property<string>("PayrollFrequency")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("payroll_frequency");
+
+                    b.Property<string>("PfEstablishmentCode")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("pf_establishment_code");
+
+                    b.Property<string>("ProfessionalTaxRegNo")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("professional_tax_reg_no");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<int?>("SalaryPayDay")
+                        .HasColumnType("integer")
+                        .HasColumnName("salary_pay_day");
+
+                    b.Property<string>("ShopsEstablishmentRegNo")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("shops_establishment_reg_no");
+
+                    b.Property<string>("Tan")
+                        .HasMaxLength(15)
+                        .HasColumnType("character varying(15)")
+                        .HasColumnName("tan");
+
+                    b.Property<string>("Website")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("website");
+
+                    b.Property<string>("WeeklyOffConfigJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("weekly_off_config_json");
+
+                    b.Property<string>("WeeklyOffPattern")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("weekly_off_pattern");
+
+                    b.HasKey("Id")
+                        .HasName("pk_companies");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_companies_code");
+
+                    b.HasIndex("LogoFileId")
+                        .HasDatabaseName("ix_companies_logo_file_id");
+
+                    b.HasIndex("ParentCompanyId")
+                        .HasDatabaseName("ix_companies_parent_company_id");
+
+                    b.ToTable("companies", "org");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.CompanyAddress", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AddressType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("address_type");
+
+                    b.Property<string>("City")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("city");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<string>("ContactEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("contact_email");
+
+                    b.Property<string>("ContactPerson")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("contact_person");
+
+                    b.Property<string>("ContactPhone")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("contact_phone");
+
+                    b.Property<string>("Country")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("country");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("District")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("district");
+
+                    b.Property<string>("Landmark")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("landmark");
+
+                    b.Property<string>("Line1")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("line1");
+
+                    b.Property<string>("Line2")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("line2");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("PinCode")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
+                        .HasColumnName("pin_code");
+
+                    b.Property<string>("State")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("state");
+
+                    b.HasKey("Id")
+                        .HasName("pk_company_addresses");
+
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("ix_company_addresses_company_id");
+
+                    b.ToTable("company_addresses", "org");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.CompanyBankAccount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccountNumber")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("account_number");
+
+                    b.Property<string>("BankName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("bank_name");
+
+                    b.Property<string>("BranchName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("branch_name");
 
                     b.Property<Guid>("CompanyId")
                         .HasColumnType("uuid")
@@ -491,9 +1014,14 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasColumnType("uuid")
                         .HasColumnName("created_by");
 
-                    b.Property<bool>("IsActive")
+                    b.Property<string>("Ifsc")
+                        .HasMaxLength(15)
+                        .HasColumnType("character varying(15)")
+                        .HasColumnName("ifsc");
+
+                    b.Property<bool>("IsPrimary")
                         .HasColumnType("boolean")
-                        .HasColumnName("is_active");
+                        .HasColumnName("is_primary");
 
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("timestamp with time zone")
@@ -503,49 +1031,31 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasColumnType("uuid")
                         .HasColumnName("modified_by");
 
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("name");
-
-                    b.Property<uint>("RowVersion")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
-
-                    b.Property<string>("TimeZone")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)")
-                        .HasColumnName("time_zone");
-
                     b.HasKey("Id")
-                        .HasName("pk_branches");
-
-                    b.HasIndex("Code")
-                        .IsUnique()
-                        .HasDatabaseName("ix_branches_code");
+                        .HasName("pk_company_bank_accounts");
 
                     b.HasIndex("CompanyId")
-                        .HasDatabaseName("ix_branches_company_id");
+                        .HasDatabaseName("ix_company_bank_accounts_company_id");
 
-                    b.ToTable("branches", "org");
+                    b.ToTable("company_bank_accounts", "org");
                 });
 
-            modelBuilder.Entity("Hrms.Domain.Tenant.Company", b =>
+            modelBuilder.Entity("Hrms.Domain.Tenant.CompanyContact", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("Code")
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<string>("ContactType")
                         .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("code");
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("contact_type");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -555,14 +1065,15 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasColumnType("uuid")
                         .HasColumnName("created_by");
 
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
+                    b.Property<string>("Designation")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("designation");
 
-                    b.Property<string>("LegalName")
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)")
-                        .HasColumnName("legal_name");
+                    b.Property<string>("Email")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("email");
 
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("timestamp with time zone")
@@ -574,24 +1085,22 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
                         .HasColumnName("name");
 
-                    b.Property<uint>("RowVersion")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
+                    b.Property<string>("Phone")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("phone");
 
                     b.HasKey("Id")
-                        .HasName("pk_companies");
+                        .HasName("pk_company_contacts");
 
-                    b.HasIndex("Code")
-                        .IsUnique()
-                        .HasDatabaseName("ix_companies_code");
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("ix_company_contacts_company_id");
 
-                    b.ToTable("companies", "org");
+                    b.ToTable("company_contacts", "org");
                 });
 
             modelBuilder.Entity("Hrms.Domain.Tenant.Dashboard", b =>
@@ -750,15 +1259,49 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("AltHodEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("alt_hod_employee_id");
+
+                    b.Property<Guid?>("AltLeaveApproverEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("alt_leave_approver_employee_id");
+
+                    b.Property<int?>("ApprovedHeadcount")
+                        .HasColumnType("integer")
+                        .HasColumnName("approved_headcount");
+
+                    b.Property<string>("AttendancePolicyCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("attendance_policy_code");
+
                     b.Property<Guid?>("BranchId")
                         .HasColumnType("uuid")
                         .HasColumnName("branch_id");
+
+                    b.Property<int?>("BreakMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("break_minutes");
+
+                    b.Property<decimal?>("BudgetAmount")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("budget_amount");
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)")
                         .HasColumnName("code");
+
+                    b.Property<Guid?>("CompOffApproverEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("comp_off_approver_employee_id");
+
+                    b.Property<string>("CostCentre")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("cost_centre");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -768,9 +1311,53 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasColumnType("uuid")
                         .HasColumnName("created_by");
 
+                    b.Property<string>("DefaultShiftName")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("default_shift_name");
+
+                    b.Property<string>("DepartmentType")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("department_type");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<DateOnly?>("EffectiveDate")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_date");
+
+                    b.Property<int?>("EscalationLevel")
+                        .HasColumnType("integer")
+                        .HasColumnName("escalation_level");
+
+                    b.Property<int?>("GraceMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("grace_minutes");
+
+                    b.Property<DateOnly?>("HodEffectiveFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("hod_effective_from");
+
+                    b.Property<Guid?>("HodEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hod_employee_id");
+
+                    b.Property<string>("HolidayCalendarCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("holiday_calendar_code");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
+
+                    b.Property<Guid?>("LeaveApproverEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("leave_approver_employee_id");
 
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("timestamp with time zone")
@@ -786,9 +1373,29 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
+                    b.Property<Guid?>("OdApproverEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("od_approver_employee_id");
+
+                    b.Property<Guid?>("OtApproverEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ot_approver_employee_id");
+
+                    b.Property<bool?>("OvertimeAllowed")
+                        .HasColumnType("boolean")
+                        .HasColumnName("overtime_allowed");
+
                     b.Property<Guid?>("ParentDepartmentId")
                         .HasColumnType("uuid")
                         .HasColumnName("parent_department_id");
+
+                    b.Property<Guid?>("RegularizationApproverEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("regularization_approver_employee_id");
+
+                    b.Property<Guid?>("ReportingManagerEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reporting_manager_employee_id");
 
                     b.Property<uint>("RowVersion")
                         .IsConcurrencyToken()
@@ -796,8 +1403,40 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasColumnType("xid")
                         .HasColumnName("xmin");
 
+                    b.Property<string>("WeeklyOffConfigJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("weekly_off_config_json");
+
+                    b.Property<string>("WeeklyOffPattern")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("weekly_off_pattern");
+
+                    b.Property<bool?>("WfhAllowed")
+                        .HasColumnType("boolean")
+                        .HasColumnName("wfh_allowed");
+
+                    b.Property<string>("WorkArea")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("work_area");
+
+                    b.Property<TimeOnly?>("WorkEnd")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("work_end");
+
+                    b.Property<TimeOnly?>("WorkStart")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("work_start");
+
                     b.HasKey("Id")
                         .HasName("pk_departments");
+
+                    b.HasIndex("AltHodEmployeeId")
+                        .HasDatabaseName("ix_departments_alt_hod_employee_id");
+
+                    b.HasIndex("AltLeaveApproverEmployeeId")
+                        .HasDatabaseName("ix_departments_alt_leave_approver_employee_id");
 
                     b.HasIndex("BranchId")
                         .HasDatabaseName("ix_departments_branch_id");
@@ -806,13 +1445,96 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .IsUnique()
                         .HasDatabaseName("ix_departments_code");
 
+                    b.HasIndex("CompOffApproverEmployeeId")
+                        .HasDatabaseName("ix_departments_comp_off_approver_employee_id");
+
+                    b.HasIndex("HodEmployeeId")
+                        .HasDatabaseName("ix_departments_hod_employee_id");
+
+                    b.HasIndex("LeaveApproverEmployeeId")
+                        .HasDatabaseName("ix_departments_leave_approver_employee_id");
+
+                    b.HasIndex("OdApproverEmployeeId")
+                        .HasDatabaseName("ix_departments_od_approver_employee_id");
+
+                    b.HasIndex("OtApproverEmployeeId")
+                        .HasDatabaseName("ix_departments_ot_approver_employee_id");
+
                     b.HasIndex("ParentDepartmentId")
                         .HasDatabaseName("ix_departments_parent_department_id");
+
+                    b.HasIndex("RegularizationApproverEmployeeId")
+                        .HasDatabaseName("ix_departments_regularization_approver_employee_id");
+
+                    b.HasIndex("ReportingManagerEmployeeId")
+                        .HasDatabaseName("ix_departments_reporting_manager_employee_id");
 
                     b.ToTable("departments", "org", t =>
                         {
                             t.HasCheckConstraint("ck_departments_parent", "parent_department_id IS NULL OR parent_department_id <> id");
                         });
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.DepartmentHodHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_from");
+
+                    b.Property<DateOnly?>("EffectiveTo")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_to");
+
+                    b.Property<Guid?>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("role");
+
+                    b.HasKey("Id")
+                        .HasName("pk_department_hod_history");
+
+                    b.HasIndex("DepartmentId")
+                        .HasDatabaseName("ix_department_hod_history_department_id");
+
+                    b.HasIndex("EmployeeId")
+                        .HasDatabaseName("ix_department_hod_history_employee_id");
+
+                    b.ToTable("department_hod_history", "org");
                 });
 
             modelBuilder.Entity("Hrms.Domain.Tenant.Employee", b =>
@@ -1218,6 +1940,98 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasDatabaseName("ix_templates_code_channel_locale");
 
                     b.ToTable("templates", "notify");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.OrgRegistration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_id");
+
+                    b.Property<Guid?>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid?>("DocumentFileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("document_file_id");
+
+                    b.Property<DateOnly?>("EffectiveFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_from");
+
+                    b.Property<DateOnly?>("EffectiveTo")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_to");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Jurisdiction")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("jurisdiction");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("RegistrationNumber")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("registration_number");
+
+                    b.Property<string>("RegistrationSubtype")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("registration_subtype");
+
+                    b.Property<string>("RegistrationType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("registration_type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_org_registrations");
+
+                    b.HasIndex("BranchId")
+                        .HasDatabaseName("ix_org_registrations_branch_id");
+
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("ix_org_registrations_company_id");
+
+                    b.HasIndex("DocumentFileId")
+                        .HasDatabaseName("ix_org_registrations_document_file_id");
+
+                    b.HasIndex("CompanyId", "RegistrationType", "RegistrationNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_org_registrations_company_id_registration_type_registration")
+                        .HasFilter("company_id IS NOT NULL");
+
+                    b.ToTable("org_registrations", "org", t =>
+                        {
+                            t.HasCheckConstraint("ck_org_registrations_owner", "(company_id IS NULL) <> (branch_id IS NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Hrms.Domain.Tenant.Permission", b =>
@@ -1822,6 +2636,63 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_branches_companies_company_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("HrEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_branches_employees_hr_employee_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("ManagerEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_branches_employees_manager_employee_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.Company", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.FileObject", null)
+                        .WithMany()
+                        .HasForeignKey("LogoFileId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_companies_files_logo_file_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.Company", null)
+                        .WithMany()
+                        .HasForeignKey("ParentCompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_companies_companies_parent_company_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.CompanyAddress", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_company_addresses_companies_company_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.CompanyBankAccount", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_company_bank_accounts_companies_company_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.CompanyContact", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_company_contacts_companies_company_id");
                 });
 
             modelBuilder.Entity("Hrms.Domain.Tenant.DashboardAssignment", b =>
@@ -1846,17 +2717,87 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
 
             modelBuilder.Entity("Hrms.Domain.Tenant.Department", b =>
                 {
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("AltHodEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_departments_employees_alt_hod_employee_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("AltLeaveApproverEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_departments_employees_alt_leave_approver_employee_id");
+
                     b.HasOne("Hrms.Domain.Tenant.Branch", null)
                         .WithMany()
                         .HasForeignKey("BranchId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_departments_branches_branch_id");
 
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("CompOffApproverEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_departments_employees_comp_off_approver_employee_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("HodEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_departments_employees_hod_employee_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("LeaveApproverEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_departments_employees_leave_approver_employee_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("OdApproverEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_departments_employees_od_approver_employee_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("OtApproverEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_departments_employees_ot_approver_employee_id");
+
                     b.HasOne("Hrms.Domain.Tenant.Department", null)
                         .WithMany()
                         .HasForeignKey("ParentDepartmentId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_departments_departments_parent_department_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("RegularizationApproverEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_departments_employees_regularization_approver_employee_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("ReportingManagerEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_departments_employees_reporting_manager_employee_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.DepartmentHodHistory", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.Department", null)
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_department_hod_history_departments_department_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_department_hod_history_employees_employee_id");
                 });
 
             modelBuilder.Entity("Hrms.Domain.Tenant.Employee", b =>
@@ -1916,6 +2857,27 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_preferences_users_user_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.OrgRegistration", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.Branch", null)
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_org_registrations_branches_branch_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_org_registrations_companies_company_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.FileObject", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentFileId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_org_registrations_files_document_file_id");
                 });
 
             modelBuilder.Entity("Hrms.Domain.Tenant.ReportingClosure", b =>

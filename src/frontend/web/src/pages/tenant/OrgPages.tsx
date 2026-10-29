@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Avatar, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem,
   TextField, Typography,
@@ -91,6 +92,7 @@ function OrgPage({ kind, title, subtitle, extraHeader }: {
   const { rows, pending, error, refetch, companies, branches } = useOrgData(kind)
   const [query, setQuery] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
+  const navigate = useNavigate()
   const filtered = rows.filter((r) =>
     !query || r.name.toLowerCase().includes(query.toLowerCase()) || r.code.toLowerCase().includes(query.toLowerCase()))
 
@@ -118,6 +120,7 @@ function OrgPage({ kind, title, subtitle, extraHeader }: {
           columns={['Code', 'Name', ...(extraHeader ? [extraHeader] : []), 'Status']}
           rows={filtered}
           rowKey={(r) => r.id}
+          onRowClick={(r) => navigate(`/org/${kind}/${r.id}`)}
           renderRow={(r) => [
             <Typography key="c" variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12 }}>{r.code}</Typography>,
             <Typography key="n" variant="body2" sx={{ fontWeight: 600 }}>{r.name}</Typography>,

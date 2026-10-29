@@ -207,7 +207,8 @@ function tenantBreadcrumbFor(pathname: string): string[] {
     if (re.test(pathname)) {
       if (crumbs.length === 2) return crumbs
       const leaf = pathname.split('/').filter(Boolean).pop() ?? ''
-      const label = leaf === 'security-events' ? 'Security Events' : leaf === 'templates' ? 'Notification Templates' : leaf.charAt(0).toUpperCase() + leaf.slice(1)
+      const label = leaf === 'security-events' ? 'Security Events' : leaf === 'templates' ? 'Notification Templates'
+        : /^[0-9a-f-]{30,}$/i.test(leaf) ? 'Details' : leaf.charAt(0).toUpperCase() + leaf.slice(1)
       return pathname === '/' ? crumbs : [...crumbs, label]
     }
   }

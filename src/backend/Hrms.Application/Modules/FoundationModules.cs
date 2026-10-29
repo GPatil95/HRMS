@@ -103,6 +103,20 @@ public sealed class OrganizationModule : ModuleDefinitionBase
         new("org.branches", "Branches", "/org/branches", "store", 20, ModuleCode, "org", [FoundationPermissions.BranchView]),
         new("org.departments", "Departments", "/org/departments", "account_tree", 30, ModuleCode, "org", [FoundationPermissions.DepartmentView]),
     ];
+
+    public const string LogoPurpose = "core.org.logo";
+    public const string CompanyDocumentPurpose = "core.org.company-document";
+    public const string BranchDocumentPurpose = "core.org.branch-document";
+
+    public override IReadOnlyList<FilePurposeDefinition> FilePurposes =>
+    [
+        new(LogoPurpose, ModuleCode, [".png", ".jpg", ".jpeg", ".webp"], 2 * 1024 * 1024,
+            FoundationPermissions.CompanyEdit, FoundationPermissions.CompanyView, FoundationPermissions.CompanyEdit),
+        new(CompanyDocumentPurpose, ModuleCode, [".pdf", ".png", ".jpg", ".jpeg"], 10 * 1024 * 1024,
+            FoundationPermissions.CompanyEdit, FoundationPermissions.CompanyView, FoundationPermissions.CompanyEdit, "confidential"),
+        new(BranchDocumentPurpose, ModuleCode, [".pdf", ".png", ".jpg", ".jpeg"], 10 * 1024 * 1024,
+            FoundationPermissions.BranchEdit, FoundationPermissions.BranchView, FoundationPermissions.BranchEdit, "confidential"),
+    ];
 }
 
 public sealed class EmployeeFoundationModule : ModuleDefinitionBase

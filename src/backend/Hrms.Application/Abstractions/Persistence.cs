@@ -54,6 +54,11 @@ public interface ITenantDbContext
     DbSet<Company> Companies { get; }
     DbSet<Branch> Branches { get; }
     DbSet<Department> Departments { get; }
+    DbSet<CompanyAddress> CompanyAddresses { get; }
+    DbSet<OrgRegistration> OrgRegistrations { get; }
+    DbSet<CompanyContact> CompanyContacts { get; }
+    DbSet<CompanyBankAccount> CompanyBankAccounts { get; }
+    DbSet<DepartmentHodHistory> DepartmentHodHistory { get; }
     DbSet<Employee> Employees { get; }
     DbSet<ReportingClosure> ReportingClosure { get; }
     DbSet<FileObject> Files { get; }

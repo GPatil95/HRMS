@@ -8,12 +8,14 @@ export class ApiError extends Error {
   readonly status: number
   readonly code?: string
   readonly correlationId?: string
+  readonly details?: Record<string, string[]>
 
-  constructor(status: number, title: string, code?: string, correlationId?: string) {
+  constructor(status: number, title: string, code?: string, correlationId?: string, details?: Record<string, string[]>) {
     super(title)
     this.status = status
     this.code = code
     this.correlationId = correlationId
+    this.details = details
   }
 }
 
@@ -45,7 +47,8 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
     if (p.code === 'csrf.invalid') setCsrf(null)
     throw new ApiError(r.status, (p.title as string) ?? r.statusText, p.code as string | undefined,
-      (p.correlationId as string) ?? r.headers.get('X-Correlation-Id') ?? undefined)
+      (p.correlationId as string) ?? r.headers.get('X-Correlation-Id') ?? undefined,
+      (p.errors as Record<string, string[]>) ?? undefined)
   }
   if (r.status === 204) return undefined as T
   return ((r.headers.get('content-type') ?? '').includes('json') ? await r.json() : await r.text()) as T

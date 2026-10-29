@@ -22,6 +22,11 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<Branch> Branches => Set<Branch>();
     public DbSet<Department> Departments => Set<Department>();
+    public DbSet<CompanyAddress> CompanyAddresses => Set<CompanyAddress>();
+    public DbSet<OrgRegistration> OrgRegistrations => Set<OrgRegistration>();
+    public DbSet<CompanyContact> CompanyContacts => Set<CompanyContact>();
+    public DbSet<CompanyBankAccount> CompanyBankAccounts => Set<CompanyBankAccount>();
+    public DbSet<DepartmentHodHistory> DepartmentHodHistory => Set<DepartmentHodHistory>();
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<ReportingClosure> ReportingClosure => Set<ReportingClosure>();
     public DbSet<FileObject> Files => Set<FileObject>();
@@ -130,6 +135,92 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
             e.Property(x => x.Code).HasMaxLength(32);
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.LegalName).HasMaxLength(300);
+            e.Property(x => x.CompanyType).HasMaxLength(50);
+            e.Property(x => x.Industry).HasMaxLength(150);
+            e.Property(x => x.Website).HasMaxLength(300);
+            e.Property(x => x.OfficialEmail).HasMaxLength(320);
+            e.Property(x => x.ContactNumber).HasMaxLength(40);
+            e.Property(x => x.Cin).HasMaxLength(25);
+            e.Property(x => x.Pan).HasMaxLength(15);
+            e.Property(x => x.Tan).HasMaxLength(15);
+            e.Property(x => x.PfEstablishmentCode).HasMaxLength(40);
+            e.Property(x => x.EsicEmployerCode).HasMaxLength(40);
+            e.Property(x => x.ProfessionalTaxRegNo).HasMaxLength(40);
+            e.Property(x => x.ShopsEstablishmentRegNo).HasMaxLength(60);
+            e.Property(x => x.FactoryLicenceNo).HasMaxLength(60);
+            e.Property(x => x.MsmeUdyamRegNo).HasMaxLength(30);
+            e.Property(x => x.Currency).HasMaxLength(8);
+            e.Property(x => x.PayrollFrequency).HasMaxLength(30);
+            e.Property(x => x.DefaultLeavePolicyCode).HasMaxLength(64);
+            e.Property(x => x.DefaultHolidayCalendarCode).HasMaxLength(64);
+            e.Property(x => x.DefaultAttendancePolicyCode).HasMaxLength(64);
+            e.Property(x => x.DefaultShiftName).HasMaxLength(64);
+            e.Property(x => x.WeeklyOffPattern).HasMaxLength(30);
+            e.Property(x => x.WeeklyOffConfigJson).HasColumnType("jsonb");
+            e.HasOne<Company>().WithMany().HasForeignKey(x => x.ParentCompanyId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<FileObject>().WithMany().HasForeignKey(x => x.LogoFileId).OnDelete(DeleteBehavior.SetNull);
+        });
+        b.Entity<CompanyAddress>(e =>
+        {
+            e.ToTable("company_addresses", "org");
+            e.HasIndex(x => x.CompanyId);
+            e.Property(x => x.AddressType).HasMaxLength(30);
+            e.Property(x => x.Line1).HasMaxLength(200);
+            e.Property(x => x.Line2).HasMaxLength(200);
+            e.Property(x => x.Landmark).HasMaxLength(200);
+            e.Property(x => x.Country).HasMaxLength(80);
+            e.Property(x => x.State).HasMaxLength(80);
+            e.Property(x => x.District).HasMaxLength(80);
+            e.Property(x => x.City).HasMaxLength(80);
+            e.Property(x => x.PinCode).HasMaxLength(12);
+            e.Property(x => x.ContactPerson).HasMaxLength(150);
+            e.Property(x => x.ContactEmail).HasMaxLength(320);
+            e.Property(x => x.ContactPhone).HasMaxLength(40);
+            e.HasOne<Company>().WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<OrgRegistration>(e =>
+        {
+            e.ToTable("org_registrations", "org", t => t.HasCheckConstraint("ck_org_registrations_owner", "(company_id IS NULL) <> (branch_id IS NULL)"));
+            e.HasIndex(x => x.CompanyId);
+            e.HasIndex(x => x.BranchId);
+            e.HasIndex(x => new { x.CompanyId, x.RegistrationType, x.RegistrationNumber }).IsUnique().HasFilter("company_id IS NOT NULL");
+            e.Property(x => x.RegistrationType).HasMaxLength(40);
+            e.Property(x => x.RegistrationNumber).HasMaxLength(60);
+            e.Property(x => x.Jurisdiction).HasMaxLength(120);
+            e.Property(x => x.RegistrationSubtype).HasMaxLength(60);
+            e.HasOne<Company>().WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Branch>().WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<FileObject>().WithMany().HasForeignKey(x => x.DocumentFileId).OnDelete(DeleteBehavior.SetNull);
+        });
+        b.Entity<CompanyContact>(e =>
+        {
+            e.ToTable("company_contacts", "org");
+            e.HasIndex(x => x.CompanyId);
+            e.Property(x => x.ContactType).HasMaxLength(30);
+            e.Property(x => x.Name).HasMaxLength(150);
+            e.Property(x => x.Designation).HasMaxLength(100);
+            e.Property(x => x.Email).HasMaxLength(320);
+            e.Property(x => x.Phone).HasMaxLength(40);
+            e.HasOne<Company>().WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<CompanyBankAccount>(e =>
+        {
+            e.ToTable("company_bank_accounts", "org");
+            e.HasIndex(x => x.CompanyId);
+            e.Property(x => x.BankName).HasMaxLength(120);
+            e.Property(x => x.BranchName).HasMaxLength(120);
+            e.Property(x => x.AccountNumber).HasMaxLength(40);
+            e.Property(x => x.Ifsc).HasMaxLength(15);
+            e.HasOne<Company>().WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<DepartmentHodHistory>(e =>
+        {
+            e.ToTable("department_hod_history", "org");
+            e.HasIndex(x => x.DepartmentId);
+            e.Property(x => x.Role).HasMaxLength(30);
+            e.Property(x => x.Reason).HasMaxLength(400);
+            e.HasOne<Department>().WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
         });
         b.Entity<Branch>(e =>
         {
@@ -137,7 +228,28 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
             e.HasIndex(x => x.Code).IsUnique();
             e.Property(x => x.Code).HasMaxLength(32);
             e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.BranchType).HasMaxLength(40);
+            e.Property(x => x.ContactPhone).HasMaxLength(40);
+            e.Property(x => x.ContactEmail).HasMaxLength(320);
+            e.Property(x => x.AddressLine1).HasMaxLength(200);
+            e.Property(x => x.AddressLine2).HasMaxLength(200);
+            e.Property(x => x.City).HasMaxLength(80);
+            e.Property(x => x.District).HasMaxLength(80);
+            e.Property(x => x.State).HasMaxLength(80);
+            e.Property(x => x.Country).HasMaxLength(80);
+            e.Property(x => x.PinCode).HasMaxLength(12);
+            e.Property(x => x.WorkLocationType).HasMaxLength(40);
+            e.Property(x => x.ClientSiteRef).HasMaxLength(120);
+            e.Property(x => x.DefaultShiftName).HasMaxLength(64);
+            e.Property(x => x.WeeklyOffPattern).HasMaxLength(30);
+            e.Property(x => x.WeeklyOffConfigJson).HasColumnType("jsonb");
+            e.Property(x => x.HolidayCalendarCode).HasMaxLength(64);
+            e.Property(x => x.AttendanceMode).HasMaxLength(40);
+            e.Property(x => x.AttendancePolicyCode).HasMaxLength(64);
+            e.Property(x => x.CostCentre).HasMaxLength(64);
             e.HasOne<Company>().WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.ManagerEmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.HrEmployeeId).OnDelete(DeleteBehavior.Restrict);
         });
         b.Entity<Department>(e =>
         {
@@ -145,8 +257,27 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
             e.HasIndex(x => x.Code).IsUnique();
             e.Property(x => x.Code).HasMaxLength(32);
             e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.DepartmentType).HasMaxLength(60);
+            e.Property(x => x.Description).HasMaxLength(500);
+            e.Property(x => x.CostCentre).HasMaxLength(64);
+            e.Property(x => x.DefaultShiftName).HasMaxLength(64);
+            e.Property(x => x.WeeklyOffPattern).HasMaxLength(30);
+            e.Property(x => x.WeeklyOffConfigJson).HasColumnType("jsonb");
+            e.Property(x => x.HolidayCalendarCode).HasMaxLength(64);
+            e.Property(x => x.AttendancePolicyCode).HasMaxLength(64);
+            e.Property(x => x.WorkArea).HasMaxLength(120);
+            e.Property(x => x.BudgetAmount).HasColumnType("numeric(18,2)");
             e.HasOne<Branch>().WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<Department>().WithMany().HasForeignKey(x => x.ParentDepartmentId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.HodEmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.AltHodEmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.ReportingManagerEmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.LeaveApproverEmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.AltLeaveApproverEmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.OdApproverEmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.CompOffApproverEmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.OtApproverEmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.RegularizationApproverEmployeeId).OnDelete(DeleteBehavior.Restrict);
         });
         b.Entity<Employee>(e =>
         {
