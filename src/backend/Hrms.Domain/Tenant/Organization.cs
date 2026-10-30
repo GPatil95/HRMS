@@ -229,11 +229,27 @@ public sealed class Employee : AuditableEntity, IConcurrencyAware
 {
     public string EmployeeCode { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
+    public string? FirstName { get; set; }
+    public string? MiddleName { get; set; }
+    public string? LastName { get; set; }
     public string? WorkEmail { get; set; }
+    public string? WorkPhone { get; set; }
+    public Guid? PhotoFileId { get; set; }
+    /// <summary>One of <see cref="EmploymentTypes"/> — denormalized from the open history row.</summary>
+    public string? EmploymentType { get; set; }
+    public DateOnly? JoiningDate { get; set; }
+    public DateOnly? ProbationEndDate { get; set; }
+    public DateOnly? ConfirmationDate { get; set; }
     public Guid CompanyId { get; set; }
     public Guid BranchId { get; set; }
     public Guid? DepartmentId { get; set; }
+    public Guid? DesignationId { get; set; }
+    public Guid? GradeId { get; set; }
+    public Guid? LocationId { get; set; }
+    public Guid? CostCentreId { get; set; }
     public Guid? ManagerEmployeeId { get; set; }
+    /// <summary>Optional login link → identity.users (unique where set).</summary>
+    public Guid? UserId { get; set; }
     public EmployeeStatus Status { get; set; } = EmployeeStatus.Active;
     public uint RowVersion { get; set; }
 }

@@ -65,6 +65,10 @@ public interface ITenantDbContext
     DbSet<CostCentre> CostCentres { get; }
     DbSet<Employee> Employees { get; }
     DbSet<ReportingClosure> ReportingClosure { get; }
+    DbSet<EmployeeNumberingConfig> EmployeeNumberingConfigs { get; }
+    DbSet<EmployeeCodeSeries> EmployeeCodeSeries { get; }
+    DbSet<EmploymentHistory> EmploymentHistory { get; }
+    DbSet<LifecycleEvent> LifecycleEvents { get; }
     DbSet<FileObject> Files { get; }
     DbSet<FileAccessLog> FileAccessLogs { get; }
     DbSet<Notification> Notifications { get; }
@@ -80,6 +84,8 @@ public interface ITenantDbContext
     DbSet<EmailMessage> EmailMessages { get; }
     DbSet<JobExecution> JobExecutions { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+    /// <summary>Raw relational access (atomic counters, bulk ops). Use sparingly.</summary>
+    Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade Database { get; }
 }
 
 /// <summary>Creates tenant DbContexts for an explicit connection string (provisioning/migration tooling only).</summary>

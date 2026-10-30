@@ -32,6 +32,12 @@ public static class FoundationPermissions
     public const string EmployeeCreate = "employee.directory.create";
     public const string EmployeeEdit = "employee.directory.edit";
     public const string EmployeeExport = "employee.directory.export";
+    public const string HistoryView = "employee.history.view";
+    public const string HistoryBackdate = "employee.history.backdate";
+    public const string LifecycleView = "employee.lifecycle.view";
+    public const string LifecycleCreate = "employee.lifecycle.create";
+    public const string LifecycleApprove = "employee.lifecycle.approve";
+    public const string NumberingManage = "employee.numbering.manage";
     public const string AuditView = "audit.entry.view";
     public const string AuditExport = "audit.entry.export";
     public const string SecurityEventView = "audit.security.view";
@@ -139,6 +145,12 @@ public sealed class EmployeeFoundationModule : ModuleDefinitionBase
         P(FoundationPermissions.EmployeeCreate, PermissionActions.Create, "Create directory records", scoped: true),
         P(FoundationPermissions.EmployeeEdit, PermissionActions.Edit, "Edit directory records", scoped: true),
         P(FoundationPermissions.EmployeeExport, PermissionActions.Export, "Export employee directory", scoped: true, sensitive: true),
+        P(FoundationPermissions.HistoryView, PermissionActions.View, "View employment history", scoped: true),
+        P(FoundationPermissions.HistoryBackdate, PermissionActions.Edit, "Backdate/correct employment history", scoped: true, sensitive: true),
+        P(FoundationPermissions.LifecycleView, PermissionActions.View, "View lifecycle events", scoped: true),
+        P(FoundationPermissions.LifecycleCreate, PermissionActions.Create, "Submit lifecycle events", scoped: true),
+        P(FoundationPermissions.LifecycleApprove, "approve", "Approve lifecycle events", scoped: true, sensitive: true),
+        P(FoundationPermissions.NumberingManage, PermissionActions.Configure, "Manage employee-code numbering config"),
     ];
 
     public override IReadOnlyList<MenuItemDefinition> Menu =>

@@ -4,6 +4,7 @@ using Hrms.Application.Abstractions;
 using Hrms.Application.Auditing;
 using Hrms.Application.Authorization;
 using Hrms.Application.Dashboards;
+using Hrms.Application.Employees;
 using Hrms.Application.Files;
 using Hrms.Application.Identity;
 using Hrms.Application.Jobs;
@@ -205,6 +206,8 @@ public static class DependencyInjection
         s.AddScoped<OrganizationService>();
         s.AddScoped<OrgMastersService>();
         s.AddScoped<OrgReferenceMastersService>();
+        s.AddScoped<EmployeeCodeService>();
+        s.AddScoped<EmploymentHistoryService>();
         s.AddScoped<FileService>();
         s.AddScoped<NotificationService>();
         s.AddScoped<INotificationService>(sp => sp.GetRequiredService<NotificationService>());
