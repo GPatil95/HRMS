@@ -115,6 +115,42 @@ public sealed class TenantSeedService(IModuleCatalog catalog)
         }
     }
 
+    /// <summary>Additively tops up the built-in manager/employee system roles with permissions they were
+    /// seeded to hold (view-level org/employee perms). Never removes grants; custom roles are untouched.
+    /// Used by migrate-tenants catalog sync so new permission codes reach existing tenants.</summary>
+    public async Task SyncRoleGrantsAsync(ITenantDbContext db, CancellationToken ct)
+    {
+        var permissions = await db.Permissions.Where(p => p.IsActive).ToListAsync(ct);
+
+        async Task GrantMissingAsync(string roleCode, ScopeLevel scope, params string[] codes)
+        {
+            var role = await db.Roles.Include(r => r.Permissions).FirstOrDefaultAsync(r => r.Code == roleCode, ct);
+            if (role is null)
+            {
+                return;
+            }
+
+            var wanted = permissions.Where(p => codes.Contains(p.Code)).ToList();
+            foreach (var p in wanted.Where(p => role.Permissions.All(rp => rp.PermissionId != p.Id)))
+            {
+                role.Permissions.Add(new RolePermission { RoleId = role.Id, PermissionId = p.Id, ScopeLevel = p.SupportsScope ? scope : ScopeLevel.Tenant });
+            }
+        }
+
+        await GrantMissingAsync(SystemRoles.Manager, ScopeLevel.DirectReports,
+            FoundationPermissions.MasterView, FoundationPermissions.EmployeeView, FoundationPermissions.DashboardView);
+        await GrantMissingAsync(SystemRoles.Employee, ScopeLevel.Own,
+            FoundationPermissions.MasterView, FoundationPermissions.EmployeeView, FoundationPermissions.DashboardView);
+
+        var state = await db.AuthorizationState.FirstOrDefaultAsync(ct);
+        if (state is not null)
+        {
+            state.Version++;
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
     private static async Task EnsureRoleAsync(ITenantDbContext db, string code, string name, IEnumerable<(Permission P, ScopeLevel Level)> perms, CancellationToken ct)
     {
         if (await db.Roles.AnyAsync(r => r.Code == code, ct))

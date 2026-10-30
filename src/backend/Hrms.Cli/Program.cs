@@ -66,8 +66,35 @@ switch (command)
             Console.WriteLine($"{row.DatabaseName}: applied {pending.Count} migration(s) -> {row.SchemaVersion}.");
         }
 
+        // Sync module catalogue (new permissions/menu items) and grant them to the system roles.
+        var seeder = sp.GetRequiredService<TenantSeedService>();
+        var tenantDbFactory = sp.GetRequiredService<Hrms.Application.Abstractions.ITenantDbContextFactory>();
+        var synced = 0;
+        foreach (var row in rows)
+        {
+            try
+            {
+                var appPassword = await store.GetAsync(row.AppSecretRef, ct);
+                if (appPassword is null)
+                {
+                    Console.Error.WriteLine($"{row.DatabaseName}: app secret missing - catalog sync skipped.");
+                    continue;
+                }
+
+                var appConn = provisioner.BuildConnectionString(row.Cluster!, row.DatabaseName, row.AppRoleName, appPassword);
+                var tdb = tenantDbFactory.CreateForConnection(appConn);
+                await seeder.SyncPermissionsAsync(tdb, ct);
+                await seeder.SyncRoleGrantsAsync(tdb, ct);
+                synced++;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"{row.DatabaseName}: catalog sync failed - {ex.Message}");
+            }
+        }
+
         await pdb.SaveChangesAsync(ct);
-        Console.WriteLine(migrated == 0 && rows.Count == 0 ? "No online tenant databases." : $"Migrated {migrated} tenant database(s).");
+        Console.WriteLine(migrated == 0 && rows.Count == 0 ? "No online tenant databases." : $"Migrated {migrated} tenant database(s); synced catalogue on {synced}.");
         return 0;
     }
 

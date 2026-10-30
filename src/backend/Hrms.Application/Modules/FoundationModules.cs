@@ -25,6 +25,9 @@ public static class FoundationPermissions
     public const string DepartmentView = "org.department.view";
     public const string DepartmentCreate = "org.department.create";
     public const string DepartmentEdit = "org.department.edit";
+    public const string MasterView = "org.master.view";
+    public const string MasterCreate = "org.master.create";
+    public const string MasterEdit = "org.master.edit";
     public const string EmployeeView = "employee.directory.view";
     public const string EmployeeCreate = "employee.directory.create";
     public const string EmployeeEdit = "employee.directory.edit";
@@ -94,6 +97,9 @@ public sealed class OrganizationModule : ModuleDefinitionBase
         P(FoundationPermissions.DepartmentView, PermissionActions.View, "View departments"),
         P(FoundationPermissions.DepartmentCreate, PermissionActions.Create, "Create departments"),
         P(FoundationPermissions.DepartmentEdit, PermissionActions.Edit, "Edit departments"),
+        P(FoundationPermissions.MasterView, PermissionActions.View, "View organization reference masters"),
+        P(FoundationPermissions.MasterCreate, PermissionActions.Create, "Create organization reference masters"),
+        P(FoundationPermissions.MasterEdit, PermissionActions.Edit, "Edit organization reference masters"),
     ];
 
     public override IReadOnlyList<MenuItemDefinition> Menu =>
@@ -102,6 +108,7 @@ public sealed class OrganizationModule : ModuleDefinitionBase
         new("org.companies", "Companies", "/org/companies", "business", 10, ModuleCode, "org", [FoundationPermissions.CompanyView]),
         new("org.branches", "Branches", "/org/branches", "store", 20, ModuleCode, "org", [FoundationPermissions.BranchView]),
         new("org.departments", "Departments", "/org/departments", "account_tree", 30, ModuleCode, "org", [FoundationPermissions.DepartmentView]),
+        new("org.masters", "Masters", "/org/masters", "settings", 40, ModuleCode, "org", [FoundationPermissions.MasterView]),
     ];
 
     public const string LogoPurpose = "core.org.logo";

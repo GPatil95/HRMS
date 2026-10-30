@@ -204,6 +204,7 @@ public static class DependencyInjection
         s.AddScoped<UserAdministrationService>();
         s.AddScoped<OrganizationService>();
         s.AddScoped<OrgMastersService>();
+        s.AddScoped<OrgReferenceMastersService>();
         s.AddScoped<FileService>();
         s.AddScoped<NotificationService>();
         s.AddScoped<INotificationService>(sp => sp.GetRequiredService<NotificationService>());

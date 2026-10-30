@@ -27,6 +27,10 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
     public DbSet<CompanyContact> CompanyContacts => Set<CompanyContact>();
     public DbSet<CompanyBankAccount> CompanyBankAccounts => Set<CompanyBankAccount>();
     public DbSet<DepartmentHodHistory> DepartmentHodHistory => Set<DepartmentHodHistory>();
+    public DbSet<Designation> Designations => Set<Designation>();
+    public DbSet<Grade> Grades => Set<Grade>();
+    public DbSet<WorkLocation> WorkLocations => Set<WorkLocation>();
+    public DbSet<CostCentre> CostCentres => Set<CostCentre>();
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<ReportingClosure> ReportingClosure => Set<ReportingClosure>();
     public DbSet<FileObject> Files => Set<FileObject>();
@@ -278,6 +282,41 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
             e.HasOne<Employee>().WithMany().HasForeignKey(x => x.CompOffApproverEmployeeId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<Employee>().WithMany().HasForeignKey(x => x.OtApproverEmployeeId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<Employee>().WithMany().HasForeignKey(x => x.RegularizationApproverEmployeeId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<Designation>(e =>
+        {
+            e.ToTable("designations", "org");
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32);
+            e.Property(x => x.Name).HasMaxLength(160);
+            e.Property(x => x.Description).HasMaxLength(500);
+        });
+        b.Entity<Grade>(e =>
+        {
+            e.ToTable("grades", "org");
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32);
+            e.Property(x => x.Name).HasMaxLength(160);
+            e.Property(x => x.Description).HasMaxLength(500);
+        });
+        b.Entity<WorkLocation>(e =>
+        {
+            e.ToTable("work_locations", "org");
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32);
+            e.Property(x => x.Name).HasMaxLength(160);
+            e.Property(x => x.LocationType).HasMaxLength(40);
+            e.Property(x => x.Description).HasMaxLength(500);
+            e.HasOne<Branch>().WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<CostCentre>(e =>
+        {
+            e.ToTable("cost_centres", "org");
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32);
+            e.Property(x => x.Name).HasMaxLength(160);
+            e.Property(x => x.Description).HasMaxLength(500);
+            e.HasOne<Company>().WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
         });
         b.Entity<Employee>(e =>
         {

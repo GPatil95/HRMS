@@ -245,3 +245,62 @@ public sealed class ReportingClosure
     public Guid DescendantId { get; set; }
     public int Depth { get; set; }
 }
+
+/// <summary>Common shape of the organization reference masters (code/name/active lookups).</summary>
+public interface IReferenceMaster
+{
+    Guid Id { get; }
+    string Code { get; set; }
+    string Name { get; set; }
+    bool IsActive { get; set; }
+    uint RowVersion { get; }
+}
+
+/// <summary>Designation master — job title referenced by employees (M2.1).</summary>
+[Audited("core.org")]
+public sealed class Designation : AuditableEntity, IConcurrencyAware, IReferenceMaster
+{
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public int? Level { get; set; }
+    public string? Description { get; set; }
+    public bool IsActive { get; set; } = true;
+    public uint RowVersion { get; set; }
+}
+
+/// <summary>Grade master — pay/level band referenced by employees (M2.1).</summary>
+[Audited("core.org")]
+public sealed class Grade : AuditableEntity, IConcurrencyAware, IReferenceMaster
+{
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public int SortOrder { get; set; }
+    public string? Description { get; set; }
+    public bool IsActive { get; set; } = true;
+    public uint RowVersion { get; set; }
+}
+
+/// <summary>Work-location master — offices, floors, desk zones and client sites, optionally under a branch (M2.1).</summary>
+[Audited("core.org")]
+public sealed class WorkLocation : AuditableEntity, IConcurrencyAware, IReferenceMaster
+{
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public Guid? BranchId { get; set; }
+    public string? LocationType { get; set; }
+    public string? Description { get; set; }
+    public bool IsActive { get; set; } = true;
+    public uint RowVersion { get; set; }
+}
+
+/// <summary>Cost-centre master — optionally scoped to a company; referenced by employees (M2.1).</summary>
+[Audited("core.org")]
+public sealed class CostCentre : AuditableEntity, IConcurrencyAware, IReferenceMaster
+{
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public Guid? CompanyId { get; set; }
+    public string? Description { get; set; }
+    public bool IsActive { get; set; } = true;
+    public uint RowVersion { get; set; }
+}

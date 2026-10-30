@@ -193,3 +193,41 @@ export interface DepartmentAssignment { id: string; role: string; employeeId?: s
 export interface EffectiveSetting { key: string; label: string; value: unknown; source: string; sourceId?: string; sourceName?: string; isOverride: boolean }
 export interface EffectiveConfig { level: string; id: string; settings: EffectiveSetting[] }
 export interface WeeklyOffPreview { pattern?: string; source: string; offDays: string[] }
+
+// ---------------- M2.1 org reference masters ----------------
+export interface Designation { id: string; code: string; name: string; level?: number | null; description?: string | null; isActive: boolean; rowVersion: number }
+export interface Grade { id: string; code: string; name: string; sortOrder: number; description?: string | null; isActive: boolean; rowVersion: number }
+export interface WorkLocation { id: string; code: string; name: string; branchId?: string | null; branchName?: string | null; locationType?: string | null; description?: string | null; isActive: boolean; rowVersion: number }
+export interface CostCentre { id: string; code: string; name: string; companyId?: string | null; companyName?: string | null; description?: string | null; isActive: boolean; rowVersion: number }
+
+export interface DesignationInput { code: string; name: string; level?: number | null; description?: string | null; rowVersion?: number }
+export interface GradeInput { code: string; name: string; sortOrder: number; description?: string | null; rowVersion?: number }
+export interface WorkLocationInput { code: string; name: string; branchId?: string | null; locationType?: string | null; description?: string | null; rowVersion?: number }
+export interface CostCentreInput { code: string; name: string; companyId?: string | null; description?: string | null; rowVersion?: number }
+
+const mastersBase = '/api/v1/org'
+export const mastersApi = {
+  designations: (includeInactive = true) => api<Designation[]>(`${mastersBase}/designations?includeInactive=${includeInactive}`),
+  createDesignation: (b: DesignationInput) => post<{ id: string }>(`${mastersBase}/designations`, b),
+  updateDesignation: (id: string, b: DesignationInput) => put(`${mastersBase}/designations/${id}`, b),
+  setDesignationStatus: (id: string, isActive: boolean) => api<undefined>(`${mastersBase}/designations/${id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) }),
+  deleteDesignation: (id: string) => del(`${mastersBase}/designations/${id}`),
+
+  grades: (includeInactive = true) => api<Grade[]>(`${mastersBase}/grades?includeInactive=${includeInactive}`),
+  createGrade: (b: GradeInput) => post<{ id: string }>(`${mastersBase}/grades`, b),
+  updateGrade: (id: string, b: GradeInput) => put(`${mastersBase}/grades/${id}`, b),
+  setGradeStatus: (id: string, isActive: boolean) => api<undefined>(`${mastersBase}/grades/${id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) }),
+  deleteGrade: (id: string) => del(`${mastersBase}/grades/${id}`),
+
+  locations: (includeInactive = true) => api<WorkLocation[]>(`${mastersBase}/locations?includeInactive=${includeInactive}`),
+  createLocation: (b: WorkLocationInput) => post<{ id: string }>(`${mastersBase}/locations`, b),
+  updateLocation: (id: string, b: WorkLocationInput) => put(`${mastersBase}/locations/${id}`, b),
+  setLocationStatus: (id: string, isActive: boolean) => api<undefined>(`${mastersBase}/locations/${id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) }),
+  deleteLocation: (id: string) => del(`${mastersBase}/locations/${id}`),
+
+  costCentres: (includeInactive = true) => api<CostCentre[]>(`${mastersBase}/cost-centres?includeInactive=${includeInactive}`),
+  createCostCentre: (b: CostCentreInput) => post<{ id: string }>(`${mastersBase}/cost-centres`, b),
+  updateCostCentre: (id: string, b: CostCentreInput) => put(`${mastersBase}/cost-centres/${id}`, b),
+  setCostCentreStatus: (id: string, isActive: boolean) => api<undefined>(`${mastersBase}/cost-centres/${id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) }),
+  deleteCostCentre: (id: string) => del(`${mastersBase}/cost-centres/${id}`),
+}

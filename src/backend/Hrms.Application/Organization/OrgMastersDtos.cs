@@ -222,3 +222,18 @@ internal static class OrgMapper
         }
     }
 }
+
+// ---------------- M2.1 reference masters ----------------
+public sealed record DesignationInput(string Code, string Name, int? Level, string? Description, uint? RowVersion = null);
+public sealed record DesignationDto(Guid Id, string Code, string Name, int? Level, string? Description, bool IsActive, uint RowVersion);
+
+public sealed record GradeInput(string Code, string Name, int SortOrder, string? Description, uint? RowVersion = null);
+public sealed record GradeDto(Guid Id, string Code, string Name, int SortOrder, string? Description, bool IsActive, uint RowVersion);
+
+public sealed record WorkLocationInput(string Code, string Name, Guid? BranchId, string? LocationType, string? Description, uint? RowVersion = null);
+public sealed record WorkLocationDto(Guid Id, string Code, string Name, Guid? BranchId, string? BranchName, string? LocationType, string? Description, bool IsActive, uint RowVersion);
+
+public sealed record CostCentreInput(string Code, string Name, Guid? CompanyId, string? Description, uint? RowVersion = null);
+public sealed record CostCentreDto(Guid Id, string Code, string Name, Guid? CompanyId, string? CompanyName, string? Description, bool IsActive, uint RowVersion);
+
+public sealed record SetActiveInput(bool IsActive);

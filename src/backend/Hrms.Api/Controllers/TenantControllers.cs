@@ -275,6 +275,73 @@ public sealed class OrgMastersController(OrgMastersService masters) : Controller
         (await masters.PreviewWeeklyOffAsync("department", id, from, to, ct)).ToActionResult();
 }
 
+/// <summary>M2.1 organization reference masters: designations, grades, work locations, cost centres.</summary>
+[ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/org")]
+public sealed class OrgReferenceMastersController(OrgReferenceMastersService refs) : ControllerBase
+{
+    private const string O = OrganizationModule.ModuleCode;
+
+    [HttpGet("designations"), RequirePermission(O, P.MasterView)]
+    public async Task<IActionResult> ListDesignations([FromQuery] bool includeInactive, CancellationToken ct) => Ok(await refs.ListDesignationsAsync(includeInactive, ct));
+
+    [HttpPost("designations"), RequirePermission(O, P.MasterCreate)]
+    public async Task<IActionResult> CreateDesignation(DesignationInput input, CancellationToken ct) => (await refs.CreateDesignationAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpPut("designations/{id:guid}"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> UpdateDesignation(Guid id, DesignationInput input, CancellationToken ct) => (await refs.UpdateDesignationAsync(id, input, ct)).ToActionResult();
+
+    [HttpPatch("designations/{id:guid}/status"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> SetDesignationStatus(Guid id, SetActiveInput input, CancellationToken ct) => (await refs.SetDesignationActiveAsync(id, input.IsActive, ct)).ToActionResult();
+
+    [HttpDelete("designations/{id:guid}"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> DeleteDesignation(Guid id, CancellationToken ct) => (await refs.DeleteDesignationAsync(id, ct)).ToActionResult();
+
+    [HttpGet("grades"), RequirePermission(O, P.MasterView)]
+    public async Task<IActionResult> ListGrades([FromQuery] bool includeInactive, CancellationToken ct) => Ok(await refs.ListGradesAsync(includeInactive, ct));
+
+    [HttpPost("grades"), RequirePermission(O, P.MasterCreate)]
+    public async Task<IActionResult> CreateGrade(GradeInput input, CancellationToken ct) => (await refs.CreateGradeAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpPut("grades/{id:guid}"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> UpdateGrade(Guid id, GradeInput input, CancellationToken ct) => (await refs.UpdateGradeAsync(id, input, ct)).ToActionResult();
+
+    [HttpPatch("grades/{id:guid}/status"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> SetGradeStatus(Guid id, SetActiveInput input, CancellationToken ct) => (await refs.SetGradeActiveAsync(id, input.IsActive, ct)).ToActionResult();
+
+    [HttpDelete("grades/{id:guid}"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> DeleteGrade(Guid id, CancellationToken ct) => (await refs.DeleteGradeAsync(id, ct)).ToActionResult();
+
+    [HttpGet("locations"), RequirePermission(O, P.MasterView)]
+    public async Task<IActionResult> ListLocations([FromQuery] bool includeInactive, CancellationToken ct) => Ok(await refs.ListWorkLocationsAsync(includeInactive, ct));
+
+    [HttpPost("locations"), RequirePermission(O, P.MasterCreate)]
+    public async Task<IActionResult> CreateLocation(WorkLocationInput input, CancellationToken ct) => (await refs.CreateWorkLocationAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpPut("locations/{id:guid}"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> UpdateLocation(Guid id, WorkLocationInput input, CancellationToken ct) => (await refs.UpdateWorkLocationAsync(id, input, ct)).ToActionResult();
+
+    [HttpPatch("locations/{id:guid}/status"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> SetLocationStatus(Guid id, SetActiveInput input, CancellationToken ct) => (await refs.SetWorkLocationActiveAsync(id, input.IsActive, ct)).ToActionResult();
+
+    [HttpDelete("locations/{id:guid}"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> DeleteLocation(Guid id, CancellationToken ct) => (await refs.DeleteWorkLocationAsync(id, ct)).ToActionResult();
+
+    [HttpGet("cost-centres"), RequirePermission(O, P.MasterView)]
+    public async Task<IActionResult> ListCostCentres([FromQuery] bool includeInactive, CancellationToken ct) => Ok(await refs.ListCostCentresAsync(includeInactive, ct));
+
+    [HttpPost("cost-centres"), RequirePermission(O, P.MasterCreate)]
+    public async Task<IActionResult> CreateCostCentre(CostCentreInput input, CancellationToken ct) => (await refs.CreateCostCentreAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpPut("cost-centres/{id:guid}"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> UpdateCostCentre(Guid id, CostCentreInput input, CancellationToken ct) => (await refs.UpdateCostCentreAsync(id, input, ct)).ToActionResult();
+
+    [HttpPatch("cost-centres/{id:guid}/status"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> SetCostCentreStatus(Guid id, SetActiveInput input, CancellationToken ct) => (await refs.SetCostCentreActiveAsync(id, input.IsActive, ct)).ToActionResult();
+
+    [HttpDelete("cost-centres/{id:guid}"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> DeleteCostCentre(Guid id, CancellationToken ct) => (await refs.DeleteCostCentreAsync(id, ct)).ToActionResult();
+}
+
 [ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/employees")]
 public sealed class EmployeeDirectoryController(OrganizationService org) : ControllerBase
 {
