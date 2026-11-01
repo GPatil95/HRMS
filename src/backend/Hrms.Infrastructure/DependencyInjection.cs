@@ -209,6 +209,8 @@ public static class DependencyInjection
         s.AddScoped<EmployeeCodeService>();
         s.AddScoped<EmploymentHistoryService>();
         s.AddScoped<EmployeeProfileService>();
+        s.AddScoped<LifecycleEventService>();
+        s.AddHostedService<RecurringSweepWorker>();
         s.AddScoped<FileService>();
         s.AddScoped<NotificationService>();
         s.AddScoped<INotificationService>(sp => sp.GetRequiredService<NotificationService>());

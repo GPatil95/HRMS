@@ -16,7 +16,7 @@ public sealed record EmployeeDirectoryDto(Guid Id, string EmployeeCode, string D
 public sealed record CreateCompanyCommand(string Code, string Name, string? LegalName);
 public sealed record CreateBranchCommand(Guid CompanyId, string Code, string Name);
 public sealed record CreateDepartmentCommand(string Code, string Name, Guid? BranchId);
-public sealed record CreateEmployeeCommand(string EmployeeCode, string DisplayName, string? WorkEmail, Guid BranchId, Guid? DepartmentId, Guid? ManagerEmployeeId);
+public sealed record CreateEmployeeCommand(string EmployeeCode, string DisplayName, string? WorkEmail, Guid BranchId, Guid? DepartmentId, Guid? ManagerEmployeeId, bool PreJoining = false);
 
 /// <summary>
 /// Organisation foundation and the minimal employee directory used by data scopes and user linking.
@@ -181,6 +181,7 @@ public sealed class OrganizationService(ITenantDbContext db, IDataScopeService s
             BranchId = branch.Id,
             DepartmentId = cmd.DepartmentId,
             ManagerEmployeeId = cmd.ManagerEmployeeId,
+            Status = cmd.PreJoining ? EmployeeStatus.PreJoining : EmployeeStatus.Active,
         };
         db.Employees.Add(e);
 

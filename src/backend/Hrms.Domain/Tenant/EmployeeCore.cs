@@ -29,6 +29,9 @@ public static class LifecycleEventTypes
     public const string Exit = "exit";
     public const string InitialAssignment = "initial_assignment";
     public const string Correction = "correction";
+
+    public static readonly string[] All =
+        [Joining, ProbationExtension, Confirmation, Transfer, Promotion, ManagerChange, BranchChange, Rejoin, Exit, InitialAssignment, Correction];
 }
 
 public enum LifecycleEventStatus

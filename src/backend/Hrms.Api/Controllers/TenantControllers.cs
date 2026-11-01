@@ -345,7 +345,7 @@ public sealed class OrgReferenceMastersController(OrgReferenceMastersService ref
 
 [ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/employees")]
 public sealed class EmployeeDirectoryController(OrganizationService org, EmployeeProfileService profiles,
-    ICurrentUser currentUser) : ControllerBase
+    LifecycleEventService lifecycle, ICurrentUser currentUser) : ControllerBase
 {
     private const string E = EmployeeFoundationModule.ModuleCode;
 
@@ -399,7 +399,38 @@ public sealed class EmployeeDirectoryController(OrganizationService org, Employe
 
     [HttpGet("{id:guid}/history"), RequirePermission(E, P.HistoryView)]
     public async Task<IActionResult> History(Guid id, CancellationToken ct) => Ok(await profiles.ListHistoryAsync(id, ct));
+
+    // ---- Lifecycle events (M2.3): joining/transfer/promotion/exit with submit→approve→effective. ----
+
+    [HttpGet("{id:guid}/lifecycle-events"), RequirePermission(E, P.LifecycleView)]
+    public async Task<IActionResult> ListEvents(Guid id, CancellationToken ct) => Ok(await lifecycle.ListAsync(id, ct));
+
+    [HttpPost("{id:guid}/lifecycle-events"), RequirePermission(E, P.LifecycleCreate)]
+    public async Task<IActionResult> CreateEvent(Guid id, LifecycleEventInput input, CancellationToken ct) =>
+        (await lifecycle.CreateAsync(id, input, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult(e => Ok(new { id = e.Id }));
+
+    [HttpGet("lifecycle-events/{eventId:guid}"), RequirePermission(E, P.LifecycleView)]
+    public async Task<IActionResult> GetEvent(Guid eventId, CancellationToken ct) =>
+        (await lifecycle.GetAsync(eventId, ct)) is { } e ? Ok(e) : NotFound();
+
+    [HttpPost("lifecycle-events/{eventId:guid}/submit"), RequirePermission(E, P.LifecycleCreate)]
+    public async Task<IActionResult> SubmitEvent(Guid eventId, CancellationToken ct) =>
+        (await lifecycle.SubmitAsync(eventId, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
+
+    [HttpPost("lifecycle-events/{eventId:guid}/approve"), RequirePermission(E, P.LifecycleApprove)]
+    public async Task<IActionResult> ApproveEvent(Guid eventId, CancellationToken ct) =>
+        (await lifecycle.ApproveAsync(eventId, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
+
+    [HttpPost("lifecycle-events/{eventId:guid}/reject"), RequirePermission(E, P.LifecycleApprove)]
+    public async Task<IActionResult> RejectEvent(Guid eventId, RejectEventRequest req, CancellationToken ct) =>
+        (await lifecycle.RejectAsync(eventId, currentUser.UserId ?? Guid.Empty, req.Reason, ct)).ToActionResult();
+
+    [HttpPost("lifecycle-events/{eventId:guid}/cancel"), RequirePermission(E, P.LifecycleCreate)]
+    public async Task<IActionResult> CancelEvent(Guid eventId, CancellationToken ct) =>
+        (await lifecycle.CancelAsync(eventId, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
 }
+
+public sealed record RejectEventRequest(string? Reason);
 
 [ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/files")]
 public sealed class FilesController(FileService files) : ControllerBase
