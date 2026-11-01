@@ -200,7 +200,9 @@ export const tenantApi = {
 
   // ---- Documents & letters ----
   docCategories: () => api<DocCategory[]>('/api/v1/employee-docs/categories'),
+  saveDocCategory: (b: DocCategoryInput) => post<{ id: string }>('/api/v1/employee-docs/categories', b),
   letterTypes: () => api<LetterType[]>('/api/v1/employee-docs/letter-types'),
+  saveLetterType: (b: LetterTypeInput) => post<{ id: string }>('/api/v1/employee-docs/letter-types', b),
   letterTemplates: (typeId: string) => api<LetterTemplate[]>(`/api/v1/employee-docs/letter-types/${typeId}/templates`),
   saveLetterTemplate: (b: LetterTemplateInput) => post<{ id: string }>(`/api/v1/employee-docs/letter-types/${b.letterTypeId}/templates`, b),
   employeeDocs: (id: string) => api<EmpDocument[]>(`/api/v1/employees/${id}/documents`),
@@ -401,6 +403,14 @@ export interface AssignmentInput {
 export interface DocCategory {
   id: string; code: string; name: string; description?: string; requiredForOnboarding: boolean;
   retentionYears?: number; confidential: boolean; trackExpiry: boolean; isActive: boolean; rowVersion: number;
+}
+export interface DocCategoryInput {
+  code: string; name: string; description?: string; requiredForOnboarding: boolean;
+  retentionYears?: number; confidential: boolean; trackExpiry: boolean; isActive: boolean; rowVersion?: number;
+}
+export interface LetterTypeInput {
+  code: string; name: string; description?: string; signatoryEmployeeId?: string;
+  isActive: boolean; rowVersion?: number;
 }
 export interface EmpDocument {
   id: string; employeeId: string; categoryId: string; categoryCode: string; categoryName: string;

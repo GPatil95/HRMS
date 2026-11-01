@@ -209,6 +209,7 @@ public sealed class EmployeeFoundationModule : ModuleDefinitionBase
     [
         new("employees", "Employees", "/employees", "badge", 300, ModuleCode, AnyPermissions: [FoundationPermissions.EmployeeView]),
         new("hr.salary", "Salary Setup", "/salary", "payments", 310, ModuleCode, AnyPermissions: [FoundationPermissions.SalaryComponentView, FoundationPermissions.SalaryStructureView]),
+        new("hr.docs", "HR Docs Setup", "/hr-docs", "description", 320, ModuleCode, AnyPermissions: [FoundationPermissions.DocumentsManage, FoundationPermissions.LettersManage]),
     ];
 }
 
