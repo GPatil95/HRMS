@@ -46,6 +46,11 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
     public DbSet<LetterType> LetterTypes => Set<LetterType>();
     public DbSet<LetterTemplate> LetterTemplates => Set<LetterTemplate>();
     public DbSet<EmployeeLetter> EmployeeLetters => Set<EmployeeLetter>();
+    public DbSet<SalaryComponent> SalaryComponents => Set<SalaryComponent>();
+    public DbSet<SalaryStructure> SalaryStructures => Set<SalaryStructure>();
+    public DbSet<SalaryStructureLine> SalaryStructureLines => Set<SalaryStructureLine>();
+    public DbSet<EmployeeSalaryAssignment> EmployeeSalaryAssignments => Set<EmployeeSalaryAssignment>();
+    public DbSet<EmployeeSalaryLine> EmployeeSalaryLines => Set<EmployeeSalaryLine>();
     public DbSet<FileObject> Files => Set<FileObject>();
     public DbSet<FileAccessLog> FileAccessLogs => Set<FileAccessLog>();
     public DbSet<Notification> Notifications => Set<Notification>();
@@ -521,6 +526,70 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
             e.HasOne<TenantUser>().WithMany().HasForeignKey(x => x.IssuedBy).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<TenantUser>().WithMany().HasForeignKey(x => x.RevokedBy).OnDelete(DeleteBehavior.Restrict);
         });
+        b.Entity<SalaryComponent>(e =>
+        {
+            e.ToTable("salary_components", "hr", t =>
+                t.HasCheckConstraint("ck_salary_components_type",
+                    "type IN ('earning','deduction','benefit','statutory','reimbursement')"));
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(60);
+            e.Property(x => x.Name).HasMaxLength(160);
+            e.Property(x => x.Type).HasMaxLength(20);
+            e.Property(x => x.PayslipName).HasMaxLength(160);
+        });
+        b.Entity<SalaryStructure>(e =>
+        {
+            e.ToTable("salary_structures", "hr");
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(60);
+            e.Property(x => x.Name).HasMaxLength(160);
+            e.Property(x => x.Description).HasMaxLength(500);
+            e.HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.SalaryStructureId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<SalaryStructureLine>(e =>
+        {
+            e.ToTable("salary_structure_lines", "hr", t =>
+                t.HasCheckConstraint("ck_salary_structure_lines_calc",
+                    "calc_type IN ('fixed','percent_of_basic','percent_of_gross','formula')"));
+            e.HasIndex(x => new { x.SalaryStructureId, x.SalaryComponentId }).IsUnique();
+            e.Property(x => x.CalcType).HasMaxLength(24);
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.Percent).HasPrecision(9, 4);
+            e.Property(x => x.Formula).HasMaxLength(500);
+            e.HasOne<SalaryComponent>().WithMany().HasForeignKey(x => x.SalaryComponentId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<EmployeeSalaryAssignment>(e =>
+        {
+            e.ToTable("employee_salary_assignments", "hr", t =>
+                t.HasCheckConstraint("ck_employee_salary_status",
+                    "status IN ('draft','submitted','approved','active','closed','rejected','cancelled')"));
+            e.HasIndex(x => x.EmployeeId);
+            e.HasIndex(x => new { x.Status, x.EffectiveFrom });
+            e.HasIndex(x => x.EmployeeId).IsUnique().HasFilter("status = 'active'").HasDatabaseName("ux_employee_salary_one_active");
+            e.Property(x => x.CtcAmount).HasPrecision(18, 2);
+            e.Property(x => x.Currency).HasMaxLength(8);
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.Reason).HasMaxLength(500);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<SalaryStructure>().WithMany().HasForeignKey(x => x.SalaryStructureId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<LifecycleEvent>().WithMany().HasForeignKey(x => x.LifecycleEventId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<TenantUser>().WithMany().HasForeignKey(x => x.RequestedBy).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<TenantUser>().WithMany().HasForeignKey(x => x.ApprovedBy).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.EmployeeSalaryAssignmentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<EmployeeSalaryLine>(e =>
+        {
+            e.ToTable("employee_salary_lines", "hr", t =>
+                t.HasCheckConstraint("ck_employee_salary_lines_calc",
+                    "calc_type IN ('fixed','percent_of_basic','percent_of_gross','formula')"));
+            e.Property(x => x.CalcType).HasMaxLength(24);
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.Percent).HasPrecision(9, 4);
+            e.Property(x => x.Formula).HasMaxLength(500);
+            e.Property(x => x.ResolvedAmount).HasPrecision(18, 2);
+            e.HasOne<SalaryComponent>().WithMany().HasForeignKey(x => x.SalaryComponentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
         b.Entity<ReportingClosure>(e =>
         {
             e.ToTable("reporting_closure", "org", t => t.HasCheckConstraint("ck_reporting_closure_depth", "depth >= 0"));

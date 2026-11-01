@@ -11,7 +11,7 @@ namespace Hrms.Application.Employees;
 /// then marks expired employee documents. Payload: optional ISO 'today' resolved in the tenant's timezone
 /// by the sweep; defaults to UTC today.</summary>
 [JobHandler(JobTypes.EmployeeLifecycleActivate, true)]
-public sealed class EmployeeLifecycleActivateJob(LifecycleEventService lifecycle, EmployeeDocumentService documents) : IJobHandler
+public sealed class EmployeeLifecycleActivateJob(LifecycleEventService lifecycle, EmployeeDocumentService documents, SalaryService salary) : IJobHandler
 {
     public string JobType => JobTypes.EmployeeLifecycleActivate;
     public bool TenantScoped => true;
@@ -23,6 +23,7 @@ public sealed class EmployeeLifecycleActivateJob(LifecycleEventService lifecycle
             : DateOnly.FromDateTime(DateTime.UtcNow.Date);
         await lifecycle.ActivateDueEventsAsync(today, ct);
         await documents.ExpireDueDocumentsAsync(today, ct);
+        await salary.ActivateDueAssignmentsAsync(today, ct);
     }
 }
 

@@ -211,6 +211,40 @@ public sealed class TenantSeedService(IModuleCatalog catalog)
             }
         }
 
+        // Baseline salary components — Indian payroll defaults; statutory rows are delete-protected.
+        var haveComponents = await db.SalaryComponents.Select(c => c.Code).ToListAsync(ct);
+        (string Code, string Name, string Type, bool Taxable, bool Statutory, bool Basic, int Order)[] comps =
+        [
+            ("basic", "Basic", "earning", true, false, true, 10),
+            ("hra", "House Rent Allowance", "earning", true, false, false, 20),
+            ("special-allowance", "Special Allowance", "earning", true, false, false, 30),
+            ("conveyance", "Conveyance Allowance", "earning", true, false, false, 40),
+            ("medical-allowance", "Medical Allowance", "earning", true, false, false, 50),
+            ("bonus", "Bonus", "earning", true, false, false, 60),
+            ("pf-employee", "Provident Fund (Employee)", "statutory", false, true, false, 100),
+            ("pf-employer", "Provident Fund (Employer)", "statutory", false, true, false, 101),
+            ("esi-employee", "ESI (Employee)", "statutory", false, true, false, 110),
+            ("esi-employer", "ESI (Employer)", "statutory", false, true, false, 111),
+            ("professional-tax", "Professional Tax", "statutory", false, true, false, 120),
+            ("tds", "Tax Deducted at Source", "statutory", false, true, false, 130),
+            ("lwf", "Labour Welfare Fund", "statutory", false, true, false, 140),
+            ("loan-recovery", "Loan Recovery", "deduction", false, false, false, 200),
+            ("other-deduction", "Other Deduction", "deduction", true, false, false, 210),
+        ];
+        foreach (var (code, name, type, taxable, statutory, basic, order) in comps)
+        {
+            if (!haveComponents.Contains(code))
+            {
+                db.SalaryComponents.Add(new SalaryComponent
+                {
+                    Code = code, Name = name, Type = type, Taxable = taxable,
+                    IsStatutory = statutory, IsBasic = basic, DisplayOrder = order,
+                    PartOfGross = type == "earning" || type == "reimbursement",
+                    PartOfCtc = type != "deduction",
+                });
+            }
+        }
+
         await db.SaveChangesAsync(ct);
     }
 

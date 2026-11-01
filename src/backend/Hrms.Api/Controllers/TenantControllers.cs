@@ -487,6 +487,67 @@ public sealed class EmployeeDirectoryController(OrganizationService org, Employe
 public sealed record RejectEventRequest(string? Reason);
 public sealed record LinkUserRequest(Guid UserId);
 
+[ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/salary")]
+public sealed class SalaryController(SalaryService salary) : ControllerBase
+{
+    private const string E = EmployeeFoundationModule.ModuleCode;
+
+    [HttpGet("components"), RequirePermission(E, P.SalaryComponentView)]
+    public async Task<IActionResult> Components(CancellationToken ct) => Ok(await salary.ListComponentsAsync(ct));
+
+    [HttpPost("components"), RequirePermission(E, P.SalaryComponentManage)]
+    public async Task<IActionResult> UpsertComponent(SalaryComponentInput input, CancellationToken ct) =>
+        (await salary.UpsertComponentAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpDelete("components/{id:guid}"), RequirePermission(E, P.SalaryComponentManage)]
+    public async Task<IActionResult> DeleteComponent(Guid id, CancellationToken ct) =>
+        (await salary.DeleteComponentAsync(id, ct)).ToActionResult();
+
+    [HttpGet("structures"), RequirePermission(E, P.SalaryStructureView)]
+    public async Task<IActionResult> Structures(CancellationToken ct) => Ok(await salary.ListStructuresAsync(ct));
+
+    [HttpPost("structures"), RequirePermission(E, P.SalaryStructureManage)]
+    public async Task<IActionResult> UpsertStructure(SalaryStructureInput input, CancellationToken ct) =>
+        (await salary.UpsertStructureAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+}
+
+[ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/employees")]
+public sealed class EmployeeSalaryController(SalaryService salary, ICurrentUser currentUser) : ControllerBase
+{
+    private const string E = EmployeeFoundationModule.ModuleCode;
+
+    [HttpGet("{id:guid}/salary-assignments"), RequirePermission(E, P.SalaryAssignmentView)]
+    public async Task<IActionResult> List(Guid id, CancellationToken ct) => Ok(await salary.ListAssignmentsAsync(id, ct));
+
+    [HttpGet("{id:guid}/salary-assignments/current"), RequirePermission(E, P.SalaryAssignmentView)]
+    public async Task<IActionResult> Current(Guid id, CancellationToken ct) =>
+        (await salary.CurrentAssignmentAsync(id, ct)) is { } a ? Ok(a) : NotFound();
+
+    [HttpGet("{id:guid}/salary-assignments/as-of"), RequirePermission(E, P.SalaryAssignmentView)]
+    public async Task<IActionResult> AsOf(Guid id, [FromQuery] DateOnly date, CancellationToken ct) =>
+        (await salary.AssignmentAsOfAsync(id, date, ct)) is { } a ? Ok(a) : NotFound();
+
+    [HttpPost("{id:guid}/salary-assignments"), RequirePermission(E, P.SalaryAssignmentCreate)]
+    public async Task<IActionResult> Create(Guid id, SalaryAssignmentInput input, CancellationToken ct) =>
+        (await salary.CreateAsync(id, input, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult(a => Ok(new { id = a.Id }));
+
+    [HttpPost("salary-assignments/{assignmentId:guid}/submit"), RequirePermission(E, P.SalaryAssignmentCreate)]
+    public async Task<IActionResult> Submit(Guid assignmentId, CancellationToken ct) =>
+        (await salary.SubmitAsync(assignmentId, ct)).ToActionResult();
+
+    [HttpPost("salary-assignments/{assignmentId:guid}/approve"), RequirePermission(E, P.SalaryAssignmentApprove)]
+    public async Task<IActionResult> Approve(Guid assignmentId, CancellationToken ct) =>
+        (await salary.ApproveAsync(assignmentId, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult(a => Ok(new { id = a.Id }));
+
+    [HttpPost("salary-assignments/{assignmentId:guid}/reject"), RequirePermission(E, P.SalaryAssignmentApprove)]
+    public async Task<IActionResult> Reject(Guid assignmentId, RejectEventRequest req, CancellationToken ct) =>
+        (await salary.RejectAsync(assignmentId, currentUser.UserId ?? Guid.Empty, req.Reason, ct)).ToActionResult();
+
+    [HttpPost("salary-assignments/{assignmentId:guid}/cancel"), RequirePermission(E, P.SalaryAssignmentCreate)]
+    public async Task<IActionResult> Cancel(Guid assignmentId, CancellationToken ct) =>
+        (await salary.CancelAsync(assignmentId, ct)).ToActionResult();
+}
+
 [ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/employee-docs")]
 public sealed class EmployeeDocsAdminController(EmployeeDocumentService documents) : ControllerBase
 {

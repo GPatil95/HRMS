@@ -2502,6 +2502,179 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                     b.ToTable("employee_personal", "hr");
                 });
 
+            modelBuilder.Entity("Hrms.Domain.Tenant.EmployeeSalaryAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("approved_at");
+
+                    b.Property<Guid?>("ApprovedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("approved_by");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<decimal>("CtcAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("ctc_amount");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("currency");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_from");
+
+                    b.Property<DateOnly?>("EffectiveTo")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_to");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<Guid?>("LifecycleEventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("lifecycle_event_id");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<Guid?>("RequestedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_by");
+
+                    b.Property<long>("RowVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("row_version");
+
+                    b.Property<Guid>("SalaryStructureId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("salary_structure_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_employee_salary_assignments");
+
+                    b.HasIndex("ApprovedBy")
+                        .HasDatabaseName("ix_employee_salary_assignments_approved_by");
+
+                    b.HasIndex("EmployeeId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_employee_salary_one_active")
+                        .HasFilter("status = 'active'");
+
+                    b.HasIndex("LifecycleEventId")
+                        .HasDatabaseName("ix_employee_salary_assignments_lifecycle_event_id");
+
+                    b.HasIndex("RequestedBy")
+                        .HasDatabaseName("ix_employee_salary_assignments_requested_by");
+
+                    b.HasIndex("SalaryStructureId")
+                        .HasDatabaseName("ix_employee_salary_assignments_salary_structure_id");
+
+                    b.HasIndex("Status", "EffectiveFrom")
+                        .HasDatabaseName("ix_employee_salary_assignments_status_effective_from");
+
+                    b.ToTable("employee_salary_assignments", "hr", t =>
+                        {
+                            t.HasCheckConstraint("ck_employee_salary_status", "status IN ('draft','submitted','approved','active','closed','rejected','cancelled')");
+                        });
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.EmployeeSalaryLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal?>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<string>("CalcType")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("calc_type");
+
+                    b.Property<Guid>("EmployeeSalaryAssignmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_salary_assignment_id");
+
+                    b.Property<string>("Formula")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("formula");
+
+                    b.Property<decimal?>("Percent")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("numeric(9,4)")
+                        .HasColumnName("percent");
+
+                    b.Property<decimal?>("ResolvedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("resolved_amount");
+
+                    b.Property<Guid>("SalaryComponentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("salary_component_id");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer")
+                        .HasColumnName("sequence");
+
+                    b.HasKey("Id")
+                        .HasName("pk_employee_salary_lines");
+
+                    b.HasIndex("EmployeeSalaryAssignmentId")
+                        .HasDatabaseName("ix_employee_salary_lines_employee_salary_assignment_id");
+
+                    b.HasIndex("SalaryComponentId")
+                        .HasDatabaseName("ix_employee_salary_lines_salary_component_id");
+
+                    b.ToTable("employee_salary_lines", "hr", t =>
+                        {
+                            t.HasCheckConstraint("ck_employee_salary_lines_calc", "calc_type IN ('fixed','percent_of_basic','percent_of_gross','formula')");
+                        });
+                });
+
             modelBuilder.Entity("Hrms.Domain.Tenant.EmployeeStatutory", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3604,6 +3777,215 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         });
                 });
 
+            modelBuilder.Entity("Hrms.Domain.Tenant.SalaryComponent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("display_order");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsBasic")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_basic");
+
+                    b.Property<bool>("IsStatutory")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_statutory");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("name");
+
+                    b.Property<bool>("PartOfCtc")
+                        .HasColumnType("boolean")
+                        .HasColumnName("part_of_ctc");
+
+                    b.Property<bool>("PartOfGross")
+                        .HasColumnType("boolean")
+                        .HasColumnName("part_of_gross");
+
+                    b.Property<string>("PayslipName")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("payslip_name");
+
+                    b.Property<bool>("ProRata")
+                        .HasColumnType("boolean")
+                        .HasColumnName("pro_rata");
+
+                    b.Property<long>("RowVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("row_version");
+
+                    b.Property<bool>("Taxable")
+                        .HasColumnType("boolean")
+                        .HasColumnName("taxable");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_salary_components");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_salary_components_code");
+
+                    b.ToTable("salary_components", "hr", t =>
+                        {
+                            t.HasCheckConstraint("ck_salary_components_type", "type IN ('earning','deduction','benefit','statutory','reimbursement')");
+                        });
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.SalaryStructure", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("name");
+
+                    b.Property<long>("RowVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("row_version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_salary_structures");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_salary_structures_code");
+
+                    b.ToTable("salary_structures", "hr");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.SalaryStructureLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal?>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<string>("CalcType")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("calc_type");
+
+                    b.Property<string>("Formula")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("formula");
+
+                    b.Property<decimal?>("Percent")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("numeric(9,4)")
+                        .HasColumnName("percent");
+
+                    b.Property<Guid>("SalaryComponentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("salary_component_id");
+
+                    b.Property<Guid>("SalaryStructureId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("salary_structure_id");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer")
+                        .HasColumnName("sequence");
+
+                    b.HasKey("Id")
+                        .HasName("pk_salary_structure_lines");
+
+                    b.HasIndex("SalaryComponentId")
+                        .HasDatabaseName("ix_salary_structure_lines_salary_component_id");
+
+                    b.HasIndex("SalaryStructureId", "SalaryComponentId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_salary_structure_lines_salary_structure_id_salary_component");
+
+                    b.ToTable("salary_structure_lines", "hr", t =>
+                        {
+                            t.HasCheckConstraint("ck_salary_structure_lines_calc", "calc_type IN ('fixed','percent_of_basic','percent_of_gross','formula')");
+                        });
+                });
+
             modelBuilder.Entity("Hrms.Domain.Tenant.TenantIdentityRecord", b =>
                 {
                     b.Property<Guid>("TenantId")
@@ -4460,6 +4842,58 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasConstraintName("fk_employee_personal_employees_employee_id");
                 });
 
+            modelBuilder.Entity("Hrms.Domain.Tenant.EmployeeSalaryAssignment", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.TenantUser", null)
+                        .WithMany()
+                        .HasForeignKey("ApprovedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_employee_salary_assignments_users_approved_by");
+
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_salary_assignments_employees_employee_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.LifecycleEvent", null)
+                        .WithMany()
+                        .HasForeignKey("LifecycleEventId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_employee_salary_assignments_lifecycle_events_lifecycle_even");
+
+                    b.HasOne("Hrms.Domain.Tenant.TenantUser", null)
+                        .WithMany()
+                        .HasForeignKey("RequestedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_employee_salary_assignments_users_requested_by");
+
+                    b.HasOne("Hrms.Domain.Tenant.SalaryStructure", null)
+                        .WithMany()
+                        .HasForeignKey("SalaryStructureId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_salary_assignments_salary_structures_salary_struct");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.EmployeeSalaryLine", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.EmployeeSalaryAssignment", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("EmployeeSalaryAssignmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_salary_lines_employee_salary_assignments_employee_");
+
+                    b.HasOne("Hrms.Domain.Tenant.SalaryComponent", null)
+                        .WithMany()
+                        .HasForeignKey("SalaryComponentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_salary_lines_salary_components_salary_component_id");
+                });
+
             modelBuilder.Entity("Hrms.Domain.Tenant.EmployeeStatutory", b =>
                 {
                     b.HasOne("Hrms.Domain.Tenant.Employee", null)
@@ -4621,6 +5055,23 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                     b.Navigation("Permission");
                 });
 
+            modelBuilder.Entity("Hrms.Domain.Tenant.SalaryStructureLine", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.SalaryComponent", null)
+                        .WithMany()
+                        .HasForeignKey("SalaryComponentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_salary_structure_lines_salary_components_salary_component_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.SalaryStructure", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("SalaryStructureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_salary_structure_lines_salary_structures_salary_structure_id");
+                });
+
             modelBuilder.Entity("Hrms.Domain.Tenant.TenantSession", b =>
                 {
                     b.HasOne("Hrms.Domain.Tenant.TenantUser", null)
@@ -4702,9 +5153,19 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                     b.Navigation("Widgets");
                 });
 
+            modelBuilder.Entity("Hrms.Domain.Tenant.EmployeeSalaryAssignment", b =>
+                {
+                    b.Navigation("Lines");
+                });
+
             modelBuilder.Entity("Hrms.Domain.Tenant.Role", b =>
                 {
                     b.Navigation("Permissions");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.SalaryStructure", b =>
+                {
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("Hrms.Domain.Tenant.TenantUser", b =>

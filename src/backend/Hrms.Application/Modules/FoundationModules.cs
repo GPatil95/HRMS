@@ -53,6 +53,13 @@ public static class FoundationPermissions
     public const string LettersView = "employee.letters.view";
     public const string LettersIssue = "employee.letters.issue";
     public const string LettersManage = "employee.letters.manage";
+    public const string SalaryComponentView = "salary.component.view";
+    public const string SalaryComponentManage = "salary.component.manage";
+    public const string SalaryStructureView = "salary.structure.view";
+    public const string SalaryStructureManage = "salary.structure.manage";
+    public const string SalaryAssignmentView = "salary.assignment.view";
+    public const string SalaryAssignmentCreate = "salary.assignment.create";
+    public const string SalaryAssignmentApprove = "salary.assignment.approve";
     public const string AuditView = "audit.entry.view";
     public const string AuditExport = "audit.entry.export";
     public const string SecurityEventView = "audit.security.view";
@@ -181,6 +188,13 @@ public sealed class EmployeeFoundationModule : ModuleDefinitionBase
         P(FoundationPermissions.LettersView, PermissionActions.View, "View issued letters", scoped: true),
         P(FoundationPermissions.LettersIssue, PermissionActions.Create, "Issue letters to employees", scoped: true),
         P(FoundationPermissions.LettersManage, PermissionActions.Configure, "Manage letter types and templates"),
+        P(FoundationPermissions.SalaryComponentView, PermissionActions.View, "View salary components"),
+        P(FoundationPermissions.SalaryComponentManage, PermissionActions.Configure, "Manage salary components"),
+        P(FoundationPermissions.SalaryStructureView, PermissionActions.View, "View salary structures"),
+        P(FoundationPermissions.SalaryStructureManage, PermissionActions.Configure, "Manage salary structures"),
+        P(FoundationPermissions.SalaryAssignmentView, PermissionActions.View, "View employee salary", scoped: true, sensitive: true),
+        P(FoundationPermissions.SalaryAssignmentCreate, PermissionActions.Create, "Assign or revise employee salary", scoped: true, sensitive: true),
+        P(FoundationPermissions.SalaryAssignmentApprove, PermissionActions.Approve, "Approve salary assignments", scoped: true, sensitive: true),
     ];
 
     public const string EmployeeDocumentPurpose = "hr.employee.document";
