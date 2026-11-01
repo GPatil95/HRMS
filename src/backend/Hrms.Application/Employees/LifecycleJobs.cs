@@ -7,10 +7,11 @@ using Microsoft.Extensions.Logging;
 
 namespace Hrms.Application.Employees;
 
-/// <summary>Tenant job: applies all approved lifecycle events whose effective date has arrived.
-/// Payload: optional ISO 'today' resolved in the tenant's timezone by the sweep; defaults to UTC today.</summary>
+/// <summary>Tenant job (daily): applies all approved lifecycle events whose effective date has arrived,
+/// then marks expired employee documents. Payload: optional ISO 'today' resolved in the tenant's timezone
+/// by the sweep; defaults to UTC today.</summary>
 [JobHandler(JobTypes.EmployeeLifecycleActivate, true)]
-public sealed class EmployeeLifecycleActivateJob(LifecycleEventService lifecycle) : IJobHandler
+public sealed class EmployeeLifecycleActivateJob(LifecycleEventService lifecycle, EmployeeDocumentService documents) : IJobHandler
 {
     public string JobType => JobTypes.EmployeeLifecycleActivate;
     public bool TenantScoped => true;
@@ -21,6 +22,7 @@ public sealed class EmployeeLifecycleActivateJob(LifecycleEventService lifecycle
             ? d
             : DateOnly.FromDateTime(DateTime.UtcNow.Date);
         await lifecycle.ActivateDueEventsAsync(today, ct);
+        await documents.ExpireDueDocumentsAsync(today, ct);
     }
 }
 

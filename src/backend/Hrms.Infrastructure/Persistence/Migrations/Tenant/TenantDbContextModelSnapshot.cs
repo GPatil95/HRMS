@@ -1668,6 +1668,82 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                     b.ToTable("designations", "org");
                 });
 
+            modelBuilder.Entity("Hrms.Domain.Tenant.DocumentCategory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("code");
+
+                    b.Property<bool>("Confidential")
+                        .HasColumnType("boolean")
+                        .HasColumnName("confidential");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("name");
+
+                    b.Property<bool>("RequiredForOnboarding")
+                        .HasColumnType("boolean")
+                        .HasColumnName("required_for_onboarding");
+
+                    b.Property<int?>("RetentionYears")
+                        .HasColumnType("integer")
+                        .HasColumnName("retention_years");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<bool>("TrackExpiry")
+                        .HasColumnType("boolean")
+                        .HasColumnName("track_expiry");
+
+                    b.HasKey("Id")
+                        .HasName("pk_document_categories");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_document_categories_code");
+
+                    b.ToTable("document_categories", "hr");
+                });
+
             modelBuilder.Entity("Hrms.Domain.Tenant.Employee", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2051,6 +2127,228 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                             t.HasCheckConstraint("ck_employee_contacts_kind", "kind IN ('emergency','family','nominee')");
 
                             t.HasCheckConstraint("ck_employee_contacts_share", "nominee_share_pct IS NULL OR (nominee_share_pct BETWEEN 1 AND 100)");
+                        });
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.EmployeeDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("category_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("DocumentNumber")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("document_number");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<DateOnly?>("ExpiresOn")
+                        .HasColumnType("date")
+                        .HasColumnName("expires_on");
+
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("file_id");
+
+                    b.Property<DateOnly?>("IssuedOn")
+                        .HasColumnType("date")
+                        .HasColumnName("issued_on");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("label");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<Guid?>("ReplacedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("replaced_by_id");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("VerificationNote")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("verification_note");
+
+                    b.Property<DateTimeOffset?>("VerifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("verified_at");
+
+                    b.Property<Guid?>("VerifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("verified_by");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_employee_documents");
+
+                    b.HasIndex("CategoryId")
+                        .HasDatabaseName("ix_employee_documents_category_id");
+
+                    b.HasIndex("EmployeeId")
+                        .HasDatabaseName("ix_employee_documents_employee_id");
+
+                    b.HasIndex("ExpiresOn")
+                        .HasDatabaseName("ix_employee_documents_expires_on")
+                        .HasFilter("expires_on IS NOT NULL");
+
+                    b.HasIndex("FileId")
+                        .HasDatabaseName("ix_employee_documents_file_id");
+
+                    b.HasIndex("ReplacedById")
+                        .HasDatabaseName("ix_employee_documents_replaced_by_id");
+
+                    b.HasIndex("VerifiedBy")
+                        .HasDatabaseName("ix_employee_documents_verified_by");
+
+                    b.ToTable("employee_documents", "hr", t =>
+                        {
+                            t.HasCheckConstraint("ck_employee_documents_status", "status IN ('uploaded','verified','rejected','replaced','expired')");
+                        });
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.EmployeeLetter", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<DateTimeOffset>("IssuedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("issued_at");
+
+                    b.Property<Guid>("IssuedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("issued_by");
+
+                    b.Property<Guid?>("LetterTemplateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("letter_template_id");
+
+                    b.Property<Guid>("LetterTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("letter_type_id");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("RenderedText")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("rendered_text");
+
+                    b.Property<string>("RevokeReason")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("revoke_reason");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<Guid?>("RevokedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("revoked_by");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("subject");
+
+                    b.Property<int>("TemplateVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("template_version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_employee_letters");
+
+                    b.HasIndex("EmployeeId")
+                        .HasDatabaseName("ix_employee_letters_employee_id");
+
+                    b.HasIndex("IssuedBy")
+                        .HasDatabaseName("ix_employee_letters_issued_by");
+
+                    b.HasIndex("LetterTemplateId")
+                        .HasDatabaseName("ix_employee_letters_letter_template_id");
+
+                    b.HasIndex("LetterTypeId")
+                        .HasDatabaseName("ix_employee_letters_letter_type_id");
+
+                    b.HasIndex("RevokedBy")
+                        .HasDatabaseName("ix_employee_letters_revoked_by");
+
+                    b.ToTable("employee_letters", "hr", t =>
+                        {
+                            t.HasCheckConstraint("ck_employee_letters_status", "status IN ('issued','revoked')");
                         });
                 });
 
@@ -2628,6 +2926,141 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasDatabaseName("ix_grades_code");
 
                     b.ToTable("grades", "org");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.LetterTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("body");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<Guid>("LetterTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("letter_type_id");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("name");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("subject");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_letter_templates");
+
+                    b.HasIndex("LetterTypeId", "Version")
+                        .IsUnique()
+                        .HasDatabaseName("ix_letter_templates_letter_type_id_version");
+
+                    b.ToTable("letter_templates", "hr");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.LetterType", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("name");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<Guid?>("SignatoryEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("signatory_employee_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_letter_types");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_letter_types_code");
+
+                    b.HasIndex("SignatoryEmployeeId")
+                        .HasDatabaseName("ix_letter_types_signatory_employee_id");
+
+                    b.ToTable("letter_types", "hr");
                 });
 
             modelBuilder.Entity("Hrms.Domain.Tenant.LifecycleEvent", b =>
@@ -3936,6 +4369,78 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasConstraintName("fk_employee_contacts_employees_employee_id");
                 });
 
+            modelBuilder.Entity("Hrms.Domain.Tenant.EmployeeDocument", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.DocumentCategory", null)
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_documents_document_categories_category_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_documents_employees_employee_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.FileObject", null)
+                        .WithMany()
+                        .HasForeignKey("FileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_documents_files_file_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.EmployeeDocument", null)
+                        .WithMany()
+                        .HasForeignKey("ReplacedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_employee_documents_employee_documents_replaced_by_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.TenantUser", null)
+                        .WithMany()
+                        .HasForeignKey("VerifiedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_employee_documents_users_verified_by");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.EmployeeLetter", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_letters_employees_employee_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.TenantUser", null)
+                        .WithMany()
+                        .HasForeignKey("IssuedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_letters_users_issued_by");
+
+                    b.HasOne("Hrms.Domain.Tenant.LetterTemplate", null)
+                        .WithMany()
+                        .HasForeignKey("LetterTemplateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_employee_letters_letter_templates_letter_template_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.LetterType", null)
+                        .WithMany()
+                        .HasForeignKey("LetterTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_letters_letter_types_letter_type_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.TenantUser", null)
+                        .WithMany()
+                        .HasForeignKey("RevokedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_employee_letters_users_revoked_by");
+                });
+
             modelBuilder.Entity("Hrms.Domain.Tenant.EmployeeNumberingConfig", b =>
                 {
                     b.HasOne("Hrms.Domain.Tenant.Company", null)
@@ -3989,6 +4494,25 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_file_access_log_files_file_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.LetterTemplate", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.LetterType", null)
+                        .WithMany()
+                        .HasForeignKey("LetterTypeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_letter_templates_letter_types_letter_type_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.LetterType", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("SignatoryEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_letter_types_employees_signatory_employee_id");
                 });
 
             modelBuilder.Entity("Hrms.Domain.Tenant.LifecycleEvent", b =>

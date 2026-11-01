@@ -55,6 +55,8 @@ public sealed class TenantSeedService(IModuleCatalog catalog)
             }
         }
 
+        await SeedHrDefaultsAsync(db, ct);
+
         if (!await db.Dashboards.AnyAsync(d => d.Code == "default", ct))
         {
             var dashboard = new Dashboard { Code = "default", Name = "Home", IsSystem = true };
@@ -146,6 +148,67 @@ public sealed class TenantSeedService(IModuleCatalog catalog)
         if (state is not null)
         {
             state.Version++;
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Baseline employee document categories and letter types. Idempotent by code; runs at
+    /// provisioning (SeedAsync) and for existing tenants via the migrate-tenants catalogue sync.</summary>
+    public async Task SeedHrDefaultsAsync(ITenantDbContext db, CancellationToken ct)
+    {
+        // (code, name, requiredForOnboarding, retentionYears, confidential, trackExpiry)
+        (string Code, string Name, bool Required, int? Retention, bool Confidential, bool TrackExpiry)[] categories =
+        [
+            ("photo", "Photograph", false, null, false, false),
+            ("resume", "Resume / CV", false, null, false, false),
+            ("aadhaar", "Aadhaar Card", true, null, true, false),
+            ("pan-card", "PAN Card", true, null, true, false),
+            ("passport", "Passport", false, null, true, true),
+            ("address-proof", "Address Proof", true, null, false, false),
+            ("education", "Education Certificate", true, null, false, false),
+            ("experience", "Experience / Relieving Letter", false, null, false, false),
+            ("bank-proof", "Bank Proof (Cancelled Cheque / Passbook)", true, null, true, false),
+            ("offer-letter", "Signed Offer Letter", true, 8, false, false),
+            ("visa-work-permit", "Visa / Work Permit", false, null, true, true),
+            ("other", "Other", false, null, false, false),
+        ];
+
+        var haveCategories = await db.DocumentCategories.Select(c => c.Code).ToListAsync(ct);
+        foreach (var (code, name, required, retention, confidential, trackExpiry) in categories)
+        {
+            if (!haveCategories.Contains(code))
+            {
+                db.DocumentCategories.Add(new DocumentCategory
+                {
+                    Code = code,
+                    Name = name,
+                    RequiredForOnboarding = required,
+                    RetentionYears = retention,
+                    Confidential = confidential,
+                    TrackExpiry = trackExpiry,
+                });
+            }
+        }
+
+        var haveTypes = await db.LetterTypes.Select(t => t.Code).ToListAsync(ct);
+        (string Code, string Name)[] types =
+        [
+            ("offer", "Offer Letter"),
+            ("appointment", "Appointment Letter"),
+            ("confirmation", "Confirmation Letter"),
+            ("experience", "Experience Letter"),
+            ("relieving", "Relieving Letter"),
+            ("address-proof", "Address Proof Letter"),
+            ("salary-revision", "Salary Revision Letter"),
+            ("warning", "Warning Letter"),
+        ];
+        foreach (var (code, name) in types)
+        {
+            if (!haveTypes.Contains(code))
+            {
+                db.LetterTypes.Add(new LetterType { Code = code, Name = name });
+            }
         }
 
         await db.SaveChangesAsync(ct);

@@ -46,6 +46,13 @@ public static class FoundationPermissions
     public const string LifecycleCreate = "employee.lifecycle.create";
     public const string LifecycleApprove = "employee.lifecycle.approve";
     public const string NumberingManage = "employee.numbering.manage";
+    public const string DocumentsView = "employee.documents.view";
+    public const string DocumentsUpload = "employee.documents.upload";
+    public const string DocumentsVerify = "employee.documents.verify";
+    public const string DocumentsManage = "employee.documents.manage";
+    public const string LettersView = "employee.letters.view";
+    public const string LettersIssue = "employee.letters.issue";
+    public const string LettersManage = "employee.letters.manage";
     public const string AuditView = "audit.entry.view";
     public const string AuditExport = "audit.entry.export";
     public const string SecurityEventView = "audit.security.view";
@@ -167,6 +174,21 @@ public sealed class EmployeeFoundationModule : ModuleDefinitionBase
         P(FoundationPermissions.LifecycleCreate, PermissionActions.Create, "Submit lifecycle events", scoped: true),
         P(FoundationPermissions.LifecycleApprove, "approve", "Approve lifecycle events", scoped: true, sensitive: true),
         P(FoundationPermissions.NumberingManage, PermissionActions.Configure, "Manage employee-code numbering config"),
+        P(FoundationPermissions.DocumentsView, PermissionActions.View, "View employee documents", scoped: true, sensitive: true),
+        P(FoundationPermissions.DocumentsUpload, PermissionActions.Create, "Upload employee documents", scoped: true, sensitive: true),
+        P(FoundationPermissions.DocumentsVerify, PermissionActions.Approve, "Verify employee documents", scoped: true, sensitive: true),
+        P(FoundationPermissions.DocumentsManage, PermissionActions.Configure, "Manage document categories"),
+        P(FoundationPermissions.LettersView, PermissionActions.View, "View issued letters", scoped: true),
+        P(FoundationPermissions.LettersIssue, PermissionActions.Create, "Issue letters to employees", scoped: true),
+        P(FoundationPermissions.LettersManage, PermissionActions.Configure, "Manage letter types and templates"),
+    ];
+
+    public const string EmployeeDocumentPurpose = "hr.employee.document";
+
+    public override IReadOnlyList<FilePurposeDefinition> FilePurposes =>
+    [
+        new(EmployeeDocumentPurpose, ModuleCode, [".pdf", ".png", ".jpg", ".jpeg", ".webp"], 10 * 1024 * 1024,
+            FoundationPermissions.DocumentsUpload, FoundationPermissions.DocumentsView, FoundationPermissions.DocumentsUpload, "confidential"),
     ];
 
     public override IReadOnlyList<MenuItemDefinition> Menu =>

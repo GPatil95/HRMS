@@ -41,6 +41,11 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
     public DbSet<EmployeeContact> EmployeeContacts => Set<EmployeeContact>();
     public DbSet<EmployeeBankAccount> EmployeeBankAccounts => Set<EmployeeBankAccount>();
     public DbSet<EmployeeStatutory> EmployeeStatutory => Set<EmployeeStatutory>();
+    public DbSet<DocumentCategory> DocumentCategories => Set<DocumentCategory>();
+    public DbSet<EmployeeDocument> EmployeeDocuments => Set<EmployeeDocument>();
+    public DbSet<LetterType> LetterTypes => Set<LetterType>();
+    public DbSet<LetterTemplate> LetterTemplates => Set<LetterTemplate>();
+    public DbSet<EmployeeLetter> EmployeeLetters => Set<EmployeeLetter>();
     public DbSet<FileObject> Files => Set<FileObject>();
     public DbSet<FileAccessLog> FileAccessLogs => Set<FileAccessLog>();
     public DbSet<Notification> Notifications => Set<Notification>();
@@ -458,6 +463,63 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
             e.Property(x => x.PassportLast4).HasMaxLength(4);
             e.Property(x => x.TaxRegime).HasMaxLength(20);
             e.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<DocumentCategory>(e =>
+        {
+            e.ToTable("document_categories", "hr");
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(60);
+            e.Property(x => x.Name).HasMaxLength(120);
+            e.Property(x => x.Description).HasMaxLength(300);
+        });
+        b.Entity<EmployeeDocument>(e =>
+        {
+            e.ToTable("employee_documents", "hr", t =>
+                t.HasCheckConstraint("ck_employee_documents_status", "status IN ('uploaded','verified','rejected','replaced','expired')"));
+            e.HasIndex(x => x.EmployeeId);
+            e.HasIndex(x => x.CategoryId);
+            e.HasIndex(x => x.ExpiresOn).HasFilter("expires_on IS NOT NULL");
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.Label).HasMaxLength(160);
+            e.Property(x => x.DocumentNumber).HasMaxLength(80);
+            e.Property(x => x.VerificationNote).HasMaxLength(300);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<DocumentCategory>().WithMany().HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<FileObject>().WithMany().HasForeignKey(x => x.FileId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<EmployeeDocument>().WithMany().HasForeignKey(x => x.ReplacedById).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<TenantUser>().WithMany().HasForeignKey(x => x.VerifiedBy).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<LetterType>(e =>
+        {
+            e.ToTable("letter_types", "hr");
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(60);
+            e.Property(x => x.Name).HasMaxLength(120);
+            e.Property(x => x.Description).HasMaxLength(300);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.SignatoryEmployeeId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<LetterTemplate>(e =>
+        {
+            e.ToTable("letter_templates", "hr");
+            e.HasIndex(x => new { x.LetterTypeId, x.Version }).IsUnique();
+            e.Property(x => x.Name).HasMaxLength(160);
+            e.Property(x => x.Subject).HasMaxLength(200);
+            e.HasOne<LetterType>().WithMany().HasForeignKey(x => x.LetterTypeId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<EmployeeLetter>(e =>
+        {
+            e.ToTable("employee_letters", "hr", t =>
+                t.HasCheckConstraint("ck_employee_letters_status", "status IN ('issued','revoked')"));
+            e.HasIndex(x => x.EmployeeId);
+            e.HasIndex(x => x.LetterTypeId);
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.Subject).HasMaxLength(200);
+            e.Property(x => x.RevokeReason).HasMaxLength(300);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<LetterType>().WithMany().HasForeignKey(x => x.LetterTypeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<LetterTemplate>().WithMany().HasForeignKey(x => x.LetterTemplateId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<TenantUser>().WithMany().HasForeignKey(x => x.IssuedBy).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<TenantUser>().WithMany().HasForeignKey(x => x.RevokedBy).OnDelete(DeleteBehavior.Restrict);
         });
         b.Entity<ReportingClosure>(e =>
         {

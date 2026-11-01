@@ -91,6 +91,7 @@ switch (command)
                 var tdb = tenantDbFactory.CreateForConnection(appConn);
                 await seeder.SyncPermissionsAsync(tdb, ct);
                 await seeder.SyncRoleGrantsAsync(tdb, ct);
+                await seeder.SeedHrDefaultsAsync(tdb, ct);
                 synced++;
             }
             catch (Exception ex)

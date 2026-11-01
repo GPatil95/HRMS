@@ -73,6 +73,11 @@ public interface ITenantDbContext
     DbSet<EmployeeContact> EmployeeContacts { get; }
     DbSet<EmployeeBankAccount> EmployeeBankAccounts { get; }
     DbSet<EmployeeStatutory> EmployeeStatutory { get; }
+    DbSet<DocumentCategory> DocumentCategories { get; }
+    DbSet<EmployeeDocument> EmployeeDocuments { get; }
+    DbSet<LetterType> LetterTypes { get; }
+    DbSet<LetterTemplate> LetterTemplates { get; }
+    DbSet<EmployeeLetter> EmployeeLetters { get; }
     DbSet<FileObject> Files { get; }
     DbSet<FileAccessLog> FileAccessLogs { get; }
     DbSet<Notification> Notifications { get; }

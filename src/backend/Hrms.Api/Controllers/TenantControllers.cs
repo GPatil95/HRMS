@@ -345,7 +345,7 @@ public sealed class OrgReferenceMastersController(OrgReferenceMastersService ref
 
 [ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/employees")]
 public sealed class EmployeeDirectoryController(OrganizationService org, EmployeeProfileService profiles,
-    LifecycleEventService lifecycle, ICurrentUser currentUser) : ControllerBase
+    LifecycleEventService lifecycle, EmployeeDocumentService documents, ICurrentUser currentUser) : ControllerBase
 {
     private const string E = EmployeeFoundationModule.ModuleCode;
 
@@ -428,9 +428,80 @@ public sealed class EmployeeDirectoryController(OrganizationService org, Employe
     [HttpPost("lifecycle-events/{eventId:guid}/cancel"), RequirePermission(E, P.LifecycleCreate)]
     public async Task<IActionResult> CancelEvent(Guid eventId, CancellationToken ct) =>
         (await lifecycle.CancelAsync(eventId, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
+
+    // ---- Documents & letters (M2.4). ----
+
+    [HttpGet("{id:guid}/documents"), RequirePermission(E, P.DocumentsView)]
+    public async Task<IActionResult> ListDocuments(Guid id, CancellationToken ct) => Ok(await documents.ListDocumentsAsync(id, ct));
+
+    [HttpPost("{id:guid}/documents"), RequirePermission(E, P.DocumentsUpload), RequestSizeLimit(11 * 1024 * 1024)]
+    public async Task<IActionResult> UploadDocument(Guid id, IFormFile file, [FromForm] Guid categoryId, [FromForm] string? label,
+        [FromForm] string? documentNumber, [FromForm] DateOnly? issuedOn, [FromForm] DateOnly? expiresOn,
+        [FromForm] Guid? replacesDocumentId, CancellationToken ct)
+    {
+        await using var stream = file.OpenReadStream();
+        var req = new FileUploadRequest(EmployeeFoundationModule.EmployeeDocumentPurpose, file.FileName, file.ContentType, stream, file.Length, null, null);
+        return (await documents.UploadAsync(id, categoryId, req, label, documentNumber, issuedOn, expiresOn, replacesDocumentId, ct))
+            .ToActionResult(d => Ok(new { id = d.Id }));
+    }
+
+    [HttpPatch("{id:guid}/documents/{documentId:guid}/verify"), RequirePermission(E, P.DocumentsVerify)]
+    public async Task<IActionResult> VerifyDocument(Guid id, Guid documentId, DocumentVerifyInput input, CancellationToken ct) =>
+        (await documents.VerifyAsync(id, documentId, input, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
+
+    [HttpGet("{id:guid}/documents/missing"), RequirePermission(E, P.DocumentsView)]
+    public async Task<IActionResult> MissingOnboardingDocs(Guid id, CancellationToken ct) => Ok(await documents.MissingOnboardingDocsAsync(id, ct));
+
+    [HttpGet("{id:guid}/letters"), RequirePermission(E, P.LettersView)]
+    public async Task<IActionResult> ListLetters(Guid id, CancellationToken ct) => Ok(await documents.ListLettersAsync(id, ct));
+
+    [HttpPost("{id:guid}/letters"), RequirePermission(E, P.LettersIssue)]
+    public async Task<IActionResult> IssueLetter(Guid id, IssueLetterInput input, CancellationToken ct) =>
+        (await documents.IssueAsync(id, input, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult(l => Ok(new { id = l.Id }));
+
+    [HttpGet("letters/{letterId:guid}"), RequirePermission(E, P.LettersView)]
+    public async Task<IActionResult> GetLetter(Guid letterId, CancellationToken ct) =>
+        (await documents.GetLetterAsync(letterId, ct)) is { } l ? Ok(l) : NotFound();
+
+    [HttpGet("letters/{letterId:guid}/download"), RequirePermission(E, P.LettersView)]
+    public async Task<IActionResult> DownloadLetter(Guid letterId, CancellationToken ct) =>
+        (await documents.GetLetterAsync(letterId, ct)) is { } l
+            ? File(System.Text.Encoding.UTF8.GetBytes(l.RenderedText), "text/plain", $"{l.LetterType}-{l.Subject}.txt")
+            : NotFound();
+
+    [HttpPost("letters/{letterId:guid}/revoke"), RequirePermission(E, P.LettersIssue)]
+    public async Task<IActionResult> RevokeLetter(Guid letterId, RejectEventRequest req, CancellationToken ct) =>
+        (await documents.RevokeAsync(letterId, currentUser.UserId ?? Guid.Empty, req.Reason, ct)).ToActionResult();
 }
 
 public sealed record RejectEventRequest(string? Reason);
+
+[ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/employee-docs")]
+public sealed class EmployeeDocsAdminController(EmployeeDocumentService documents) : ControllerBase
+{
+    private const string E = EmployeeFoundationModule.ModuleCode;
+
+    [HttpGet("categories"), RequirePermission(E, P.DocumentsView)]
+    public async Task<IActionResult> Categories(CancellationToken ct) => Ok(await documents.ListCategoriesAsync(ct));
+
+    [HttpPost("categories"), RequirePermission(E, P.DocumentsManage)]
+    public async Task<IActionResult> UpsertCategory(DocumentCategoryInput input, CancellationToken ct) =>
+        (await documents.UpsertCategoryAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpGet("letter-types"), RequirePermission(E, P.LettersView)]
+    public async Task<IActionResult> LetterTypes(CancellationToken ct) => Ok(await documents.ListLetterTypesAsync(ct));
+
+    [HttpPost("letter-types"), RequirePermission(E, P.LettersManage)]
+    public async Task<IActionResult> UpsertLetterType(LetterTypeInput input, CancellationToken ct) =>
+        (await documents.UpsertLetterTypeAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpGet("letter-types/{typeId:guid}/templates"), RequirePermission(E, P.LettersView)]
+    public async Task<IActionResult> Templates(Guid typeId, CancellationToken ct) => Ok(await documents.ListTemplatesAsync(typeId, ct));
+
+    [HttpPost("letter-types/{typeId:guid}/templates"), RequirePermission(E, P.LettersManage)]
+    public async Task<IActionResult> CreateTemplate(Guid typeId, LetterTemplateInput input, CancellationToken ct) =>
+        (await documents.CreateTemplateAsync(input with { LetterTypeId = typeId }, ct)).ToActionResult(id => Ok(new { id }));
+}
 
 [ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/files")]
 public sealed class FilesController(FileService files) : ControllerBase
