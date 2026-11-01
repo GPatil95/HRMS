@@ -22,7 +22,8 @@ public sealed record CreateEmployeeCommand(string EmployeeCode, string DisplayNa
 /// Organisation foundation and the minimal employee directory used by data scopes and user linking.
 /// This is NOT the Employee module; personal/job/statutory data arrives in the Employee milestone.
 /// </summary>
-public sealed class OrganizationService(ITenantDbContext db, IDataScopeService scopes)
+public sealed class OrganizationService(ITenantDbContext db, IDataScopeService scopes,
+    Employees.EmployeeCodeService codes)
 {
     public Task<List<CompanyDto>> ListCompaniesAsync(CancellationToken ct) =>
         db.Companies.AsNoTracking().OrderBy(c => c.Code).Select(c => new CompanyDto(c.Id, c.Code, c.Name, c.IsActive)).ToListAsync(ct);
@@ -128,16 +129,31 @@ public sealed class OrganizationService(ITenantDbContext db, IDataScopeService s
 
     public async Task<Result<Guid>> CreateEmployeeAsync(CreateEmployeeCommand cmd, CancellationToken ct)
     {
-        var code = Normalize(cmd.EmployeeCode);
-        if (code.Length == 0 || string.IsNullOrWhiteSpace(cmd.DisplayName))
-        {
-            return Error.Validation("invalid-employee", "Employee code and name are required.");
-        }
-
         var branch = await db.Branches.AsNoTracking().FirstOrDefaultAsync(b => b.Id == cmd.BranchId, ct);
         if (branch is null)
         {
             return Error.Validation("branch-not-found", "Branch not found.");
+        }
+
+        // Auto-generate when no code supplied (series per configured prefix); manual codes honour allow_manual.
+        var numbering = await codes.ResolveConfigAsync(branch.CompanyId, ct);
+        var code = Normalize(cmd.EmployeeCode);
+        if (code.Length == 0)
+        {
+            code = await codes.NextCodeAsync(numbering.Prefix, numbering.PadWidth, ct);
+        }
+        else
+        {
+            var manual = await codes.ValidateManualCodeAsync(numbering, code, ct);
+            if (!manual.IsSuccess)
+            {
+                return manual.Error!;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(cmd.DisplayName))
+        {
+            return Error.Validation("invalid-employee", "Employee name is required.");
         }
 
         var scope = await scopes.ResolveAsync(FoundationPermissions.EmployeeCreate, ct);
@@ -167,6 +183,18 @@ public sealed class OrganizationService(ITenantDbContext db, IDataScopeService s
             ManagerEmployeeId = cmd.ManagerEmployeeId,
         };
         db.Employees.Add(e);
+
+        // Open the initial employment period — the projection's org fields mirror this row.
+        db.EmploymentHistory.Add(new EmploymentHistory
+        {
+            EmployeeId = e.Id, CompanyId = e.CompanyId, BranchId = e.BranchId, DepartmentId = e.DepartmentId,
+            DesignationId = e.DesignationId, GradeId = e.GradeId, LocationId = e.LocationId,
+            CostCentreId = e.CostCentreId, ManagerEmployeeId = e.ManagerEmployeeId,
+            EmploymentType = e.EmploymentType ?? EmploymentTypes.Permanent,
+            EventType = LifecycleEventTypes.InitialAssignment,
+            EffectiveFrom = e.JoiningDate ?? DateOnly.FromDateTime(DateTime.UtcNow.Date),
+        });
+
         db.ReportingClosure.Add(new ReportingClosure { AncestorId = e.Id, DescendantId = e.Id, Depth = 0 });
         if (cmd.ManagerEmployeeId is { } managerId)
         {

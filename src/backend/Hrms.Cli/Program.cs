@@ -52,6 +52,11 @@ switch (command)
             }
 
             var conn = provisioner.BuildConnectionString(row.Cluster!, row.DatabaseName, row.MigratorRoleName, password);
+
+            // Grants are idempotent and must be re-applied so schemas added by later
+            // migrations (e.g. hr) become visible to the app role on existing tenants.
+            await provisioner.ApplyGrantsAsync(conn, row.AppRoleName, ct);
+
             var pending = await provisioner.GetPendingMigrationsAsync(conn, ct);
             if (pending.Count == 0)
             {
@@ -60,6 +65,7 @@ switch (command)
             }
 
             await provisioner.MigrateAsync(conn, ct);
+            await provisioner.ApplyGrantsAsync(conn, row.AppRoleName, ct);
             row.LastMigratedAt = DateTimeOffset.UtcNow;
             row.SchemaVersion = (await provisioner.GetAppliedMigrationsAsync(conn, ct)).LastOrDefault();
             migrated++;

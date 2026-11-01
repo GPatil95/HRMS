@@ -8,6 +8,7 @@ using Hrms.Application.Files;
 using Hrms.Application.Identity;
 using Hrms.Application.Modules;
 using Hrms.Application.Notifications;
+using Hrms.Application.Employees;
 using Hrms.Application.Organization;
 using Hrms.Application.Reporting;
 using Hrms.Domain.Common;
@@ -343,16 +344,61 @@ public sealed class OrgReferenceMastersController(OrgReferenceMastersService ref
 }
 
 [ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/employees")]
-public sealed class EmployeeDirectoryController(OrganizationService org) : ControllerBase
+public sealed class EmployeeDirectoryController(OrganizationService org, EmployeeProfileService profiles,
+    ICurrentUser currentUser) : ControllerBase
 {
-    [HttpGet, RequirePermission(EmployeeFoundationModule.ModuleCode, P.EmployeeView)]
+    private const string E = EmployeeFoundationModule.ModuleCode;
+
+    [HttpGet, RequirePermission(E, P.EmployeeView)]
     public async Task<IActionResult> List([FromQuery] PageRequest page, string? search, CancellationToken ct) => Ok(await org.ListEmployeesAsync(page, search, ct));
 
-    [HttpGet("{id:guid}"), RequirePermission(EmployeeFoundationModule.ModuleCode, P.EmployeeView)]
+    [HttpGet("{id:guid}"), RequirePermission(E, P.EmployeeView)]
     public async Task<IActionResult> Get(Guid id, CancellationToken ct) => (await org.GetEmployeeAsync(id, ct)).ToActionResult();
 
-    [HttpPost, RequirePermission(EmployeeFoundationModule.ModuleCode, P.EmployeeCreate)]
+    [HttpPost, RequirePermission(E, P.EmployeeCreate)]
     public async Task<IActionResult> Create(CreateEmployeeCommand cmd, CancellationToken ct) => (await org.CreateEmployeeAsync(cmd, ct)).ToActionResult(id => Ok(new { id }));
+
+    // ---- Profile sections (M2.2). Masked outputs; sensitive writes require dedicated permissions. ----
+
+    [HttpGet("{id:guid}/personal"), RequirePermission(E, P.ProfileView)]
+    public async Task<IActionResult> GetPersonal(Guid id, CancellationToken ct) => (await profiles.GetPersonalAsync(id, ct)).ToActionResult();
+
+    [HttpPut("{id:guid}/personal"), RequirePermission(E, P.PersonalEdit)]
+    public async Task<IActionResult> PutPersonal(Guid id, PersonalInput input, CancellationToken ct) => (await profiles.UpdatePersonalAsync(id, input, ct)).ToActionResult();
+
+    [HttpGet("{id:guid}/contacts"), RequirePermission(E, P.ProfileView)]
+    public async Task<IActionResult> ListContacts(Guid id, CancellationToken ct) => Ok(await profiles.ListContactsAsync(id, ct));
+
+    [HttpPost("{id:guid}/contacts"), RequirePermission(E, P.ContactsEdit)]
+    public async Task<IActionResult> AddContact(Guid id, ContactInput input, CancellationToken ct) => (await profiles.AddContactAsync(id, input, ct)).ToActionResult();
+
+    [HttpPut("{id:guid}/contacts/{contactId:guid}"), RequirePermission(E, P.ContactsEdit)]
+    public async Task<IActionResult> UpdateContact(Guid id, Guid contactId, ContactInput input, CancellationToken ct) => (await profiles.UpdateContactAsync(id, contactId, input, ct)).ToActionResult();
+
+    [HttpDelete("{id:guid}/contacts/{contactId:guid}"), RequirePermission(E, P.ContactsEdit)]
+    public async Task<IActionResult> DeleteContact(Guid id, Guid contactId, CancellationToken ct) => (await profiles.DeleteContactAsync(id, contactId, ct)).ToActionResult();
+
+    [HttpGet("{id:guid}/bank-accounts"), RequirePermission(E, P.BankView)]
+    public async Task<IActionResult> ListBankAccounts(Guid id, CancellationToken ct) => Ok(await profiles.ListBankAccountsAsync(id, ct));
+
+    [HttpPost("{id:guid}/bank-accounts"), RequirePermission(E, P.BankEdit)]
+    public async Task<IActionResult> AddBankAccount(Guid id, EmployeeBankInput input, CancellationToken ct) => (await profiles.AddBankAccountAsync(id, input, ct)).ToActionResult();
+
+    [HttpPost("{id:guid}/bank-accounts/{accountId:guid}/replace"), RequirePermission(E, P.BankEdit)]
+    public async Task<IActionResult> ReplaceBankAccount(Guid id, Guid accountId, EmployeeBankInput input, CancellationToken ct) => (await profiles.ReplaceBankAccountAsync(id, accountId, input, ct)).ToActionResult();
+
+    [HttpPatch("{id:guid}/bank-accounts/{accountId:guid}/verify"), RequirePermission(E, P.BankVerify)]
+    public async Task<IActionResult> VerifyBankAccount(Guid id, Guid accountId, EmployeeBankVerifyInput input, CancellationToken ct) =>
+        (await profiles.VerifyBankAccountAsync(id, accountId, input, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
+
+    [HttpGet("{id:guid}/statutory"), RequirePermission(E, P.StatutoryView)]
+    public async Task<IActionResult> GetStatutory(Guid id, CancellationToken ct) => (await profiles.GetStatutoryAsync(id, ct)).ToActionResult();
+
+    [HttpPut("{id:guid}/statutory"), RequirePermission(E, P.StatutoryEdit)]
+    public async Task<IActionResult> PutStatutory(Guid id, StatutoryInput input, CancellationToken ct) => (await profiles.UpdateStatutoryAsync(id, input, ct)).ToActionResult();
+
+    [HttpGet("{id:guid}/history"), RequirePermission(E, P.HistoryView)]
+    public async Task<IActionResult> History(Guid id, CancellationToken ct) => Ok(await profiles.ListHistoryAsync(id, ct));
 }
 
 [ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/files")]

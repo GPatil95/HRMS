@@ -69,6 +69,10 @@ public interface ITenantDbContext
     DbSet<EmployeeCodeSeries> EmployeeCodeSeries { get; }
     DbSet<EmploymentHistory> EmploymentHistory { get; }
     DbSet<LifecycleEvent> LifecycleEvents { get; }
+    DbSet<EmployeePersonal> EmployeePersonal { get; }
+    DbSet<EmployeeContact> EmployeeContacts { get; }
+    DbSet<EmployeeBankAccount> EmployeeBankAccounts { get; }
+    DbSet<EmployeeStatutory> EmployeeStatutory { get; }
     DbSet<FileObject> Files { get; }
     DbSet<FileAccessLog> FileAccessLogs { get; }
     DbSet<Notification> Notifications { get; }

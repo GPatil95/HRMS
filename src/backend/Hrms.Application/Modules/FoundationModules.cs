@@ -32,6 +32,14 @@ public static class FoundationPermissions
     public const string EmployeeCreate = "employee.directory.create";
     public const string EmployeeEdit = "employee.directory.edit";
     public const string EmployeeExport = "employee.directory.export";
+    public const string ProfileView = "employee.profile.view";
+    public const string PersonalEdit = "employee.personal.edit";
+    public const string ContactsEdit = "employee.contacts.edit";
+    public const string BankView = "employee.bank.view";
+    public const string BankEdit = "employee.bank.edit";
+    public const string BankVerify = "employee.bank.verify";
+    public const string StatutoryView = "employee.statutory.view";
+    public const string StatutoryEdit = "employee.statutory.edit";
     public const string HistoryView = "employee.history.view";
     public const string HistoryBackdate = "employee.history.backdate";
     public const string LifecycleView = "employee.lifecycle.view";
@@ -145,6 +153,14 @@ public sealed class EmployeeFoundationModule : ModuleDefinitionBase
         P(FoundationPermissions.EmployeeCreate, PermissionActions.Create, "Create directory records", scoped: true),
         P(FoundationPermissions.EmployeeEdit, PermissionActions.Edit, "Edit directory records", scoped: true),
         P(FoundationPermissions.EmployeeExport, PermissionActions.Export, "Export employee directory", scoped: true, sensitive: true),
+        P(FoundationPermissions.ProfileView, PermissionActions.View, "View employee profile sections", scoped: true),
+        P(FoundationPermissions.PersonalEdit, PermissionActions.Edit, "Edit personal/contact sections", scoped: true),
+        P(FoundationPermissions.ContactsEdit, PermissionActions.Edit, "Edit emergency/family/nominee contacts", scoped: true),
+        P(FoundationPermissions.BankView, PermissionActions.View, "View masked bank details", scoped: true, sensitive: true),
+        P(FoundationPermissions.BankEdit, PermissionActions.Edit, "Edit bank accounts", scoped: true, sensitive: true),
+        P(FoundationPermissions.BankVerify, PermissionActions.Approve, "Verify bank accounts", scoped: true, sensitive: true),
+        P(FoundationPermissions.StatutoryView, PermissionActions.View, "View statutory identifiers (masked)", scoped: true, sensitive: true),
+        P(FoundationPermissions.StatutoryEdit, PermissionActions.Edit, "Edit statutory identifiers", scoped: true, sensitive: true),
         P(FoundationPermissions.HistoryView, PermissionActions.View, "View employment history", scoped: true),
         P(FoundationPermissions.HistoryBackdate, PermissionActions.Edit, "Backdate/correct employment history", scoped: true, sensitive: true),
         P(FoundationPermissions.LifecycleView, PermissionActions.View, "View lifecycle events", scoped: true),

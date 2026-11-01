@@ -14,7 +14,7 @@ namespace Hrms.Infrastructure.Tenancy;
 /// </summary>
 public sealed partial class PostgresTenantDatabaseProvisioner(IOptions<ProvisioningOptions> options) : ITenantDatabaseProvisioner
 {
-    public static readonly string[] Schemas = ["identity", "org", "files", "notify", "dashboard", "config", "audit", "ops"];
+    public static readonly string[] Schemas = ["identity", "org", "hr", "files", "notify", "dashboard", "config", "audit", "ops"];
 
     [GeneratedRegex("^[a-z_][a-z0-9_]{0,62}$")]
     private static partial Regex Identifier();
@@ -70,6 +70,12 @@ public sealed partial class PostgresTenantDatabaseProvisioner(IOptions<Provision
         await using var conn = await OpenAsync(migratorConnectionString, ct);
         foreach (var s in Schemas)
         {
+            var exists = await ScalarAsync<bool>(conn, "SELECT EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = @s)", ct, ("s", s));
+            if (!exists)
+            {
+                continue;
+            }
+
             await ExecAsync(conn, $"GRANT USAGE ON SCHEMA \"{s}\" TO \"{appRole}\"", ct);
             await ExecAsync(conn, $"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA \"{s}\" TO \"{appRole}\"", ct);
             await ExecAsync(conn, $"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA \"{s}\" TO \"{appRole}\"", ct);

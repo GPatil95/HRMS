@@ -37,6 +37,10 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
     public DbSet<EmployeeCodeSeries> EmployeeCodeSeries => Set<EmployeeCodeSeries>();
     public DbSet<EmploymentHistory> EmploymentHistory => Set<EmploymentHistory>();
     public DbSet<LifecycleEvent> LifecycleEvents => Set<LifecycleEvent>();
+    public DbSet<EmployeePersonal> EmployeePersonal => Set<EmployeePersonal>();
+    public DbSet<EmployeeContact> EmployeeContacts => Set<EmployeeContact>();
+    public DbSet<EmployeeBankAccount> EmployeeBankAccounts => Set<EmployeeBankAccount>();
+    public DbSet<EmployeeStatutory> EmployeeStatutory => Set<EmployeeStatutory>();
     public DbSet<FileObject> Files => Set<FileObject>();
     public DbSet<FileAccessLog> FileAccessLogs => Set<FileAccessLog>();
     public DbSet<Notification> Notifications => Set<Notification>();
@@ -397,6 +401,63 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
             e.HasOne<TenantUser>().WithMany().HasForeignKey(x => x.RequestedBy).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<TenantUser>().WithMany().HasForeignKey(x => x.ApprovedBy).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<TenantUser>().WithMany().HasForeignKey(x => x.RejectedBy).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<EmployeePersonal>(e =>
+        {
+            e.ToTable("employee_personal", "hr");
+            e.HasIndex(x => x.EmployeeId).IsUnique();
+            e.Property(x => x.Gender).HasMaxLength(20);
+            e.Property(x => x.MaritalStatus).HasMaxLength(20);
+            e.Property(x => x.Nationality).HasMaxLength(80);
+            e.Property(x => x.BloodGroup).HasMaxLength(8);
+            e.Property(x => x.PersonalEmail).HasMaxLength(256);
+            e.Property(x => x.PersonalPhone).HasMaxLength(32);
+            e.Property(x => x.CurrentAddressJson).HasColumnType("jsonb");
+            e.Property(x => x.PermanentAddressJson).HasColumnType("jsonb");
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<EmployeeContact>(e =>
+        {
+            e.ToTable("employee_contacts", "hr", t =>
+            {
+                t.HasCheckConstraint("ck_employee_contacts_kind", "kind IN ('emergency','family','nominee')");
+                t.HasCheckConstraint("ck_employee_contacts_share", "nominee_share_pct IS NULL OR (nominee_share_pct BETWEEN 1 AND 100)");
+            });
+            e.HasIndex(x => x.EmployeeId);
+            e.HasIndex(x => x.EmployeeId).IsUnique().HasFilter("kind = 'emergency' AND is_primary").HasDatabaseName("ux_employee_contacts_primary_emergency");
+            e.Property(x => x.Kind).HasMaxLength(20);
+            e.Property(x => x.Name).HasMaxLength(160);
+            e.Property(x => x.Relation).HasMaxLength(60);
+            e.Property(x => x.Phone).HasMaxLength(32);
+            e.Property(x => x.Email).HasMaxLength(256);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<EmployeeBankAccount>(e =>
+        {
+            e.ToTable("employee_bank_accounts", "hr");
+            e.HasIndex(x => x.EmployeeId);
+            e.HasIndex(x => x.EmployeeId).IsUnique().HasFilter("is_primary AND effective_to IS NULL").HasDatabaseName("ux_employee_bank_one_active_primary");
+            e.Property(x => x.BankName).HasMaxLength(120);
+            e.Property(x => x.BranchName).HasMaxLength(120);
+            e.Property(x => x.AccountLast4).HasMaxLength(4);
+            e.Property(x => x.Ifsc).HasMaxLength(16);
+            e.Property(x => x.HolderName).HasMaxLength(160);
+            e.Property(x => x.VerificationNote).HasMaxLength(300);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<EmployeeStatutory>(e =>
+        {
+            e.ToTable("employee_statutory", "hr");
+            e.HasIndex(x => x.EmployeeId).IsUnique();
+            e.Property(x => x.PanLast4).HasMaxLength(4);
+            e.Property(x => x.Uan).HasMaxLength(20);
+            e.Property(x => x.PfNumber).HasMaxLength(40);
+            e.Property(x => x.EsiNumber).HasMaxLength(40);
+            e.Property(x => x.PtState).HasMaxLength(80);
+            e.Property(x => x.AadhaarLast4).HasMaxLength(4);
+            e.Property(x => x.PassportLast4).HasMaxLength(4);
+            e.Property(x => x.TaxRegime).HasMaxLength(20);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<ReportingClosure>(e =>
         {
