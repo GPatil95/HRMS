@@ -257,6 +257,20 @@ public sealed class LifecycleEventService(ITenantDbContext db, EmploymentHistory
             // initial_assignment row to a zero-length period (empty daterange — no overlap).
             if (e.EventType == LifecycleEventTypes.Joining && open?.EventType == LifecycleEventTypes.InitialAssignment && e.EffectiveDate <= open.EffectiveFrom)
             {
+                // Manager change on this path still needs the closure subtree move.
+                if (next.ManagerEmployeeId != open.ManagerEmployeeId)
+                {
+                    var moved = await history.MoveSubtreeAsync(employee.Id, next.ManagerEmployeeId, ct);
+                    if (!moved.IsSuccess)
+                    {
+                        e.Status = LifecycleEventStatus.Submitted;
+                        e.ApprovedBy = null;
+                        e.ApprovedAt = null;
+                        await db.SaveChangesAsync(ct);
+                        return moved.Error!;
+                    }
+                }
+
                 open.EffectiveTo = e.EffectiveDate;
                 next.EffectiveTo = null;
                 db.EmploymentHistory.Add(next);

@@ -87,14 +87,16 @@ public sealed class UserAdministrationService(
             return Error.Conflict("user-exists", "A user with this email already exists.");
         }
 
+        Employee? linked = null;
         if (cmd.EmployeeId is { } empId)
         {
-            if (!await db.Employees.AnyAsync(e => e.Id == empId, ct))
+            linked = await db.Employees.FirstOrDefaultAsync(e => e.Id == empId, ct);
+            if (linked is null)
             {
                 return Error.Validation("employee-not-found", "Employee not found.");
             }
 
-            if (await db.Users.AnyAsync(u => u.EmployeeId == empId, ct))
+            if (await db.Users.AnyAsync(u => u.EmployeeId == empId, ct) || linked.UserId is not null)
             {
                 return Error.Conflict("employee-already-linked", "This employee already has a user account.");
             }
@@ -104,6 +106,13 @@ public sealed class UserAdministrationService(
         db.Users.Add(user);
         securityEvents.Add(SecurityEventTypes.UserCreated, true, user.Id, email);
         await db.SaveChangesAsync(ct);
+
+        // Keep the employee side of the link consistent (employees.user_id).
+        if (linked is not null)
+        {
+            linked.UserId = user.Id;
+            await db.SaveChangesAsync(ct);
+        }
 
         foreach (var roleId in cmd.RoleIds ?? [])
         {
@@ -182,7 +191,28 @@ public sealed class UserAdministrationService(
             return Error.Validation("employee-invalid", "Employee not found or already linked.");
         }
 
+        // Detach the previous employee side first.
+        if (user.EmployeeId is { } oldEmp && oldEmp != employeeId)
+        {
+            var old = await db.Employees.FirstOrDefaultAsync(e => e.Id == oldEmp, ct);
+            if (old is not null && old.UserId == userId)
+            {
+                old.UserId = null;
+            }
+        }
+
         user.EmployeeId = employeeId;
+        if (employeeId is { } newEmp)
+        {
+            var employee = await db.Employees.FirstAsync(e => e.Id == newEmp, ct);
+            if (employee.UserId is { } otherUser && otherUser != userId)
+            {
+                return Error.Conflict("employee-already-linked", "This employee is already linked to a different user account.");
+            }
+
+            employee.UserId = userId;
+        }
+
         await permissions.BumpVersionAsync(ct);
         await db.SaveChangesAsync(ct);
         return Result.Success();

@@ -429,6 +429,16 @@ public sealed class EmployeeDirectoryController(OrganizationService org, Employe
     public async Task<IActionResult> CancelEvent(Guid eventId, CancellationToken ct) =>
         (await lifecycle.CancelAsync(eventId, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
 
+    // ---- User <-> employee link (M2.5b). ----
+
+    [HttpPut("{id:guid}/user"), RequirePermission(E, P.EmployeeEdit)]
+    public async Task<IActionResult> LinkUser(Guid id, LinkUserRequest req, CancellationToken ct) =>
+        (await profiles.LinkUserAsync(id, req.UserId, ct)).ToActionResult();
+
+    [HttpDelete("{id:guid}/user"), RequirePermission(E, P.EmployeeEdit)]
+    public async Task<IActionResult> UnlinkUser(Guid id, CancellationToken ct) =>
+        (await profiles.UnlinkUserAsync(id, ct)).ToActionResult();
+
     // ---- Documents & letters (M2.4). ----
 
     [HttpGet("{id:guid}/documents"), RequirePermission(E, P.DocumentsView)]
@@ -475,6 +485,7 @@ public sealed class EmployeeDirectoryController(OrganizationService org, Employe
 }
 
 public sealed record RejectEventRequest(string? Reason);
+public sealed record LinkUserRequest(Guid UserId);
 
 [ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/employee-docs")]
 public sealed class EmployeeDocsAdminController(EmployeeDocumentService documents) : ControllerBase

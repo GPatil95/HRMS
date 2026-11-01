@@ -412,6 +412,69 @@ public sealed class EmployeeProfileService(ITenantDbContext db, ISecretProtector
             s.EsiApplicable, s.PtState, s.LwfApplicable, s.AadhaarLast4,
             s.PassportLast4 is null ? null : "****" + s.PassportLast4, s.TaxRegime, s.RowVersion);
 
+    // ---------- User <-> employee link (M2.5b, ESS readiness) ----------
+
+    /// <summary>Links a tenant user to an employee, keeping both sides (employees.user_id and
+    /// users.employee_id) consistent. Fails if either side is already linked elsewhere.</summary>
+    public async Task<Result> LinkUserAsync(Guid employeeId, Guid userId, CancellationToken ct)
+    {
+        var employee = await db.Employees.FirstOrDefaultAsync(e => e.Id == employeeId, ct);
+        if (employee is null)
+        {
+            return Error.NotFound("employee.not_found", "Employee not found.");
+        }
+
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user is null)
+        {
+            return Error.NotFound("user.not_found", "User not found.");
+        }
+
+        if (await db.Employees.AnyAsync(e => e.UserId == userId && e.Id != employeeId, ct))
+        {
+            return Error.Conflict("link.user_taken", "This user is already linked to a different employee.");
+        }
+
+        if (user.EmployeeId is { } other && other != employeeId)
+        {
+            return Error.Conflict("link.employee_taken", "This user record points at a different employee.");
+        }
+
+        if (employee.UserId is { } current && current != userId)
+        {
+            return Error.Conflict("link.already_linked", "This employee is already linked to a different user — unlink first.");
+        }
+
+        employee.UserId = userId;
+        user.EmployeeId = employeeId;
+        await db.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+
+    /// <summary>Removes the employee's user link on both sides (idempotent).</summary>
+    public async Task<Result> UnlinkUserAsync(Guid employeeId, CancellationToken ct)
+    {
+        var employee = await db.Employees.FirstOrDefaultAsync(e => e.Id == employeeId, ct);
+        if (employee is null)
+        {
+            return Error.NotFound("employee.not_found", "Employee not found.");
+        }
+
+        if (employee.UserId is { } uid)
+        {
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Id == uid, ct);
+            if (user is not null && user.EmployeeId == employeeId)
+            {
+                user.EmployeeId = null;
+            }
+
+            employee.UserId = null;
+            await db.SaveChangesAsync(ct);
+        }
+
+        return Result.Success();
+    }
+
     // ---------- Employment history read ----------
 
     public async Task<List<HistoryRowDto>> ListHistoryAsync(Guid employeeId, CancellationToken ct) =>

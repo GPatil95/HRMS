@@ -11,7 +11,7 @@ namespace Hrms.Application.Organization;
 public sealed record CompanyDto(Guid Id, string Code, string Name, bool IsActive);
 public sealed record BranchDto(Guid Id, Guid CompanyId, string Code, string Name, bool IsActive);
 public sealed record DepartmentDto(Guid Id, string Code, string Name, Guid? BranchId, bool IsActive);
-public sealed record EmployeeDirectoryDto(Guid Id, string EmployeeCode, string DisplayName, string? WorkEmail, Guid CompanyId, Guid BranchId, Guid? DepartmentId, Guid? ManagerEmployeeId, EmployeeStatus Status);
+public sealed record EmployeeDirectoryDto(Guid Id, string EmployeeCode, string DisplayName, string? WorkEmail, Guid CompanyId, Guid BranchId, Guid? DepartmentId, Guid? ManagerEmployeeId, Guid? UserId, EmployeeStatus Status);
 
 public sealed record CreateCompanyCommand(string Code, string Name, string? LegalName);
 public sealed record CreateBranchCommand(Guid CompanyId, string Code, string Name);
@@ -213,5 +213,5 @@ public sealed class OrganizationService(ITenantDbContext db, IDataScopeService s
     private static string Normalize(string? code) => (code ?? string.Empty).Trim().ToUpperInvariant();
 
     private static readonly System.Linq.Expressions.Expression<Func<Employee, EmployeeDirectoryDto>> Map =
-        e => new EmployeeDirectoryDto(e.Id, e.EmployeeCode, e.DisplayName, e.WorkEmail, e.CompanyId, e.BranchId, e.DepartmentId, e.ManagerEmployeeId, e.Status);
+        e => new EmployeeDirectoryDto(e.Id, e.EmployeeCode, e.DisplayName, e.WorkEmail, e.CompanyId, e.BranchId, e.DepartmentId, e.ManagerEmployeeId, e.UserId, e.Status);
 }

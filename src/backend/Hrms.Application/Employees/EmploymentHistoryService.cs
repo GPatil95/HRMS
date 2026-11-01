@@ -33,14 +33,26 @@ public sealed class EmploymentHistoryService(ITenantDbContext db)
     public async Task<Result> ApplyTransitionAsync(Employee employee, EmploymentHistory next, CancellationToken ct)
     {
         var open = await OpenRowAsync(employee.Id, ct);
+        if (open is not null && next.EffectiveFrom <= open.EffectiveFrom)
+        {
+            return Error.Conflict("history-overlap",
+                $"Effective date {next.EffectiveFrom} overlaps the open period starting {open.EffectiveFrom}. Use a correction event for backdated changes.");
+        }
+
+        // Rebuild the closure subtree BEFORE touching history rows so a rejected
+        // move leaves nothing staged on the change tracker.
+        var previousManager = open?.ManagerEmployeeId ?? employee.ManagerEmployeeId;
+        if (next.ManagerEmployeeId != previousManager)
+        {
+            var moved = await MoveSubtreeAsync(employee.Id, next.ManagerEmployeeId, ct);
+            if (!moved.IsSuccess)
+            {
+                return moved.Error!;
+            }
+        }
+
         if (open is not null)
         {
-            if (next.EffectiveFrom <= open.EffectiveFrom)
-            {
-                return Error.Conflict("history-overlap",
-                    $"Effective date {next.EffectiveFrom} overlaps the open period starting {open.EffectiveFrom}. Use a correction event for backdated changes.");
-            }
-
             open.EffectiveTo = next.EffectiveFrom;
         }
 
@@ -48,6 +60,59 @@ public sealed class EmploymentHistoryService(ITenantDbContext db)
         next.EffectiveTo = null;
         db.EmploymentHistory.Add(next);
         Reproject(employee, next);
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Closure-table subtree move for a manager change: detaches every link between the employee's
+    /// ancestors and the employee's whole subtree, then re-links the subtree under the new manager's
+    /// ancestor chain. The self row (depth 0) and intra-subtree rows are untouched.
+    /// Rejects a new manager inside the employee's own subtree (cycle).
+    /// </summary>
+    public async Task<Result> MoveSubtreeAsync(Guid employeeId, Guid? newManagerId, CancellationToken ct)
+    {
+        if (newManagerId == employeeId)
+        {
+            return Error.Validation("manager.self", "An employee cannot report to themselves.");
+        }
+
+        var subtree = await db.ReportingClosure
+            .Where(c => c.AncestorId == employeeId)
+            .ToListAsync(ct); // (employeeId, d, depth E→d), includes the self row
+
+        if (newManagerId is { } m && subtree.Any(c => c.DescendantId == m && c.Depth > 0))
+        {
+            return Error.Conflict("manager.cycle", "The selected manager is inside this employee's reporting subtree — the change would create a cycle.");
+        }
+
+        var subtreeIds = subtree.Select(c => c.DescendantId).ToHashSet();
+
+        // Old upward links: rows (a, d) where d ∈ subtree and a is an ancestor ABOVE the employee
+        // (a ∉ subtree — ancestors within the subtree are intra-subtree paths we keep).
+        var oldLinks = await db.ReportingClosure
+            .Where(c => subtreeIds.Contains(c.DescendantId) && !subtreeIds.Contains(c.AncestorId))
+            .ToListAsync(ct);
+        db.ReportingClosure.RemoveRange(oldLinks);
+
+        if (newManagerId is { } managerId)
+        {
+            var managerAncestors = await db.ReportingClosure.AsNoTracking()
+                .Where(c => c.DescendantId == managerId)
+                .ToListAsync(ct); // (a, managerId, depth a→manager), includes self row
+            foreach (var a in managerAncestors)
+            {
+                foreach (var d in subtree)
+                {
+                    db.ReportingClosure.Add(new ReportingClosure
+                    {
+                        AncestorId = a.AncestorId,
+                        DescendantId = d.DescendantId,
+                        Depth = a.Depth + 1 + d.Depth,
+                    });
+                }
+            }
+        }
+
         return Result.Success();
     }
 
