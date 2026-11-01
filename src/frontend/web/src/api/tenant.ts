@@ -1,4 +1,7 @@
 import { api, itemsOf, post, type Paged } from './client'
+import { auditQuery, type AuditEntry, type AuditFieldChange, type AuditQuery } from './platform'
+
+export type { AuditEntry, AuditFieldChange, AuditQuery }
 
 const put = <T>(path: string, body: unknown) => api<T>(path, { method: 'PUT', body: JSON.stringify(body) })
 const del = (path: string) => api<undefined>(path, { method: 'DELETE' })
@@ -143,6 +146,8 @@ export const tenantApi = {
   unreadCount: () => api<{ count: number } | number>('/api/v1/notifications/unread-count'),
   markRead: (id: string) => post(`/api/v1/notifications/${id}/read`, {}),
   markAllRead: () => post('/api/v1/notifications/read-all', {}),
+
+  auditEntries: auditQuery('/api/v1/audit/entries'),
 }
 
 // ---- Org masters types ----

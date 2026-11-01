@@ -2,6 +2,7 @@ using Asp.Versioning;
 using Hrms.Api.Hosting;
 using Hrms.Api.Security;
 using Hrms.Application.Abstractions;
+using Hrms.Application.Auditing;
 using Hrms.Application.Authorization;
 using Hrms.Application.Dashboards;
 using Hrms.Application.Files;
@@ -546,6 +547,14 @@ public sealed class EmployeeSalaryController(SalaryService salary, ICurrentUser 
     [HttpPost("salary-assignments/{assignmentId:guid}/cancel"), RequirePermission(E, P.SalaryAssignmentCreate)]
     public async Task<IActionResult> Cancel(Guid assignmentId, CancellationToken ct) =>
         (await salary.CancelAsync(assignmentId, ct)).ToActionResult();
+}
+
+[ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/audit")]
+public sealed class TenantAuditController(TenantAuditQueryService audit) : ControllerBase
+{
+    [HttpGet("entries"), RequirePermission("core.audit", P.AuditView)]
+    public async Task<IActionResult> Entries([FromQuery] AuditQueryParams q, CancellationToken ct) =>
+        Ok(await audit.SearchAsync(q, ct));
 }
 
 [ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/employee-docs")]

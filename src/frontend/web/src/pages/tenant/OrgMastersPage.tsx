@@ -86,7 +86,7 @@ function MasterDialog({ kind, editing, onClose }: { kind: Kind; editing: Row | n
     },
     onError: (e) => {
       const d = e instanceof ApiError ? e.details : undefined
-      if (d && typeof d === 'object') setFieldErrors(d as Record<string, string>)
+      if (d && typeof d === 'object') setFieldErrors(Object.fromEntries(Object.entries(d).map(([k, v]) => [k, Array.isArray(v) ? v.join('; ') : String(v)])))
       toast(e instanceof Error ? e.message : 'Save failed', 'error')
     },
   })
@@ -197,7 +197,7 @@ export function OrgMastersPage() {
       {error && <ErrorAlert error={error} />}
       {pending ? <TableSkeleton /> : filtered.length === 0 ? (
         <EmptyState title={search ? 'No matches' : `No ${label.label.toLowerCase()} yet`}
-          body={search ? 'Try a different search.' : 'Create the first entry to make it available for employees.'} />
+          hint={search ? 'Try a different search.' : 'Create the first entry to make it available for employees.'} />
       ) : (
         <DataList<Row>
           columns={['Code', 'Name', 'Details', 'Status', '']}
@@ -207,7 +207,7 @@ export function OrgMastersPage() {
             r.code,
             r.name,
             r.extra ?? '—',
-            <StatusChip key="s" status={r.isActive ? 'active' : 'inactive'} />,
+            <StatusChip key="s" value={r.isActive ? 'active' : 'inactive'} />,
             <Box key="a" sx={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
               {canEdit && (
                 <>
