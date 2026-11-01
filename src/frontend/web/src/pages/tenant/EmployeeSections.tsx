@@ -344,7 +344,7 @@ export function DocumentsTab({ empId }: { empId: string }) {
                   <TableCell>{d.version}</TableCell>
                   <TableCell align="right">
                     <IconButton size="small" href={tenantApi.fileDownloadUrl(d.fileId)}><Download fontSize="small" /></IconButton>
-                    {d.status === 'pending' && (
+                    {(d.status === 'uploaded' || d.status === 'expired') && (
                       <>
                         <Button size="small" onClick={() => verify.mutate({ docId: d.id, status: 'verified' })}>Verify</Button>
                         <Button size="small" color="error" onClick={() => verify.mutate({ docId: d.id, status: 'rejected' })}>Reject</Button>
