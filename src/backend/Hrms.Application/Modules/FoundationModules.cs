@@ -208,6 +208,7 @@ public sealed class EmployeeFoundationModule : ModuleDefinitionBase
     public override IReadOnlyList<MenuItemDefinition> Menu =>
     [
         new("employees", "Employees", "/employees", "badge", 300, ModuleCode, AnyPermissions: [FoundationPermissions.EmployeeView]),
+        new("hr.salary", "Salary Setup", "/salary", "payments", 310, ModuleCode, AnyPermissions: [FoundationPermissions.SalaryComponentView, FoundationPermissions.SalaryStructureView]),
     ];
 }
 

@@ -12,6 +12,7 @@ export interface Department { id: string; code: string; name: string; branchId?:
 export interface Employee {
   id: string; employeeCode: string; displayName: string; workEmail?: string | null
   companyId: string; branchId: string; departmentId?: string | null; managerEmployeeId?: string | null
+  userId?: string | null
   status: string
 }
 export interface UserSummary {
@@ -148,6 +149,55 @@ export const tenantApi = {
   markAllRead: () => post('/api/v1/notifications/read-all', {}),
 
   auditEntries: auditQuery('/api/v1/audit/entries'),
+
+  // ---- Employee sections ----
+  employeePersonal: (id: string) => api<Personal>(`/api/v1/employees/${id}/personal`),
+  savePersonal: (id: string, b: PersonalInput) => put(`/api/v1/employees/${id}/personal`, b),
+  employeeContacts: (id: string) => api<EmpContact[]>(`/api/v1/employees/${id}/contacts`),
+  addEmpContact: (id: string, b: EmpContactInput) => post<{ id: string }>(`/api/v1/employees/${id}/contacts`, b),
+  updateEmpContact: (id: string, cid: string, b: EmpContactInput) => put(`/api/v1/employees/${id}/contacts/${cid}`, b),
+  deleteEmpContact: (id: string, cid: string) => del(`/api/v1/employees/${id}/contacts/${cid}`),
+  employeeBank: (id: string) => api<EmpBank[]>(`/api/v1/employees/${id}/bank-accounts`),
+  addBank: (id: string, b: BankInput) => post<{ id: string }>(`/api/v1/employees/${id}/bank-accounts`, b),
+  replaceBank: (id: string, aid: string, b: BankInput) => post<{ id: string }>(`/api/v1/employees/${id}/bank-accounts/${aid}/replace`, b),
+  verifyBank: (id: string, aid: string, status: string, note?: string) => api<undefined>(`/api/v1/employees/${id}/bank-accounts/${aid}/verify`, { method: 'PATCH', body: JSON.stringify({ status, note }) }),
+  employeeStatutory: (id: string) => api<Statutory>(`/api/v1/employees/${id}/statutory`),
+  saveStatutory: (id: string, b: StatutoryInput) => put(`/api/v1/employees/${id}/statutory`, b),
+  employeeHistory: (id: string) => api<HistoryRow[]>(`/api/v1/employees/${id}/history`),
+  lifecycleEvents: (id: string) => api<LifecycleEvent[]>(`/api/v1/employees/${id}/lifecycle-events`),
+  createLifecycleEvent: (id: string, b: LifecycleEventInput) => post<{ id: string }>(`/api/v1/employees/${id}/lifecycle-events`, b),
+  lifecycleAction: (eventId: string, action: 'submit' | 'approve' | 'cancel' | 'reject', reason?: string) =>
+    post<undefined>(`/api/v1/employees/lifecycle-events/${eventId}/${action}`, action === 'reject' ? { reason } : undefined),
+  linkUser: (id: string, userId: string) => put(`/api/v1/employees/${id}/user`, { userId }),
+  unlinkUser: (id: string) => del(`/api/v1/employees/${id}/user`),
+
+  // ---- Salary ----
+  salaryComponents: () => api<SalaryComponent[]>('/api/v1/salary/components'),
+  upsertComponent: (b: ComponentInput) => post<{ id: string }>('/api/v1/salary/components', b),
+  deleteComponent: (id: string) => del(`/api/v1/salary/components/${id}`),
+  salaryStructures: () => api<SalaryStructure[]>('/api/v1/salary/structures'),
+  upsertStructure: (b: StructureInput) => post<{ id: string }>('/api/v1/salary/structures', b),
+  salaryAssignments: (empId: string) => api<SalaryAssignment[]>(`/api/v1/employees/${empId}/salary-assignments`),
+  createAssignment: (empId: string, b: AssignmentInput) => post<{ id: string }>(`/api/v1/employees/${empId}/salary-assignments`, b),
+  assignmentAction: (id: string, action: 'submit' | 'approve' | 'cancel' | 'reject', reason?: string) =>
+    post<undefined>(`/api/v1/employees/salary-assignments/${id}/${action}`, action === 'reject' ? { reason } : undefined),
+
+  // ---- Documents & letters ----
+  docCategories: () => api<DocCategory[]>('/api/v1/employee-docs/categories'),
+  letterTypes: () => api<LetterType[]>('/api/v1/employee-docs/letter-types'),
+  letterTemplates: (typeId: string) => api<LetterTemplate[]>(`/api/v1/employee-docs/letter-types/${typeId}/templates`),
+  saveLetterTemplate: (b: LetterTemplateInput) => post<{ id: string }>(`/api/v1/employee-docs/letter-types/${b.letterTypeId}/templates`, b),
+  employeeDocs: (id: string) => api<EmpDocument[]>(`/api/v1/employees/${id}/documents`),
+  uploadDoc: (id: string, form: FormData) => api<{ id: string }>(`/api/v1/employees/${id}/documents`, { method: 'POST', body: form }),
+  verifyDoc: (id: string, docId: string, status: string, note?: string) =>
+    api<undefined>(`/api/v1/employees/${id}/documents/${docId}/verify`, { method: 'PATCH', body: JSON.stringify({ status, note }) }),
+  missingDocs: (id: string) => api<DocCategory[]>(`/api/v1/employees/${id}/documents/missing`),
+  employeeLetters: (id: string) => api<EmpLetter[]>(`/api/v1/employees/${id}/letters`),
+  issueLetter: (id: string, letterTypeId: string, letterTemplateId?: string) =>
+    post<{ id: string }>(`/api/v1/employees/${id}/letters`, { letterTypeId, letterTemplateId }),
+  revokeLetter: (letterId: string, reason?: string) => post<undefined>(`/api/v1/employees/letters/${letterId}/revoke`, { reason }),
+  letterDownloadUrl: (letterId: string) => `/api/v1/employees/letters/${letterId}/download`,
+  fileDownloadUrl: (fileId: string) => `/api/v1/files/${fileId}/content`,
 }
 
 // ---- Org masters types ----
@@ -235,4 +285,126 @@ export const mastersApi = {
   updateCostCentre: (id: string, b: CostCentreInput) => put(`${mastersBase}/cost-centres/${id}`, b),
   setCostCentreStatus: (id: string, isActive: boolean) => api<undefined>(`${mastersBase}/cost-centres/${id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) }),
   deleteCostCentre: (id: string) => del(`${mastersBase}/cost-centres/${id}`),
+}
+
+// ---- Employee section types ----
+export interface Personal {
+  dateOfBirth?: string; gender?: string; maritalStatus?: string; nationality?: string;
+  bloodGroup?: string; personalEmail?: string; personalPhone?: string;
+  currentAddress?: Record<string, unknown>; permanentAddress?: Record<string, unknown>;
+  rowVersion: number;
+}
+export type PersonalInput = Omit<Personal, 'rowVersion'> & { rowVersion?: number };
+
+export interface EmpContact {
+  id: string; kind: string; name: string; relation?: string; dateOfBirth?: string;
+  phone?: string; email?: string; isPrimary: boolean; nomineeSharePct?: number; rowVersion: number;
+}
+export type EmpContactInput = Omit<EmpContact, 'id' | 'rowVersion'> & { rowVersion?: number };
+
+export interface EmpBank {
+  id: string; bankName: string; branchName?: string; accountMasked: string; ifsc: string;
+  holderName?: string; isPrimary: boolean; effectiveFrom: string; effectiveTo?: string;
+  verificationStatus: string; verificationNote?: string; rowVersion: number;
+}
+export interface BankInput {
+  bankName: string; branchName?: string; accountNumber: string; ifsc: string;
+  holderName?: string; isPrimary: boolean; effectiveFrom: string; rowVersion?: number;
+}
+
+export interface Statutory {
+  panMasked?: string; uan?: string; pfNumber?: string; pfApplicable: boolean; esiNumber?: string;
+  esiApplicable: boolean; ptState?: string; lwfApplicable: boolean; aadhaarLast4?: string;
+  passportMasked?: string; taxRegime?: string; rowVersion: number;
+}
+export interface StatutoryInput {
+  pan?: string; uan?: string; pfNumber?: string; pfApplicable: boolean; esiNumber?: string;
+  esiApplicable: boolean; ptState?: string; lwfApplicable: boolean; aadhaarLast4?: string;
+  passport?: string; taxRegime?: string; rowVersion?: number;
+}
+
+export interface HistoryRow {
+  id: string; eventType: string; employmentType: string; effectiveFrom: string; effectiveTo?: string;
+  companyId: string; branchId: string; departmentId?: string; designationId?: string; gradeId?: string;
+  locationId?: string; costCentreId?: string; managerEmployeeId?: string; reason?: string;
+  payrollAffecting: boolean; rowVersion: number;
+}
+
+export interface LifecyclePayload {
+  companyId?: string; branchId?: string; departmentId?: string; designationId?: string;
+  gradeId?: string; locationId?: string; costCentreId?: string; managerEmployeeId?: string;
+  employmentType?: string; joiningDate?: string; probationEndDate?: string;
+  confirmationDate?: string; lastWorkingDate?: string; exitReason?: string;
+}
+export interface LifecycleEvent {
+  id: string; employeeId: string; eventType: string; status: string; effectiveDate: string;
+  reason?: string; requestedBy: string; requestedAt: string; approvedBy?: string; approvedAt?: string;
+  rejectedBy?: string; rejectionReason?: string; effectiveAt?: string; rowVersion: number;
+}
+export interface LifecycleEventInput {
+  eventType: string; effectiveDate: string; reason?: string; payload?: LifecyclePayload; submit?: boolean;
+}
+
+// ---- Salary types ----
+export interface SalaryComponent {
+  id: string; code: string; name: string; type: string; payslipName?: string;
+  taxable: boolean; proRata: boolean; partOfCtc: boolean; partOfGross: boolean;
+  isStatutory: boolean; isBasic: boolean; displayOrder: number; isActive: boolean; rowVersion: number;
+}
+export type ComponentInput = Omit<SalaryComponent, 'id' | 'isStatutory' | 'rowVersion'> & { id?: string; rowVersion?: number };
+
+export interface SalaryLine {
+  salaryComponentId: string; componentCode: string; componentName: string; componentType: string;
+  sequence: number; calcType: string; amount?: number; percent?: number; formula?: string; resolvedAmount?: number;
+}
+export interface StructureLine extends SalaryLine { id: string }
+export interface SalaryStructure {
+  id: string; code: string; name: string; description?: string; isActive: boolean;
+  lines: StructureLine[]; rowVersion: number;
+}
+export interface StructureLineInput {
+  salaryComponentId: string; sequence: number; calcType: string; amount?: number; percent?: number; formula?: string;
+}
+export interface StructureInput {
+  id?: string; code: string; name: string; description?: string; isActive: boolean;
+  lines: StructureLineInput[]; rowVersion?: number;
+}
+
+export interface SalaryAssignment {
+  id: string; employeeId: string; salaryStructureId: string; structureName: string;
+  ctcAmount: number; currency?: string; effectiveFrom: string; effectiveTo?: string;
+  status: string; reason?: string; requestedBy?: string; requestedAt: string;
+  approvedBy?: string; approvedAt?: string; lines: SalaryLine[]; rowVersion: number;
+}
+export interface AssignmentInput {
+  salaryStructureId: string; ctcAmount: number; currency?: string;
+  effectiveFrom: string; reason?: string; submit?: boolean;
+}
+
+// ---- Documents & letters types ----
+export interface DocCategory {
+  id: string; code: string; name: string; description?: string; requiredForOnboarding: boolean;
+  retentionYears?: number; confidential: boolean; trackExpiry: boolean; isActive: boolean; rowVersion: number;
+}
+export interface EmpDocument {
+  id: string; employeeId: string; categoryId: string; categoryCode: string; categoryName: string;
+  fileId: string; fileName: string; label?: string; documentNumber?: string;
+  issuedOn?: string; expiresOn?: string; status: string; verifiedBy?: string; verifiedAt?: string;
+  verificationNote?: string; replacedById?: string; version: number; rowVersion: number;
+}
+export interface LetterType {
+  id: string; code: string; name: string; description?: string; signatoryEmployeeId?: string;
+  isActive: boolean; rowVersion: number;
+}
+export interface LetterTemplate {
+  id: string; letterTypeId: string; name: string; version: number; subject: string; body: string;
+  isActive: boolean; rowVersion: number;
+}
+export interface LetterTemplateInput {
+  letterTypeId: string; name: string; subject: string; body: string; isActive: boolean; rowVersion?: number;
+}
+export interface EmpLetter {
+  id: string; employeeId: string; letterTypeId: string; letterType: string; subject: string;
+  renderedText: string; templateVersion: number; status: string; issuedBy: string; issuedAt: string;
+  revokedBy?: string; revokedAt?: string; revokeReason?: string; rowVersion: number;
 }

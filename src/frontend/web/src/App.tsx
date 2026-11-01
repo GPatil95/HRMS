@@ -22,6 +22,7 @@ import { AuditPage as TenantAuditPage } from './pages/tenant/AuditPage'
 import { SecurityEventsPage, TemplatesPage } from './pages/tenant/NotAvailablePage'
 import { NotificationsPage } from './pages/tenant/NotificationsPage'
 import { OrgMastersPage } from './pages/tenant/OrgMastersPage'
+import { SalaryMastersPage } from './pages/tenant/SalaryMastersPage'
 import { BranchesPage, CompaniesPage, DepartmentsPage } from './pages/tenant/OrgPages'
 import { ReportsPage } from './pages/tenant/ReportsPage'
 import { RolesPage } from './pages/tenant/RolesPage'
@@ -70,6 +71,7 @@ export default function App() {
             <Route path="/org/masters" element={<OrgMastersPage />} />
             <Route path="/employees" element={<EmployeesPage />} />
             <Route path="/employees/:id" element={<EmployeeDetailPage />} />
+            <Route path="/salary" element={<SalaryMastersPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/admin/users" element={<UsersPage />} />

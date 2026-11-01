@@ -3,13 +3,16 @@ import {
   Avatar, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
   MenuItem, Tab, Tabs, TextField, Typography,
 } from '@mui/material'
-import { Add, Business, Search } from '@mui/icons-material'
+import { Add, Search } from '@mui/icons-material'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { tenantApi, type Employee } from '../../api/tenant'
 import { EmptyState, ErrorAlert, PageHeader, SectionCard, StatusChip, TableSkeleton } from '../../components/ui'
 import { DataList } from '../../components/tenant'
 import { useToast } from '../../components/toast'
+import {
+  BankTab, ContactsTab, DocumentsTab, LettersTab, LifecycleTab, PersonalTab, SalaryTab, StatutoryTab,
+} from './EmployeeSections'
 
 const initials = (name: string) => name.split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
 
@@ -181,9 +184,13 @@ export function EmployeeDetailPage() {
             variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
             <Tab label="Overview" />
             <Tab label="Employment" />
-            <Tab label="Personal" disabled />
-            <Tab label="Salary" disabled />
-            <Tab label="Documents" disabled />
+            <Tab label="Personal" />
+            <Tab label="Contacts & Bank" />
+            <Tab label="Statutory" />
+            <Tab label="Documents" />
+            <Tab label="Letters" />
+            <Tab label="Salary" />
+            <Tab label="Lifecycle" />
           </Tabs>
 
           {tab === 0 && (
@@ -211,9 +218,18 @@ export function EmployeeDetailPage() {
               </Box>
             </SectionCard>
           )}
-          {tab > 1 && (
-            <EmptyState title="Not available yet" hint="This section needs backend support that isn't in the current API surface." icon={<Business />} />
+          {tab === 2 && <PersonalTab empId={e.id} />}
+          {tab === 3 && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <ContactsTab empId={e.id} />
+              <BankTab empId={e.id} />
+            </Box>
           )}
+          {tab === 4 && <StatutoryTab empId={e.id} />}
+          {tab === 5 && <DocumentsTab empId={e.id} />}
+          {tab === 6 && <LettersTab empId={e.id} />}
+          {tab === 7 && <SalaryTab empId={e.id} />}
+          {tab === 8 && <LifecycleTab emp={e} />}
         </>
       )}
     </Box>
