@@ -359,6 +359,9 @@ public sealed class EmployeeDirectoryController(OrganizationService org, Employe
     [HttpPost, RequirePermission(E, P.EmployeeCreate)]
     public async Task<IActionResult> Create(CreateEmployeeCommand cmd, CancellationToken ct) => (await org.CreateEmployeeAsync(cmd, ct)).ToActionResult(id => Ok(new { id }));
 
+    [HttpPut("{id:guid}"), RequirePermission(E, P.EmployeeEdit)]
+    public async Task<IActionResult> Update(Guid id, UpdateEmployeeCommand cmd, CancellationToken ct) => (await org.UpdateEmployeeAsync(id, cmd, ct)).ToActionResult(id2 => Ok(new { id = id2 }));
+
     // ---- Profile sections (M2.2). Masked outputs; sensitive writes require dedicated permissions. ----
 
     [HttpGet("{id:guid}/personal"), RequirePermission(E, P.ProfileView)]

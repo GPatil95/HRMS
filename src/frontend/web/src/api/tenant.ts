@@ -10,10 +10,26 @@ export interface Company { id: string; code: string; name: string; isActive: boo
 export interface Branch { id: string; companyId: string; code: string; name: string; isActive: boolean }
 export interface Department { id: string; code: string; name: string; branchId?: string | null; isActive: boolean }
 export interface Employee {
-  id: string; employeeCode: string; displayName: string; workEmail?: string | null
-  companyId: string; branchId: string; departmentId?: string | null; managerEmployeeId?: string | null
-  userId?: string | null
-  status: string
+  id: string; employeeCode: string; displayName: string
+  firstName?: string | null; middleName?: string | null; lastName?: string | null
+  workEmail?: string | null; workPhone?: string | null
+  companyId: string; branchId: string; departmentId?: string | null
+  designationId?: string | null; gradeId?: string | null; locationId?: string | null; costCentreId?: string | null
+  managerEmployeeId?: string | null; userId?: string | null
+  employmentType?: string | null; joiningDate?: string | null
+  probationEndDate?: string | null; confirmationDate?: string | null
+  status: string; rowVersion: number
+}
+export interface CreateEmployeeInput {
+  employeeCode: string; displayName: string; workEmail?: string; branchId: string
+  departmentId?: string; managerEmployeeId?: string; preJoining?: boolean
+  firstName?: string; middleName?: string; lastName?: string; workPhone?: string
+  designationId?: string; gradeId?: string; locationId?: string; costCentreId?: string
+  employmentType?: string; joiningDate?: string; probationEndDate?: string
+}
+export interface UpdateEmployeeInput {
+  displayName: string; firstName?: string; middleName?: string; lastName?: string
+  workEmail?: string; workPhone?: string; rowVersion?: number
 }
 export interface UserSummary {
   id: string; email: string; displayName: string; status: string
@@ -66,8 +82,8 @@ export const tenantApi = {
 
   employees: () => api<Paged<Employee>>('/api/v1/employees').then(itemsOf),
   employee: (id: string) => api<Employee>(`/api/v1/employees/${id}`),
-  createEmployee: (body: { employeeCode: string; displayName: string; workEmail?: string; branchId: string; departmentId?: string; managerEmployeeId?: string }) =>
-    post<Employee>('/api/v1/employees', body),
+  createEmployee: (body: CreateEmployeeInput) => post<{ id: string }>('/api/v1/employees', body),
+  updateEmployee: (id: string, b: UpdateEmployeeInput) => put<{ id: string }>(`/api/v1/employees/${id}`, b),
 
   companies: () => api<Company[]>('/api/v1/org/companies'),
   createCompany: (body: { code: string; name: string; legalName?: string }) => post<Company>('/api/v1/org/companies', body),

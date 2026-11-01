@@ -148,4 +148,68 @@ public sealed class EmployeeProfileTests(HrmsFixture f)
         var stat = await viewer.Http.GetAsync($"/api/v1/employees/{empId}/statutory");
         stat.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
+
+    [Fact]
+    public async Task CreateWithEmploymentFieldsPersistsAndMirrorsHistory()
+    {
+        var (admin, _) = await NewEmployeeAsync();
+        var companyId = await admin.PostForIdAsync("/api/v1/org/companies", new { code = TestData.Unique("C"), name = "Empl Co", legalName = (string?)null });
+        var branchId = await admin.PostForIdAsync("/api/v1/org/branches", new { companyId, code = TestData.Unique("B"), name = "HQ2" });
+        var designationId = await admin.PostForIdAsync("/api/v1/org/designations", new { code = TestData.Unique("D"), name = "Engineer", level = (int?)null, parentDesignationId = (Guid?)null });
+        var empId = await admin.PostForIdAsync("/api/v1/employees", new
+        {
+            employeeCode = " ", displayName = "Full Emp", workEmail = (string?)null, branchId,
+            departmentId = (Guid?)null, managerEmployeeId = (Guid?)null,
+            firstName = "Full", lastName = "Emp", workPhone = "+91 99999",
+            designationId, employmentType = "probation",
+            joiningDate = "2026-01-05", probationEndDate = "2026-04-05",
+        });
+        var emp = await admin.GetJsonAsync($"/api/v1/employees/{empId}");
+        emp.GetProperty("firstName").GetString().ShouldBe("Full");
+        emp.GetProperty("designationId").GetString().ShouldBe(designationId.ToString());
+        emp.GetProperty("employmentType").GetString().ShouldBe("probation");
+        emp.GetProperty("joiningDate").GetString().ShouldBe("2026-01-05");
+        var history = await admin.GetJsonAsync($"/api/v1/employees/{empId}/history");
+        var row = history.EnumerateArray().Single();
+        row.GetProperty("designationId").GetString().ShouldBe(designationId.ToString());
+        row.GetProperty("effectiveFrom").GetString().ShouldBe("2026-01-05");
+    }
+
+    [Fact]
+    public async Task CreateRejectsInvalidRefs()
+    {
+        var (admin, _) = await NewEmployeeAsync();
+        var companyId = await admin.PostForIdAsync("/api/v1/org/companies", new { code = TestData.Unique("C"), name = "Ref Co", legalName = (string?)null });
+        var branchId = await admin.PostForIdAsync("/api/v1/org/branches", new { companyId, code = TestData.Unique("B"), name = "HQ3" });
+        var res = await admin.Http.PostAsJsonAsync("/api/v1/employees", new
+        {
+            employeeCode = " ", displayName = "Bad Ref", workEmail = (string?)null, branchId,
+            departmentId = (Guid?)null, managerEmployeeId = (Guid?)null, designationId = Guid.NewGuid(),
+        });
+        res.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var res2 = await admin.Http.PostAsJsonAsync("/api/v1/employees", new
+        {
+            employeeCode = " ", displayName = "Bad Type", workEmail = (string?)null, branchId,
+            departmentId = (Guid?)null, managerEmployeeId = (Guid?)null, employmentType = "alien",
+        });
+        res2.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task UpdateEditsBasicsOnly()
+    {
+        var (admin, empId) = await NewEmployeeAsync();
+        var emp = await admin.GetJsonAsync($"/api/v1/employees/{empId}");
+        var rv = emp.GetProperty("rowVersion").GetUInt32();
+        var res = await admin.Http.PutAsJsonAsync($"/api/v1/employees/{empId}", new
+        {
+            displayName = "Renamed Emp", firstName = "Renamed", workEmail = "renamed@test.dev", rowVersion = rv,
+        });
+        res.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var after = await admin.GetJsonAsync($"/api/v1/employees/{empId}");
+        after.GetProperty("displayName").GetString().ShouldBe("Renamed Emp");
+        after.GetProperty("firstName").GetString().ShouldBe("Renamed");
+        var stale = await admin.Http.PutAsJsonAsync($"/api/v1/employees/{empId}", new { displayName = "X", rowVersion = rv });
+        stale.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+    }
 }
