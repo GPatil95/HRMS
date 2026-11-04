@@ -1,4 +1,5 @@
 using Hrms.Application.Tenancy;
+using Hrms.Cli;
 using Hrms.Infrastructure;
 using Hrms.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -8,20 +9,75 @@ using Microsoft.Extensions.Hosting;
 
 // Operator tooling. Secrets (passwords, master key) are read from environment variables only — never from arguments.
 //   migrate-platform
+//   migrate-tenants --tenant <number> [--dry-run]
+//   migrate-tenants --tenant-id <guid> [--dry-run]
+//   migrate-tenants --all [--dry-run]
 //   seed-platform  --admin-email <e> --admin-name <n> --cluster-host <h> --cluster-port <p> --cluster-user <u>
 //                  env: HRMS_ADMIN_PASSWORD, HRMS_CLUSTER_ADMIN_PASSWORD
 //   create-tenant  --code <c> --name <n> --admin-email <e> --admin-name <n> [--plan <code>]
 //   retry-tenant   --id <tenantId>
 var command = args.FirstOrDefault() ?? "help";
-var opts = ParseOptions(args.Skip(1).ToArray());
+Dictionary<string, string> opts;
+try
+{
+    opts = ParseOptions(args.Skip(1).ToArray(), command);
+}
+catch (ArgumentException ex)
+{
+    Console.Error.WriteLine($"ERROR: {ex.Message}");
+    Console.Error.WriteLine("No command operation was performed.");
+    return 2;
+}
 
 var builder = Host.CreateApplicationBuilder();
-builder.Configuration.AddInMemoryCollection([new("Jobs:Mode", "InProcess")]);
+
+// Load the API configuration shared by the CLI and API infrastructure.
+// Supports execution from the repository root and from the CLI project directory.
+var apiConfigCandidates = new[]
+{
+    Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "src", "backend", "Hrms.Api")),
+    Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "Hrms.Api"))
+};
+
+var apiConfigDirectory = apiConfigCandidates.FirstOrDefault(Directory.Exists);
+
+if (apiConfigDirectory is not null)
+{
+    builder.Configuration
+        .AddJsonFile(Path.Combine(apiConfigDirectory, "appsettings.json"), optional: true, reloadOnChange: false)
+        .AddJsonFile(
+            Path.Combine(apiConfigDirectory, $"appsettings.{builder.Environment.EnvironmentName}.json"),
+            optional: true,
+            reloadOnChange: false);
+}
+
+builder.Configuration.AddInMemoryCollection(
+[
+    new KeyValuePair<string, string?>("Jobs:Mode", "InProcess")
+]);
 builder.Configuration.AddEnvironmentVariables();
+
+if (string.IsNullOrWhiteSpace(builder.Configuration["ConnectionStrings:Platform"]))
+{
+    throw new InvalidOperationException(
+        "ConnectionStrings:Platform is required. Configure it in the API appsettings file or ConnectionStrings__Platform environment variable.");
+}
+
 builder.Services.AddHrmsInfrastructure(builder.Configuration);
 using var host = builder.Build();
-await host.StartAsync();
-var jobQueue = host.Services.GetRequiredService<Hrms.Infrastructure.Jobs.InProcessJobQueue>();
+
+// Only provisioning commands need the in-process job queue and hosted workers.
+// Read-only and migration commands must not start background services.
+var requiresJobQueue = command is "create-tenant" or "retry-tenant";
+
+if (requiresJobQueue)
+{
+    await host.StartAsync();
+}
+
+var jobQueue = requiresJobQueue
+    ? host.Services.GetRequiredService<Hrms.Infrastructure.Jobs.InProcessJobQueue>()
+    : null;
 using var scope = host.Services.CreateScope();
 var sp = scope.ServiceProvider;
 var ct = CancellationToken.None;
@@ -35,74 +91,127 @@ switch (command)
 
     case "migrate-tenants":
     {
-        // Applies pending tenant-schema migrations to every provisioned (Online) tenant database.
+        // Safe tenant migration: exactly one of --tenant, --tenant-id, or --all is required.
+        // --dry-run performs preflight and migration-history reporting without database writes.
+        var dryRun = opts.ContainsKey("dry-run");
+
+        if (!TenantMigrationRunner.TryResolveSelector(opts, out var selector, out var selectorError))
+        {
+            Console.Error.WriteLine(selectorError);
+            return 1;
+        }
+
         var pdb = sp.GetRequiredService<PlatformDbContext>();
         var provisioner = sp.GetRequiredService<Hrms.Application.Abstractions.ITenantDatabaseProvisioner>();
         var store = sp.GetRequiredService<Hrms.Application.Abstractions.ISecretStore>();
-        var rows = await pdb.TenantDatabases.Include(r => r.Cluster)
-            .Where(r => r.Status == Hrms.Domain.Platform.TenantDatabaseStatus.Online).ToListAsync(ct);
-        var migrated = 0;
-        foreach (var row in rows)
+
+        var tenantsQuery = pdb.Tenants.AsNoTracking();
+        if (selector.TenantNumber is { } tenantNumber)
+            tenantsQuery = tenantsQuery.Where(t => t.TenantNumber == tenantNumber);
+        else if (selector.TenantId is { } tenantId)
+            tenantsQuery = tenantsQuery.Where(t => t.Id == tenantId);
+
+        var selectedTenants = await tenantsQuery.ToListAsync(ct);
+        if (!selector.All && selectedTenants.Count != 1)
         {
-            var password = await store.GetAsync(row.MigratorSecretRef, ct);
-            if (password is null)
-            {
-                Console.Error.WriteLine($"{row.DatabaseName}: migrator secret missing - skipped.");
-                continue;
-            }
-
-            var conn = provisioner.BuildConnectionString(row.Cluster!, row.DatabaseName, row.MigratorRoleName, password);
-
-            // Grants are idempotent and must be re-applied so schemas added by later
-            // migrations (e.g. hr) become visible to the app role on existing tenants.
-            await provisioner.ApplyGrantsAsync(conn, row.AppRoleName, ct);
-
-            var pending = await provisioner.GetPendingMigrationsAsync(conn, ct);
-            if (pending.Count == 0)
-            {
-                Console.WriteLine($"{row.DatabaseName}: up to date.");
-                continue;
-            }
-
-            await provisioner.MigrateAsync(conn, ct);
-            await provisioner.ApplyGrantsAsync(conn, row.AppRoleName, ct);
-            row.LastMigratedAt = DateTimeOffset.UtcNow;
-            row.SchemaVersion = (await provisioner.GetAppliedMigrationsAsync(conn, ct)).LastOrDefault();
-            migrated++;
-            Console.WriteLine($"{row.DatabaseName}: applied {pending.Count} migration(s) -> {row.SchemaVersion}.");
+            Console.Error.WriteLine("Requested tenant was not found or is ambiguous. No migration was performed.");
+            return 1;
         }
 
-        // Sync module catalogue (new permissions/menu items) and grant them to the system roles.
-        var seeder = sp.GetRequiredService<TenantSeedService>();
-        var tenantDbFactory = sp.GetRequiredService<Hrms.Application.Abstractions.ITenantDbContextFactory>();
-        var synced = 0;
+        var selectedTenantIds = selector.All ? null : selectedTenants.Select(t => t.Id).ToHashSet();
+        var databaseQuery = pdb.TenantDatabases
+            .Include(r => r.Cluster)
+            .Where(r => r.Status == Hrms.Domain.Platform.TenantDatabaseStatus.Online);
+
+        if (selectedTenantIds is not null)
+            databaseQuery = databaseQuery.Where(r => selectedTenantIds.Contains(r.TenantId));
+
+        var rows = await databaseQuery.ToListAsync(ct);
+        if (!selector.All && rows.Count != 1)
+        {
+            Console.Error.WriteLine("Requested tenant does not have exactly one Online tenant database.");
+            return 1;
+        }
+
+        if (rows.Count == 0)
+        {
+            Console.WriteLine("No Online tenant databases matched the selection.");
+            return selector.All ? 0 : 1;
+        }
+
+        var tenantById = selector.All
+            ? await pdb.Tenants.AsNoTracking().ToDictionaryAsync(t => t.Id, ct)
+            : selectedTenants.ToDictionary(t => t.Id);
+
+        var failures = 0;
+        var migrated = 0;
+        var syncFailures = 0;
+        const string requiredExtension = "btree_gist";
+
+        // Catalogue sync (module permissions, system-role grants, HR defaults) uses the
+        // application role connection. The delegate is built only for real runs so
+        // --dry-run never constructs write-capable services.
+        TenantSeedService? seeder = null;
+        Hrms.Application.Abstractions.ITenantDbContextFactory? tenantDbFactory = null;
+        if (!dryRun)
+        {
+            seeder = sp.GetRequiredService<TenantSeedService>();
+            tenantDbFactory = sp.GetRequiredService<Hrms.Application.Abstractions.ITenantDbContextFactory>();
+        }
+
+        Func<Hrms.Domain.Platform.TenantDatabase, CancellationToken, Task>? catalogueSync = dryRun
+            ? null
+            : (r, c) => TenantMigrationRunner.SyncCatalogueAsync(
+                provisioner, store, seeder!, tenantDbFactory!, r, c);
+
         foreach (var row in rows)
         {
+            var tenantLabel = tenantById.TryGetValue(row.TenantId, out var tenant)
+                ? $"{tenant.TenantNumber} ({tenant.Code})"
+                : row.TenantId.ToString();
+
             try
             {
-                var appPassword = await store.GetAsync(row.AppSecretRef, ct);
-                if (appPassword is null)
+                var result = await TenantMigrationRunner.RunAsync(
+                    provisioner, store, row, tenantLabel, requiredExtension, dryRun, catalogueSync, ct);
+
+                if (result.DryRun)
                 {
-                    Console.Error.WriteLine($"{row.DatabaseName}: app secret missing - catalog sync skipped.");
                     continue;
                 }
 
-                var appConn = provisioner.BuildConnectionString(row.Cluster!, row.DatabaseName, row.AppRoleName, appPassword);
-                var tdb = tenantDbFactory.CreateForConnection(appConn);
-                await seeder.SyncPermissionsAsync(tdb, ct);
-                await seeder.SyncRoleGrantsAsync(tdb, ct);
-                await seeder.SeedHrDefaultsAsync(tdb, ct);
-                synced++;
+                await pdb.SaveChangesAsync(ct);
+                migrated++;
+                if (result.CatalogueSyncFailed)
+                {
+                    syncFailures++;
+                }
+
+                if (result.CatalogueSyncFailed)
+                {
+                    Console.WriteLine("Migration and grants succeeded; catalogue synchronization failed - rerun the command to retry sync.");
+                }
+                else
+                {
+                    Console.WriteLine(result.PendingCount == 0
+                        ? "Migration history is current; grants and catalogue sync were re-applied."
+                        : $"Successfully applied {result.PendingCount} migration(s). Schema version: {row.SchemaVersion}");
+                }
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"{row.DatabaseName}: catalog sync failed - {ex.Message}");
+                failures++;
+                Console.Error.WriteLine($"{row.DatabaseName}: FAILED - {ex.Message}");
+                Console.Error.WriteLine("No migration metadata was updated for this tenant.");
             }
         }
 
-        await pdb.SaveChangesAsync(ct);
-        Console.WriteLine(migrated == 0 && rows.Count == 0 ? "No online tenant databases." : $"Migrated {migrated} tenant database(s); synced catalogue on {synced}.");
-        return 0;
+        Console.WriteLine();
+        Console.WriteLine(dryRun
+            ? $"Dry-run completed. Checked {rows.Count} tenant database(s); {failures} failed preflight."
+            : $"Migration operation completed. Successful: {migrated}; failed: {failures}; catalogue sync failures: {syncFailures}.");
+
+        return failures + syncFailures == 0 ? 0 : 1;
     }
 
     case "seed-platform":
@@ -127,7 +236,7 @@ switch (command)
         }
 
         var status = await svc.RunAsync(r.Value.OperationId, ct);
-        await jobQueue.DrainAsync(TimeSpan.FromSeconds(30));
+        await jobQueue!.DrainAsync(TimeSpan.FromSeconds(30));
         Console.WriteLine($"Tenant {r.Value.TenantId} provisioning: {status}");
         return status == Hrms.Domain.Platform.ProvisioningStatus.Succeeded ? 0 : 1;
     }
@@ -143,7 +252,7 @@ switch (command)
         }
 
         var status = await svc.RunAsync(r.Value, ct);
-        await jobQueue.DrainAsync(TimeSpan.FromSeconds(30));
+        await jobQueue!.DrainAsync(TimeSpan.FromSeconds(30));
         Console.WriteLine($"Provisioning: {status}");
         return status == Hrms.Domain.Platform.ProvisioningStatus.Succeeded ? 0 : 1;
     }
@@ -386,28 +495,77 @@ switch (command)
     }
 
     default:
-        Console.WriteLine("Commands: migrate-platform | migrate-tenants | seed-platform | create-tenant | retry-tenant | initialize-master-key | verify-master-key | repair-secrets [--fix] | rekey | rotate-master-key");
+        Console.WriteLine("Commands: migrate-platform | migrate-tenants (--tenant <number> | --tenant-id <guid> | --all) [--dry-run] | seed-platform | create-tenant | retry-tenant | initialize-master-key | verify-master-key | repair-secrets [--fix] | rekey | rotate-master-key");
         return command == "help" ? 0 : 1;
 }
 
-static Dictionary<string, string> ParseOptions(string[] a)
+static Dictionary<string, string> ParseOptions(string[] a, string command)
 {
-    var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    var allowedValueOptions = command switch
+    {
+        "migrate-tenants" => new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "tenant", "tenant-id" },
+        "seed-platform" => new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "admin-email", "admin-name", "cluster-host", "cluster-port", "cluster-user" },
+        "create-tenant" => new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "code", "name", "admin-email", "admin-name", "plan", "admin-password" },
+        "retry-tenant" => new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "id" },
+        "rotate-master-key" => new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "new-key" },
+        "rekey" => new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "old-key" },
+        "repair-secrets" => new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "cluster", "cluster-host", "cluster-port", "cluster-user" },
+        _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    };
+
+    var allowedBooleanOptions = command switch
+    {
+        "migrate-tenants" => new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "all", "dry-run" },
+        "repair-secrets" => new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "fix" },
+        _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    };
+
+    var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
     for (var i = 0; i < a.Length; i++)
     {
-        var key = a[i].TrimStart('-');
-        // Lone token (no value following, or next arg is another flag) → boolean-style flag.
-        if (i + 1 >= a.Length || a[i + 1].StartsWith('-'))
+        var argument = a[i];
+        if (!argument.StartsWith("--", StringComparison.Ordinal) || argument.Length <= 2)
+            throw new ArgumentException($"Invalid argument: {argument}");
+
+        var key = argument[2..];
+        if (key.Contains('=') ||
+    key.StartsWith("-", StringComparison.Ordinal) ||
+    string.IsNullOrWhiteSpace(key))
+            throw new ArgumentException($"Invalid option: {argument}");
+
+        if (!allowedValueOptions.Contains(key) && !allowedBooleanOptions.Contains(key))
+            throw new ArgumentException($"Unknown option '--{key}' for command '{command}'.");
+
+        if (options.ContainsKey(key))
+            throw new ArgumentException($"Duplicate option: --{key}");
+
+        if (allowedBooleanOptions.Contains(key))
         {
-            d[key] = "true";
+            options.Add(key, "true");
+            continue;
         }
-        else
-        {
-            d[key] = a[++i];
-        }
+
+        if (i + 1 >= a.Length || a[i + 1].StartsWith("--", StringComparison.Ordinal))
+            throw new ArgumentException($"Option --{key} requires a value.");
+
+        var value = a[++i];
+        if (string.IsNullOrWhiteSpace(value))
+            throw new ArgumentException($"Option --{key} cannot have an empty value.");
+
+        options.Add(key, value);
     }
 
-    return d;
+    return options;
 }
 
 static string Req(Dictionary<string, string> o, string key) => o.TryGetValue(key, out var v) ? v : throw new ArgumentException($"--{key} is required.");

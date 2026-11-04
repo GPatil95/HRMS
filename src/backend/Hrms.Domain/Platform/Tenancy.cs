@@ -1,3 +1,4 @@
+
 using Hrms.Shared.Auditing;
 using Hrms.Shared.Primitives;
 
@@ -72,7 +73,9 @@ public enum TenantDatabaseStatus
     Offline = 3,
 }
 
-/// <summary>Tenant database registry. Stores secret references only — never credentials.</summary>
+/// <summary>
+/// Tenant database registry. Stores secret references only — never credentials.
+/// </summary>
 [Audited("platform.tenancy")]
 public sealed class TenantDatabase : AuditableEntity, IConcurrencyAware
 {
@@ -124,12 +127,29 @@ public sealed class ProvisioningOperation : AuditableEntity, IConcurrencyAware
     public DateTimeOffset? CompletedAt { get; set; }
     public uint RowVersion { get; set; }
 
-    public bool IsStepCompleted(string step) => Steps.Any(s => s.Step == step && s.Status == "completed");
+    /// <summary>
+    /// A step is complete only when its latest recorded attempt succeeded.
+    /// </summary>
+    public bool IsStepCompleted(string step) =>
+        Steps.LastOrDefault(s => s.Step == step)?.Status == "completed";
 
-    public void MarkStep(string step, string status, DateTimeOffset at, string? error = null)
+    /// <summary>
+    /// Appends a step attempt without deleting previous attempt history.
+    /// </summary>
+    public void MarkStep(
+        string step,
+        string status,
+        DateTimeOffset at,
+        string? error = null)
     {
-        Steps.RemoveAll(s => s.Step == step);
-        Steps.Add(new ProvisioningStepRecord { Step = step, Status = status, At = at, Error = error });
+        Steps.Add(new ProvisioningStepRecord
+        {
+            Step = step,
+            Status = status,
+            At = at,
+            Error = error
+        });
+
         CurrentStep = step;
     }
 }

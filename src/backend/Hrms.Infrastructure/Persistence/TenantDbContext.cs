@@ -1,4 +1,4 @@
-using Hrms.Application.Abstractions;
+﻿using Hrms.Application.Abstractions;
 using Hrms.Domain.Common;
 using Hrms.Domain.Tenant;
 using Microsoft.EntityFrameworkCore;
@@ -520,6 +520,9 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
             e.Property(x => x.Status).HasMaxLength(20);
             e.Property(x => x.Subject).HasMaxLength(200);
             e.Property(x => x.RevokeReason).HasMaxLength(300);
+           e.Property(x => x.RenderedText)
+    .HasMaxLength(256)
+    .IsRequired();
             e.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<LetterType>().WithMany().HasForeignKey(x => x.LetterTypeId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<LetterTemplate>().WithMany().HasForeignKey(x => x.LetterTemplateId).OnDelete(DeleteBehavior.Restrict);

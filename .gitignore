@@ -7,3 +7,9 @@ dist/
 *.user
 .vs/
 TestResults/
+
+# Local auth/session capture artifacts — never commit
+login.json
+cookies.txt
+platform-login.json
+platform-cookies.txt

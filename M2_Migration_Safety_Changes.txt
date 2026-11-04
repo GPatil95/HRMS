@@ -1,0 +1,76 @@
+﻿M2 MIGRATION SAFETY – REQUIRED CODE CHANGES
+
+Review and implement the following improvements in the HRMS project.
+
+IMPORTANT:
+- Do not execute database migrations.
+- Do not modify existing tenant databases.
+- Do not delete existing data.
+- Do not merge PRs.
+- Do not start M3 Attendance development.
+
+1. TENANT-SPECIFIC MIGRATION
+- Add support for migrating one tenant using Tenant Number or Tenant ID.
+- Require explicit --all to migrate all online tenants.
+- Never migrate all tenants by default.
+
+2. DRY-RUN MODE
+Add:
+migrate-tenants --tenant 1008 --dry-run
+
+Display:
+- Tenant database name.
+- Applied migrations.
+- Pending migrations.
+- Pending migration count.
+- Required extension availability.
+
+Dry-run must not execute migrations, grants, SQL changes or seed operations.
+
+3. GRANT EXECUTION
+- Review ApplyGrantsAsync execution order.
+- Do not apply grants during dry-run.
+- Apply necessary grants after successful migration.
+- Handle grant failures explicitly.
+
+4. MIGRATION FAILURE HANDLING
+- Capture and log migration failures.
+- Do not update SchemaVersion after failed migration.
+- Do not update LastMigratedAt after failed migration.
+- Ensure failed migrations can be retried safely.
+
+5. MIGRATION SAFEGUARDS
+Before migration:
+- Verify database exists.
+- Verify migrator credentials.
+- Verify tenant identity.
+- Verify required extensions.
+- Check migration history.
+- Display pending migrations.
+
+6. AUTOMATED TESTS
+Add tests for:
+- Single-tenant migration.
+- Explicit all-tenant migration.
+- Dry-run without database changes.
+- Migration failure handling.
+- Missing migrator credentials.
+- Tenant identity mismatch.
+- Safe migration retry.
+
+7. PRESERVE EXISTING FUNCTIONALITY
+- Do not modify M1 schema.
+- Do not regenerate existing migrations.
+- Do not change encryption keys or secrets.
+- Do not introduce destructive SQL.
+- Preserve API and frontend functionality.
+
+8. FINAL VALIDATION
+- Backend build.
+- All API tests.
+- Frontend lint, typecheck and build if applicable.
+- Git diff review.
+- Confirm no migrations were executed.
+- Provide modified file list and test results.
+
+Do not apply migrations or perform database changes without explicit approval.

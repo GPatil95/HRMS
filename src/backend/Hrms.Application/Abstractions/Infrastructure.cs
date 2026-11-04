@@ -1,3 +1,4 @@
+
 using Hrms.Domain.Platform;
 
 namespace Hrms.Application.Abstractions;
@@ -43,17 +44,37 @@ public interface ITenantDatabaseResolver
 
 public sealed record ClusterConnection(string Host, int Port, string Username, string Password);
 
+/// <summary>
+/// Tenant database provisioning and migration operations.
+/// Preflight methods must remain read-only.
+/// </summary>
 public interface ITenantDatabaseProvisioner
 {
     Task EnsureRoleAsync(ClusterConnection admin, string roleName, string password, CancellationToken ct);
     Task EnsureDatabaseAsync(ClusterConnection admin, string databaseName, string ownerRole, CancellationToken ct);
     Task ConfigureDatabaseAsync(ClusterConnection admin, string databaseName, string migratorRole, string appRole, CancellationToken ct);
+
+    // Read-only migration preflight checks
+    Task<bool> DatabaseExistsAsync(ClusterConnection admin, string databaseName, CancellationToken ct);
+    Task<bool> VerifyMigratorConnectionAsync(
+    string connectionString,
+    string expectedRole,
+    CancellationToken ct);
+    Task<Guid?> GetTenantIdentityAsync(string connectionString, CancellationToken ct);
+    Task<bool> IsExtensionAvailableAsync(string connectionString, string extensionName, CancellationToken ct);
+
+    // Migration and permission operations
     Task MigrateAsync(string migratorConnectionString, CancellationToken ct);
     Task ApplyGrantsAsync(string migratorConnectionString, string appRole, CancellationToken ct);
+
+    // Tenant identity operations
     Task WriteTenantIdentityAsync(string migratorConnectionString, Guid tenantId, int tenantNumber, CancellationToken ct);
     Task<bool> VerifyAsync(string appConnectionString, Guid tenantId, CancellationToken ct);
+
+    // Migration history
     Task<IReadOnlyList<string>> GetAppliedMigrationsAsync(string connectionString, CancellationToken ct);
     Task<IReadOnlyList<string>> GetPendingMigrationsAsync(string connectionString, CancellationToken ct);
+
     string BuildConnectionString(DbCluster cluster, string database, string username, string password);
 }
 

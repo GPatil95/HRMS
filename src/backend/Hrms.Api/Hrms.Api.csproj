@@ -3,6 +3,7 @@
     <NoWarn>$(NoWarn);AV0029;AV0030</NoWarn><UserSecretsId>hrms-api-dev</UserSecretsId></PropertyGroup>
   <ItemGroup><ProjectReference Include="..\Hrms.Infrastructure\Hrms.Infrastructure.csproj" /></ItemGroup>
   <ItemGroup>
+<PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
     <PackageReference Include="Asp.Versioning.Mvc" />
     <PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
