@@ -1,0 +1,295 @@
+using Hrms.Application.Abstractions;
+using Hrms.Application.Identity;
+using Hrms.Application.Modules;
+using Hrms.Domain.Common;
+using Hrms.Domain.Tenant;
+using Hrms.Shared.Security;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+
+namespace Hrms.Application.Tenancy;
+
+public static class SystemTemplates
+{
+    public const string Invitation = "auth.invitation";
+    public const string PasswordReset = "auth.password-reset";
+    public const string EmailVerification = "auth.email-verification";
+
+    public static IReadOnlyList<(string Code, string Subject, string Body)> All { get; } =
+    [
+        (Invitation, "You have been invited to {{ tenant_name }}",
+            "<p>Hello {{ display_name }},</p><p>You have been invited to {{ tenant_name }} HRMS.</p><p><a href=\"{{ link }}\">Set your password</a> (valid for {{ hours }} hours).</p>"),
+        (PasswordReset, "Reset your {{ tenant_name }} password",
+            "<p>Hello {{ display_name }},</p><p><a href=\"{{ link }}\">Reset your password</a>. If you did not request this, ignore this email.</p>"),
+        (EmailVerification, "Verify your email address",
+            "<p>Hello {{ display_name }},</p><p><a href=\"{{ link }}\">Verify your email address</a>.</p>"),
+    ];
+}
+
+/// <summary>Idempotent seeding of foundation data into a tenant database (permissions, system roles, templates, default dashboard).</summary>
+public sealed class TenantSeedService(IModuleCatalog catalog)
+{
+    public async Task SeedAsync(ITenantDbContext db, CancellationToken ct)
+    {
+        await SyncPermissionsAsync(db, ct);
+
+        if (!await db.AuthorizationState.AnyAsync(ct))
+        {
+            db.AuthorizationState.Add(new AuthorizationState { Id = 1, Version = 1 });
+        }
+
+        var permissions = await db.Permissions.Where(p => p.IsActive).ToListAsync(ct);
+        await EnsureRoleAsync(db, SystemRoles.TenantAdmin, "Tenant Admin", permissions.Select(p => (p, ScopeLevel.Tenant)), ct);
+        await EnsureRoleAsync(db, SystemRoles.Manager, "Manager",
+            permissions.Where(p => p.Code is FoundationPermissions.DashboardView or FoundationPermissions.EmployeeView)
+                .Select(p => (p, p.SupportsScope ? ScopeLevel.DirectReports : ScopeLevel.Tenant)), ct);
+        await EnsureRoleAsync(db, SystemRoles.Employee, "Employee",
+            permissions.Where(p => p.Code is FoundationPermissions.DashboardView or FoundationPermissions.EmployeeView)
+                .Select(p => (p, p.SupportsScope ? ScopeLevel.Own : ScopeLevel.Tenant)), ct);
+
+        foreach (var (code, subject, body) in SystemTemplates.All)
+        {
+            if (!await db.NotificationTemplates.AnyAsync(t => t.Code == code && t.Channel == NotificationChannels.Email, ct))
+            {
+                db.NotificationTemplates.Add(new NotificationTemplate { Code = code, Channel = NotificationChannels.Email, Subject = subject, Body = body, IsSystem = true });
+            }
+        }
+
+        await SeedHrDefaultsAsync(db, ct);
+
+        if (!await db.Dashboards.AnyAsync(d => d.Code == "default", ct))
+        {
+            var dashboard = new Dashboard { Code = "default", Name = "Home", IsSystem = true };
+            dashboard.Widgets.Add(new DashboardWidget { DashboardId = dashboard.Id, WidgetCode = "core.welcome", X = 0, Y = 0, Width = 6, Height = 2 });
+            dashboard.Widgets.Add(new DashboardWidget { DashboardId = dashboard.Id, WidgetCode = "core.notifications", X = 6, Y = 0, Width = 6, Height = 3 });
+            db.Dashboards.Add(dashboard);
+            db.DashboardAssignments.Add(new DashboardAssignment { DashboardId = dashboard.Id, AssigneeType = DashboardAssigneeType.TenantDefault });
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task SyncPermissionsAsync(ITenantDbContext db, CancellationToken ct)
+    {
+        var existing = await db.Permissions.ToDictionaryAsync(p => p.Code, ct);
+        var defined = catalog.AllPermissions.ToList();
+        foreach (var d in defined)
+        {
+            if (!existing.TryGetValue(d.Code, out var p))
+            {
+                p = new Permission { Code = d.Code };
+                db.Permissions.Add(p);
+            }
+
+            p.ModuleCode = d.ModuleCode;
+            p.Kind = d.Kind;
+            p.Action = d.Action;
+            p.Description = d.Description;
+            p.SupportsScope = d.SupportsScope;
+            p.IsSensitive = d.IsSensitive;
+            p.IsActive = true;
+        }
+
+        foreach (var stale in existing.Values.Where(p => defined.All(d => d.Code != p.Code)))
+        {
+            stale.IsActive = false;
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        // Tenant Admin always holds every active permission at tenant scope.
+        var admin = await db.Roles.Include(r => r.Permissions).FirstOrDefaultAsync(r => r.Code == SystemRoles.TenantAdmin, ct);
+        if (admin is not null)
+        {
+            var all = await db.Permissions.Where(p => p.IsActive).Select(p => p.Id).ToListAsync(ct);
+            foreach (var id in all.Where(id => admin.Permissions.All(rp => rp.PermissionId != id)))
+            {
+                admin.Permissions.Add(new RolePermission { RoleId = admin.Id, PermissionId = id, ScopeLevel = ScopeLevel.Tenant });
+            }
+
+            var state = await db.AuthorizationState.FirstOrDefaultAsync(ct);
+            if (state is not null)
+            {
+                state.Version++;
+            }
+
+            await db.SaveChangesAsync(ct);
+        }
+    }
+
+    /// <summary>Additively tops up the built-in manager/employee system roles with permissions they were
+    /// seeded to hold (view-level org/employee perms). Never removes grants; custom roles are untouched.
+    /// Used by migrate-tenants catalog sync so new permission codes reach existing tenants.</summary>
+    public async Task SyncRoleGrantsAsync(ITenantDbContext db, CancellationToken ct)
+    {
+        var permissions = await db.Permissions.Where(p => p.IsActive).ToListAsync(ct);
+
+        async Task GrantMissingAsync(string roleCode, ScopeLevel scope, params string[] codes)
+        {
+            var role = await db.Roles.Include(r => r.Permissions).FirstOrDefaultAsync(r => r.Code == roleCode, ct);
+            if (role is null)
+            {
+                return;
+            }
+
+            var wanted = permissions.Where(p => codes.Contains(p.Code)).ToList();
+            foreach (var p in wanted.Where(p => role.Permissions.All(rp => rp.PermissionId != p.Id)))
+            {
+                role.Permissions.Add(new RolePermission { RoleId = role.Id, PermissionId = p.Id, ScopeLevel = p.SupportsScope ? scope : ScopeLevel.Tenant });
+            }
+        }
+
+        await GrantMissingAsync(SystemRoles.Manager, ScopeLevel.DirectReports,
+            FoundationPermissions.MasterView, FoundationPermissions.EmployeeView, FoundationPermissions.DashboardView);
+        await GrantMissingAsync(SystemRoles.Employee, ScopeLevel.Own,
+            FoundationPermissions.MasterView, FoundationPermissions.EmployeeView, FoundationPermissions.DashboardView);
+
+        var state = await db.AuthorizationState.FirstOrDefaultAsync(ct);
+        if (state is not null)
+        {
+            state.Version++;
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Baseline employee document categories and letter types. Idempotent by code; runs at
+    /// provisioning (SeedAsync) and for existing tenants via the migrate-tenants catalogue sync.</summary>
+    public async Task SeedHrDefaultsAsync(ITenantDbContext db, CancellationToken ct)
+    {
+        // (code, name, requiredForOnboarding, retentionYears, confidential, trackExpiry)
+        (string Code, string Name, bool Required, int? Retention, bool Confidential, bool TrackExpiry)[] categories =
+        [
+            ("photo", "Photograph", false, null, false, false),
+            ("resume", "Resume / CV", false, null, false, false),
+            ("aadhaar", "Aadhaar Card", true, null, true, false),
+            ("pan-card", "PAN Card", true, null, true, false),
+            ("passport", "Passport", false, null, true, true),
+            ("address-proof", "Address Proof", true, null, false, false),
+            ("education", "Education Certificate", true, null, false, false),
+            ("experience", "Experience / Relieving Letter", false, null, false, false),
+            ("bank-proof", "Bank Proof (Cancelled Cheque / Passbook)", true, null, true, false),
+            ("offer-letter", "Signed Offer Letter", true, 8, false, false),
+            ("visa-work-permit", "Visa / Work Permit", false, null, true, true),
+            ("other", "Other", false, null, false, false),
+        ];
+
+        var haveCategories = await db.DocumentCategories.Select(c => c.Code).ToListAsync(ct);
+        foreach (var (code, name, required, retention, confidential, trackExpiry) in categories)
+        {
+            if (!haveCategories.Contains(code))
+            {
+                db.DocumentCategories.Add(new DocumentCategory
+                {
+                    Code = code,
+                    Name = name,
+                    RequiredForOnboarding = required,
+                    RetentionYears = retention,
+                    Confidential = confidential,
+                    TrackExpiry = trackExpiry,
+                });
+            }
+        }
+
+        var haveTypes = await db.LetterTypes.Select(t => t.Code).ToListAsync(ct);
+        (string Code, string Name)[] types =
+        [
+            ("offer", "Offer Letter"),
+            ("appointment", "Appointment Letter"),
+            ("confirmation", "Confirmation Letter"),
+            ("experience", "Experience Letter"),
+            ("relieving", "Relieving Letter"),
+            ("address-proof", "Address Proof Letter"),
+            ("salary-revision", "Salary Revision Letter"),
+            ("warning", "Warning Letter"),
+        ];
+        foreach (var (code, name) in types)
+        {
+            if (!haveTypes.Contains(code))
+            {
+                db.LetterTypes.Add(new LetterType { Code = code, Name = name });
+            }
+        }
+
+        // Baseline salary components — Indian payroll defaults; statutory rows are delete-protected.
+        var haveComponents = await db.SalaryComponents.Select(c => c.Code).ToListAsync(ct);
+        (string Code, string Name, string Type, bool Taxable, bool Statutory, bool Basic, int Order)[] comps =
+        [
+            ("basic", "Basic", "earning", true, false, true, 10),
+            ("hra", "House Rent Allowance", "earning", true, false, false, 20),
+            ("special-allowance", "Special Allowance", "earning", true, false, false, 30),
+            ("conveyance", "Conveyance Allowance", "earning", true, false, false, 40),
+            ("medical-allowance", "Medical Allowance", "earning", true, false, false, 50),
+            ("bonus", "Bonus", "earning", true, false, false, 60),
+            ("pf-employee", "Provident Fund (Employee)", "statutory", false, true, false, 100),
+            ("pf-employer", "Provident Fund (Employer)", "statutory", false, true, false, 101),
+            ("esi-employee", "ESI (Employee)", "statutory", false, true, false, 110),
+            ("esi-employer", "ESI (Employer)", "statutory", false, true, false, 111),
+            ("professional-tax", "Professional Tax", "statutory", false, true, false, 120),
+            ("tds", "Tax Deducted at Source", "statutory", false, true, false, 130),
+            ("lwf", "Labour Welfare Fund", "statutory", false, true, false, 140),
+            ("loan-recovery", "Loan Recovery", "deduction", false, false, false, 200),
+            ("other-deduction", "Other Deduction", "deduction", true, false, false, 210),
+        ];
+        foreach (var (code, name, type, taxable, statutory, basic, order) in comps)
+        {
+            if (!haveComponents.Contains(code))
+            {
+                db.SalaryComponents.Add(new SalaryComponent
+                {
+                    Code = code, Name = name, Type = type, Taxable = taxable,
+                    IsStatutory = statutory, IsBasic = basic, DisplayOrder = order,
+                    PartOfGross = type == "earning" || type == "reimbursement",
+                    PartOfCtc = type != "deduction",
+                });
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static async Task EnsureRoleAsync(ITenantDbContext db, string code, string name, IEnumerable<(Permission P, ScopeLevel Level)> perms, CancellationToken ct)
+    {
+        if (await db.Roles.AnyAsync(r => r.Code == code, ct))
+        {
+            return;
+        }
+
+        var role = new Role { Code = code, Name = name, IsSystem = true };
+        role.Permissions.AddRange(perms.Select(x => new RolePermission { RoleId = role.Id, PermissionId = x.P.Id, ScopeLevel = x.Level }));
+        db.Roles.Add(role);
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Creates the tenant admin (idempotent). With <paramref name="initialPassword"/> the user is created
+    /// active with a properly hashed password; without it the user is invited and must accept the emailed invitation.</summary>
+    public static async Task<TenantUser> EnsureTenantAdminAsync(ITenantDbContext db, string email, string displayName, string? initialPassword, CancellationToken ct)
+    {
+        var normalized = email.Trim().ToLowerInvariant();
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Email == normalized, ct);
+        if (user is null)
+        {
+            user = new TenantUser { Email = normalized, DisplayName = displayName, Status = UserStatus.Invited };
+            db.Users.Add(user);
+        }
+
+        if (!string.IsNullOrEmpty(initialPassword))
+        {
+            user.PasswordHash = new PasswordHasher<IdentityUserBase>().HashPassword(user, initialPassword);
+            user.Status = UserStatus.Active;
+            user.EmailConfirmed = true;
+            user.PasswordChangedAt = DateTimeOffset.UtcNow;
+            user.LockoutEndUtc = null;
+            user.AccessFailedCount = 0;
+        }
+
+        var role = await db.Roles.FirstAsync(r => r.Code == SystemRoles.TenantAdmin, ct);
+        if (!await db.RoleAssignments.AnyAsync(a => a.UserId == user.Id && a.RoleId == role.Id, ct))
+        {
+            db.RoleAssignments.Add(new UserRoleAssignment { UserId = user.Id, RoleId = role.Id, ValidFrom = DateOnly.FromDateTime(DateTime.UtcNow) });
+        }
+
+        await db.SaveChangesAsync(ct);
+        return user;
+    }
+}
