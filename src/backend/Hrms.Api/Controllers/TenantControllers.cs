@@ -346,7 +346,8 @@ public sealed class OrgReferenceMastersController(OrgReferenceMastersService ref
 
 [ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/employees")]
 public sealed class EmployeeDirectoryController(OrganizationService org, EmployeeProfileService profiles,
-    LifecycleEventService lifecycle, EmployeeDocumentService documents, ICurrentUser currentUser) : ControllerBase
+    LifecycleEventService lifecycle, EmployeeDocumentService documents, LetterIssuanceService issuance,
+    FileService files, ICurrentUser currentUser) : ControllerBase
 {
     private const string E = EmployeeFoundationModule.ModuleCode;
 
@@ -446,7 +447,7 @@ public sealed class EmployeeDirectoryController(OrganizationService org, Employe
     // ---- Documents & letters (M2.4). ----
 
     [HttpGet("{id:guid}/documents"), RequirePermission(E, P.DocumentsView)]
-    public async Task<IActionResult> ListDocuments(Guid id, CancellationToken ct) => Ok(await documents.ListDocumentsAsync(id, ct));
+    public async Task<IActionResult> ListDocuments(Guid id, CancellationToken ct) => (await documents.ListDocumentsAsync(id, ct)).ToActionResult();
 
     [HttpPost("{id:guid}/documents"), RequirePermission(E, P.DocumentsUpload), RequestSizeLimit(11 * 1024 * 1024)]
     public async Task<IActionResult> UploadDocument(Guid id, IFormFile file, [FromForm] Guid categoryId, [FromForm] string? label,
@@ -464,26 +465,52 @@ public sealed class EmployeeDirectoryController(OrganizationService org, Employe
         (await documents.VerifyAsync(id, documentId, input, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
 
     [HttpGet("{id:guid}/documents/missing"), RequirePermission(E, P.DocumentsView)]
-    public async Task<IActionResult> MissingOnboardingDocs(Guid id, CancellationToken ct) => Ok(await documents.MissingOnboardingDocsAsync(id, ct));
+    public async Task<IActionResult> MissingOnboardingDocs(Guid id, CancellationToken ct) => (await documents.MissingOnboardingDocsAsync(id, ct)).ToActionResult();
 
     [HttpGet("{id:guid}/letters"), RequirePermission(E, P.LettersView)]
-    public async Task<IActionResult> ListLetters(Guid id, CancellationToken ct) => Ok(await documents.ListLettersAsync(id, ct));
+    public async Task<IActionResult> ListLetters(Guid id, CancellationToken ct) => (await documents.ListLettersAsync(id, ct)).ToActionResult();
+
+    [HttpPost("{id:guid}/letters/preview"), RequirePermission(E, P.LettersIssue)]
+    public async Task<IActionResult> PreviewLetter(Guid id, IssueLetterInput input, CancellationToken ct) =>
+        (await issuance.PreviewAsync(id, input.LetterTypeId, input.LetterTemplateId, ct)).ToActionResult();
 
     [HttpPost("{id:guid}/letters"), RequirePermission(E, P.LettersIssue)]
     public async Task<IActionResult> IssueLetter(Guid id, IssueLetterInput input, CancellationToken ct) =>
-        (await documents.IssueAsync(id, input, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult(l => Ok(new { id = l.Id }));
+        (await issuance.IssueAsync(id, input.LetterTypeId, input.LetterTemplateId, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
 
     [HttpGet("letters/{letterId:guid}"), RequirePermission(E, P.LettersView)]
     public async Task<IActionResult> GetLetter(Guid letterId, CancellationToken ct) =>
-        (await documents.GetLetterAsync(letterId, ct)) is { } l ? Ok(l) : NotFound();
+        (await documents.GetLetterAsync(letterId, ct)).ToActionResult();
 
     [HttpGet("letters/{letterId:guid}/download"), RequirePermission(E, P.LettersView)]
-    public async Task<IActionResult> DownloadLetter(Guid letterId, CancellationToken ct) =>
-        (await documents.GetLetterAsync(letterId, ct)) is { } l
-            ? File(System.Text.Encoding.UTF8.GetBytes(l.RenderedText), "text/plain", $"{l.LetterType}-{l.Subject}.txt")
-            : NotFound();
+    public async Task<IActionResult> DownloadLetter(Guid letterId, CancellationToken ct)
+    {
+        // Issued letters carry an immutable PDF (file_id); pre-M2.7 letters fall back to the stored text.
+        var letter = await documents.GetLetterAsync(letterId, ct);
+        if (!letter.IsSuccess)
+        {
+            return letter.ToActionResult();
+        }
 
-    [HttpPost("letters/{letterId:guid}/revoke"), RequirePermission(E, P.LettersIssue)]
+        if (letter.Value.FileId is { } fileId)
+        {
+            return (await files.DownloadAsync(fileId, ct)).ToActionResult(d => File(d.Content, d.ContentType, d.FileName));
+        }
+
+        var l = letter.Value;
+        return File(System.Text.Encoding.UTF8.GetBytes(l.RenderedText), "text/plain",
+            FileService.SanitizeFileName($"{l.LetterType}-{l.Subject}.txt"));
+    }
+
+    [HttpPost("letters/{letterId:guid}/retry"), RequirePermission(E, P.LettersIssue)]
+    public async Task<IActionResult> RetryLetter(Guid letterId, CancellationToken ct) =>
+        (await issuance.RetryAsync(letterId, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
+
+    [HttpPost("letters/{letterId:guid}/reissue"), RequirePermission(E, P.LettersReissue)]
+    public async Task<IActionResult> ReissueLetter(Guid letterId, CancellationToken ct) =>
+        (await issuance.ReissueAsync(letterId, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
+
+    [HttpPost("letters/{letterId:guid}/revoke"), RequirePermission(E, P.LettersRevoke)]
     public async Task<IActionResult> RevokeLetter(Guid letterId, RejectEventRequest req, CancellationToken ct) =>
         (await documents.RevokeAsync(letterId, currentUser.UserId ?? Guid.Empty, req.Reason, ct)).ToActionResult();
 }
@@ -521,7 +548,7 @@ public sealed class EmployeeSalaryController(SalaryService salary, ICurrentUser 
     private const string E = EmployeeFoundationModule.ModuleCode;
 
     [HttpGet("{id:guid}/salary-assignments"), RequirePermission(E, P.SalaryAssignmentView)]
-    public async Task<IActionResult> List(Guid id, CancellationToken ct) => Ok(await salary.ListAssignmentsAsync(id, ct));
+    public async Task<IActionResult> List(Guid id, CancellationToken ct) => (await salary.ListAssignmentsAsync(id, ct)).ToActionResult();
 
     [HttpGet("{id:guid}/salary-assignments/current"), RequirePermission(E, P.SalaryAssignmentView)]
     public async Task<IActionResult> Current(Guid id, CancellationToken ct) =>
@@ -561,9 +588,68 @@ public sealed class TenantAuditController(TenantAuditQueryService audit) : Contr
 }
 
 [ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/employee-docs")]
-public sealed class EmployeeDocsAdminController(EmployeeDocumentService documents) : ControllerBase
+public sealed class EmployeeDocsAdminController(EmployeeDocumentService documents, LetterAdminService letterAdmin, ICurrentUser currentUser) : ControllerBase
 {
     private const string E = EmployeeFoundationModule.ModuleCode;
+
+    [HttpGet("letter-merge-fields"), RequirePermission(E, P.LettersView)]
+    public IActionResult MergeFields() => Ok(letterAdmin.MergeFields());
+
+    // ---- Signatories ----
+
+    [HttpGet("letter-signatories"), RequirePermission(E, P.LettersView)]
+    public async Task<IActionResult> Signatories(CancellationToken ct) => Ok(await letterAdmin.ListSignatoriesAsync(ct));
+
+    [HttpPost("letter-signatories"), RequirePermission(E, P.LettersSignatoryManage)]
+    public async Task<IActionResult> CreateSignatory(LetterSignatoryInput input, CancellationToken ct) =>
+        (await letterAdmin.CreateSignatoryAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpPut("letter-signatories/{id:guid}"), RequirePermission(E, P.LettersSignatoryManage)]
+    public async Task<IActionResult> UpdateSignatory(Guid id, LetterSignatoryInput input, CancellationToken ct) =>
+        (await letterAdmin.UpdateSignatoryAsync(id, input, ct)).ToActionResult();
+
+    // ---- Letterheads ----
+
+    [HttpGet("letterheads"), RequirePermission(E, P.LettersView)]
+    public async Task<IActionResult> Letterheads(CancellationToken ct) => Ok(await letterAdmin.ListLetterheadsAsync(ct));
+
+    [HttpPost("letterheads"), RequirePermission(E, P.LettersLetterheadManage)]
+    public async Task<IActionResult> CreateLetterhead(LetterheadInput input, CancellationToken ct) =>
+        (await letterAdmin.CreateLetterheadAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpPut("letterheads/{id:guid}"), RequirePermission(E, P.LettersLetterheadManage)]
+    public async Task<IActionResult> UpdateLetterhead(Guid id, LetterheadInput input, CancellationToken ct) =>
+        (await letterAdmin.UpdateLetterheadAsync(id, input, ct)).ToActionResult();
+
+    // ---- Template families + versions ----
+
+    [HttpGet("letter-template-families"), RequirePermission(E, P.LettersView)]
+    public async Task<IActionResult> Families([FromQuery] Guid? letterTypeId, CancellationToken ct) =>
+        Ok(await letterAdmin.ListFamiliesAsync(letterTypeId, ct));
+
+    [HttpPost("letter-template-families"), RequirePermission(E, P.LettersTemplateManage)]
+    public async Task<IActionResult> CreateFamily(LetterTemplateFamilyInput input, CancellationToken ct) =>
+        (await letterAdmin.CreateFamilyAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpGet("letter-template-families/{familyId:guid}/versions"), RequirePermission(E, P.LettersView)]
+    public async Task<IActionResult> Versions(Guid familyId, CancellationToken ct) =>
+        Ok(await letterAdmin.ListVersionsAsync(familyId, ct));
+
+    [HttpPost("letter-template-families/{familyId:guid}/versions"), RequirePermission(E, P.LettersTemplateManage)]
+    public async Task<IActionResult> CreateDraft(Guid familyId, [FromQuery] Guid? baseTemplateId, LetterTemplateVersionInput input, CancellationToken ct) =>
+        (await letterAdmin.CreateDraftAsync(familyId, baseTemplateId, input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpPut("letter-templates/{id:guid}"), RequirePermission(E, P.LettersTemplateManage)]
+    public async Task<IActionResult> UpdateDraft(Guid id, LetterTemplateVersionInput input, CancellationToken ct) =>
+        (await letterAdmin.UpdateDraftAsync(id, input, ct)).ToActionResult();
+
+    [HttpPost("letter-templates/{id:guid}/publish"), RequirePermission(E, P.LettersTemplatePublish)]
+    public async Task<IActionResult> Publish(Guid id, CancellationToken ct) =>
+        (await letterAdmin.PublishAsync(id, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
+
+    [HttpPost("letter-templates/{id:guid}/retire"), RequirePermission(E, P.LettersTemplatePublish)]
+    public async Task<IActionResult> Retire(Guid id, CancellationToken ct) =>
+        (await letterAdmin.RetireAsync(id, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
 
     [HttpGet("categories"), RequirePermission(E, P.DocumentsView)]
     public async Task<IActionResult> Categories(CancellationToken ct) => Ok(await documents.ListCategoriesAsync(ct));

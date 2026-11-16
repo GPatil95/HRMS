@@ -22,6 +22,28 @@ using Xunit;
 
 namespace Hrms.Testing;
 
+/// <summary>Deterministic IPdfService for tests — returns a minimal valid PDF header + content.
+/// Set <see cref="Fail"/> to simulate Gotenberg being unavailable (generation_failed path).</summary>
+public sealed class StubPdfService : IPdfService
+{
+    public bool Fail { get; set; }
+
+    public Task<Hrms.Shared.Results.Result<byte[]>> RenderPdfAsync(string html, CancellationToken ct)
+    {
+        if (Fail)
+        {
+            return Task.FromResult<Hrms.Shared.Results.Result<byte[]>>(
+                Hrms.Shared.Results.Error.Rule("pdf.stub_failed", "Stubbed PDF failure (Gotenberg unavailable)."));
+        }
+
+        var body = System.Text.Encoding.ASCII.GetBytes(System.Text.RegularExpressions.Regex.Replace(html, "<[^>]+>", " "));
+        var bytes = new byte[10 + body.Length];
+        "%PDF-1.4 s"u8.ToArray().AsSpan().CopyTo(bytes);
+        body.AsSpan(0, Math.Min(body.Length, bytes.Length - 11)).CopyTo(bytes.AsSpan(11));
+        return Task.FromResult(Hrms.Shared.Results.Result<byte[]>.Ok(bytes));
+    }
+}
+
 public sealed partial class CapturingEmailTransport : IEmailTransport
 {
     private static readonly JsonSerializerOptions Json =
@@ -89,6 +111,8 @@ public sealed class HrmsFixture : IAsyncLifetime
     public WebApplicationFactory<Program> Factory { get; private set; } = null!;
     public CapturingEmailTransport Emails { get; } = new();
     public TestFaultInjector Faults { get; } = new();
+    /// <summary>Registered as the singleton IPdfService; set <c>Pdf.Fail = true</c> to simulate a PDF outage.</summary>
+    public StubPdfService Pdf { get; } = new();
     public Guid AcmeId { get; private set; }
     public Guid GlobexId { get; private set; }
 
@@ -153,6 +177,10 @@ public sealed class HrmsFixture : IAsyncLifetime
                     s.AddSingleton<IProvisioningFaultInjector>(Faults);
 
                     s.AddSingleton<Hrms.Application.Modules.IModuleDefinition, PayrollProbeModule>();
+
+                    // Letter issuance requires a real PDF; tests use a deterministic stub (no Gotenberg in CI).
+                    s.RemoveAll<IPdfService>();
+                    s.AddSingleton<IPdfService>(Pdf);
 
                     s.AddControllers()
                         .AddApplicationPart(typeof(PayrollProbeController).Assembly);

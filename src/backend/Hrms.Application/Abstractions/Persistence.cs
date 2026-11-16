@@ -78,6 +78,10 @@ public interface ITenantDbContext
     DbSet<LetterType> LetterTypes { get; }
     DbSet<LetterTemplate> LetterTemplates { get; }
     DbSet<EmployeeLetter> EmployeeLetters { get; }
+    DbSet<LetterSignatory> LetterSignatories { get; }
+    DbSet<Letterhead> Letterheads { get; }
+    DbSet<LetterTemplateFamily> LetterTemplateFamilies { get; }
+    DbSet<LetterCounter> LetterCounters { get; }
     DbSet<SalaryComponent> SalaryComponents { get; }
     DbSet<SalaryStructure> SalaryStructures { get; }
     DbSet<SalaryStructureLine> SalaryStructureLines { get; }

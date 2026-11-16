@@ -1,5 +1,7 @@
 using Hrms.Application.Abstractions;
+using Hrms.Application.Authorization;
 using Hrms.Application.Files;
+using Hrms.Application.Modules;
 using Hrms.Domain.Tenant;
 using Hrms.Shared.Primitives;
 using Hrms.Shared.Results;
@@ -13,20 +15,32 @@ public sealed record EmployeeDocumentDto(Guid Id, Guid EmployeeId, Guid Category
     Guid FileId, string FileName, string? Label, string? DocumentNumber, DateOnly? IssuedOn, DateOnly? ExpiresOn,
     string Status, Guid? VerifiedBy, DateTimeOffset? VerifiedAt, string? VerificationNote, Guid? ReplacedById, int Version, uint RowVersion);
 public sealed record DocumentVerifyInput(string Status, string? Note);
-public sealed record LetterTypeInput(string Code, string Name, string? Description, Guid? SignatoryEmployeeId, bool IsActive, uint? RowVersion = null);
-public sealed record LetterTypeDto(Guid Id, string Code, string Name, string? Description, Guid? SignatoryEmployeeId, bool IsActive, uint RowVersion);
+public sealed record LetterTypeInput(string Code, string Name, string? Description, Guid? SignatoryEmployeeId, bool IsActive, uint? RowVersion = null,
+    // V2 fields — set-when-provided on update (null leaves the stored value, so the legacy UI can't clear them).
+    Guid? SignatoryId = null, string? NumberPrefix = null, string? NumberReset = null);
+public sealed record LetterTypeDto(Guid Id, string Code, string Name, string? Description, Guid? SignatoryEmployeeId, bool IsActive, uint RowVersion,
+    Guid? SignatoryId, string NumberPrefix, string NumberReset);
 public sealed record LetterTemplateInput(Guid LetterTypeId, string Name, string Subject, string Body, bool IsActive, uint? RowVersion = null);
-public sealed record LetterTemplateDto(Guid Id, Guid LetterTypeId, string Name, int Version, string Subject, string Body, bool IsActive, uint RowVersion);
+public sealed record LetterTemplateDto(Guid Id, Guid LetterTypeId, string Name, int Version, string Subject, string Body, bool IsActive, uint RowVersion, string Status);
 public sealed record IssueLetterInput(Guid LetterTypeId, Guid? LetterTemplateId);
 public sealed record EmployeeLetterDto(Guid Id, Guid EmployeeId, Guid LetterTypeId, string LetterType, string Subject,
     string RenderedText, int TemplateVersion, string Status, Guid IssuedBy, DateTimeOffset IssuedAt,
-    Guid? RevokedBy, DateTimeOffset? RevokedAt, string? RevokeReason, uint RowVersion);
+    Guid? RevokedBy, DateTimeOffset? RevokedAt, string? RevokeReason, uint RowVersion,
+    string LetterNumber, Guid? FileId, string? PdfSha256, string? SignatoryName, string? SignatoryDesignation,
+    string? LetterheadSnapshot, DateOnly? IssueDate, string? IssueTz, Guid? SupersedesId);
 
 /// <summary>Employee documents (categories, uploads via FileService, verification, expiry sweep, replacement
 /// history) and letters (types, versioned Scriban templates, immutable issued snapshots, revocation).</summary>
 public sealed class EmployeeDocumentService(
-    ITenantDbContext db, FileService files, ITemplateRenderer renderer, IClock clock)
+    ITenantDbContext db, FileService files, IDataScopeService scopes, IClock clock)
 {
+    /// <summary>Data-scope gate for employee-bound operations. Out-of-scope and non-existent employees
+    /// are indistinguishable (404): the response must not be an existence oracle.</summary>
+    private async Task<Error?> RequireEmployeeScopeAsync(string permissionCode, Guid employeeId, CancellationToken ct) =>
+        await scopes.CanAccessEmployeeAsync(permissionCode, employeeId, ct)
+            ? null
+            : Error.NotFound("employee.not_found", "Employee not found.");
+
     // ---------- Categories ----------
 
     public async Task<IReadOnlyList<DocumentCategoryDto>> ListCategoriesAsync(CancellationToken ct) =>
@@ -74,8 +88,13 @@ public sealed class EmployeeDocumentService(
 
     // ---------- Documents ----------
 
-    public async Task<IReadOnlyList<EmployeeDocumentDto>> ListDocumentsAsync(Guid employeeId, CancellationToken ct)
+    public async Task<Result<IReadOnlyList<EmployeeDocumentDto>>> ListDocumentsAsync(Guid employeeId, CancellationToken ct)
     {
+        if (await RequireEmployeeScopeAsync(FoundationPermissions.DocumentsView, employeeId, ct) is { } scopeError)
+        {
+            return scopeError;
+        }
+
         var rows = await (
             from d in db.EmployeeDocuments.AsNoTracking()
             join c in db.DocumentCategories.AsNoTracking() on d.CategoryId equals c.Id
@@ -95,6 +114,11 @@ public sealed class EmployeeDocumentService(
         if (!await db.Employees.AnyAsync(e => e.Id == employeeId, ct))
         {
             return Error.NotFound("employee.not_found", "Employee not found.");
+        }
+
+        if (await RequireEmployeeScopeAsync(FoundationPermissions.DocumentsUpload, employeeId, ct) is { } scopeError)
+        {
+            return scopeError;
         }
 
         var category = await db.DocumentCategories.AsNoTracking().FirstOrDefaultAsync(c => c.Id == categoryId, ct);
@@ -158,6 +182,11 @@ public sealed class EmployeeDocumentService(
             return Error.NotFound("document.not_found", "Document not found.");
         }
 
+        if (await RequireEmployeeScopeAsync(FoundationPermissions.DocumentsVerify, employeeId, ct) is { } scopeError)
+        {
+            return scopeError;
+        }
+
         if (doc.Status is EmployeeDocumentStatuses.Replaced)
         {
             return Error.Conflict("document.replaced", "A replaced document cannot be verified.");
@@ -198,8 +227,13 @@ public sealed class EmployeeDocumentService(
     }
 
     /// <summary>Onboarding checklist: required active categories missing a non-rejected doc for the employee.</summary>
-    public async Task<IReadOnlyList<DocumentCategoryDto>> MissingOnboardingDocsAsync(Guid employeeId, CancellationToken ct)
+    public async Task<Result<IReadOnlyList<DocumentCategoryDto>>> MissingOnboardingDocsAsync(Guid employeeId, CancellationToken ct)
     {
+        if (await RequireEmployeeScopeAsync(FoundationPermissions.DocumentsView, employeeId, ct) is { } scopeError)
+        {
+            return scopeError;
+        }
+
         var have = await db.EmployeeDocuments.AsNoTracking()
             .Where(d => d.EmployeeId == employeeId && d.Status != EmployeeDocumentStatuses.Rejected && d.Status != EmployeeDocumentStatuses.Replaced)
             .Select(d => d.CategoryId).ToListAsync(ct);
@@ -214,7 +248,8 @@ public sealed class EmployeeDocumentService(
 
     public async Task<IReadOnlyList<LetterTypeDto>> ListLetterTypesAsync(CancellationToken ct) =>
         await db.LetterTypes.AsNoTracking().OrderBy(t => t.Code)
-            .Select(t => new LetterTypeDto(t.Id, t.Code, t.Name, t.Description, t.SignatoryEmployeeId, t.IsActive, t.RowVersion))
+            .Select(t => new LetterTypeDto(t.Id, t.Code, t.Name, t.Description, t.SignatoryEmployeeId, t.IsActive, t.RowVersion,
+                t.SignatoryId, t.NumberPrefix, t.NumberReset))
             .ToListAsync(ct);
 
     public async Task<Result<Guid>> UpsertLetterTypeAsync(LetterTypeInput input, CancellationToken ct)
@@ -230,10 +265,37 @@ public sealed class EmployeeDocumentService(
             return Error.Validation("letter_type.signatory", "Signatory employee not found.");
         }
 
+        if (input.SignatoryId is { } sigId && !await db.LetterSignatories.AnyAsync(s => s.Id == sigId, ct))
+        {
+            return Error.Validation("letter_type.signatory_missing", "Signatory not found.");
+        }
+
+        var prefix = input.NumberPrefix is null ? null : input.NumberPrefix.Trim().ToUpperInvariant();
+        if (prefix is { Length: 0 or > 40 })
+        {
+            return Error.Validation("letter_type.number_prefix", "Number prefix must be 1-40 characters.");
+        }
+
+        if (input.NumberReset is { } reset && reset is not ("never" or "yearly" or "monthly"))
+        {
+            return Error.Validation("letter_type.number_reset", "Number reset must be 'never', 'yearly' or 'monthly'.");
+        }
+
         var existing = await db.LetterTypes.FirstOrDefaultAsync(t => t.Code == code, ct);
         if (existing is null)
         {
             var t = new LetterType { Code = code, Name = input.Name.Trim(), Description = input.Description?.Trim(), SignatoryEmployeeId = input.SignatoryEmployeeId, IsActive = input.IsActive };
+            t.SignatoryId = input.SignatoryId;
+            if (prefix is not null)
+            {
+                t.NumberPrefix = prefix;
+            }
+
+            if (input.NumberReset is not null)
+            {
+                t.NumberReset = input.NumberReset;
+            }
+
             db.LetterTypes.Add(t);
             await db.SaveChangesAsync(ct);
             return t.Id;
@@ -248,13 +310,28 @@ public sealed class EmployeeDocumentService(
         existing.Description = input.Description?.Trim();
         existing.SignatoryEmployeeId = input.SignatoryEmployeeId;
         existing.IsActive = input.IsActive;
+        if (input.SignatoryId is { } newSig)
+        {
+            existing.SignatoryId = newSig;
+        }
+
+        if (prefix is not null)
+        {
+            existing.NumberPrefix = prefix;
+        }
+
+        if (input.NumberReset is not null)
+        {
+            existing.NumberReset = input.NumberReset;
+        }
+
         await db.SaveChangesAsync(ct);
         return existing.Id;
     }
 
     public async Task<IReadOnlyList<LetterTemplateDto>> ListTemplatesAsync(Guid letterTypeId, CancellationToken ct) =>
         await db.LetterTemplates.AsNoTracking().Where(t => t.LetterTypeId == letterTypeId).OrderByDescending(t => t.Version)
-            .Select(t => new LetterTemplateDto(t.Id, t.LetterTypeId, t.Name, t.Version, t.Subject, t.Body, t.IsActive, t.RowVersion))
+            .Select(t => new LetterTemplateDto(t.Id, t.LetterTypeId, t.Name, t.Version, t.Subject, t.Body, t.IsActive, t.RowVersion, t.Status))
             .ToListAsync(ct);
 
     public async Task<Result<Guid>> CreateTemplateAsync(LetterTemplateInput input, CancellationToken ct)
@@ -269,64 +346,53 @@ public sealed class EmployeeDocumentService(
             return Error.Validation("template.body", "Template body is required.");
         }
 
-        var version = (await db.LetterTemplates.Where(t => t.LetterTypeId == input.LetterTypeId).MaxAsync(t => (int?)t.Version, ct) ?? 0) + 1;
+        // M2.7 V2 compat: the legacy endpoint always produced an immediately-issuable template.
+        // It now creates its own family and a published version (tenant-wide, effective today).
+        var htmlProblems = LetterHtml.Validate(input.Body).Concat(LetterHtml.Validate(input.Subject)).ToList();
+        if (htmlProblems.Count > 0)
+        {
+            return Error.Validation("template.html", "Template HTML is not allowed: " + string.Join("; ", htmlProblems));
+        }
+
+        var family = await db.LetterTemplateFamilies
+            .FirstOrDefaultAsync(f => f.LetterTypeId == input.LetterTypeId && f.Name == input.Name.Trim(), ct);
+        if (family is null)
+        {
+            family = new LetterTemplateFamily { LetterTypeId = input.LetterTypeId, Name = input.Name.Trim() };
+            db.LetterTemplateFamilies.Add(family);
+        }
+
+        var previous = await db.LetterTemplates
+            .Where(t => t.FamilyId == family.Id && t.Status == LetterTemplateStatuses.Published)
+            .OrderByDescending(t => t.Version).FirstOrDefaultAsync(ct);
+        var version = (await db.LetterTemplates.Where(t => t.FamilyId == family.Id).MaxAsync(t => (int?)t.Version, ct) ?? 0) + 1;
         var t = new LetterTemplate
         {
-            LetterTypeId = input.LetterTypeId, Name = input.Name.Trim(), Version = version,
+            LetterTypeId = input.LetterTypeId, FamilyId = family.Id, Name = input.Name.Trim(), Version = version,
             Subject = input.Subject.Trim(), Body = input.Body, IsActive = input.IsActive,
+            Status = LetterTemplateStatuses.Published, EffectiveFrom = Today(),
+            PublishedAt = clock.UtcNow, SupersedesId = previous?.Id,
         };
+        if (previous is not null)
+        {
+            previous.Status = LetterTemplateStatuses.Retired;
+            previous.RetiredAt = clock.UtcNow;
+        }
         db.LetterTemplates.Add(t);
         await db.SaveChangesAsync(ct);
         return t.Id;
     }
 
     // ---------- Issued letters ----------
+    // Issuance lives in LetterIssuanceService (M2.7 V2: numbering + two-transaction PDF workflow).
 
-    public async Task<Result<EmployeeLetterDto>> IssueAsync(Guid employeeId, IssueLetterInput input, Guid issuerId, CancellationToken ct)
+    public async Task<Result<IReadOnlyList<EmployeeLetterDto>>> ListLettersAsync(Guid employeeId, CancellationToken ct)
     {
-        var employee = await db.Employees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == employeeId, ct);
-        if (employee is null)
+        if (await RequireEmployeeScopeAsync(FoundationPermissions.LettersView, employeeId, ct) is { } scopeError)
         {
-            return Error.NotFound("employee.not_found", "Employee not found.");
+            return scopeError;
         }
 
-        var type = await db.LetterTypes.AsNoTracking().FirstOrDefaultAsync(t => t.Id == input.LetterTypeId, ct);
-        if (type is null || !type.IsActive)
-        {
-            return Error.Validation("letter_type.inactive", "Unknown or inactive letter type.");
-        }
-
-        var template = input.LetterTemplateId is { } tid
-            ? await db.LetterTemplates.AsNoTracking().FirstOrDefaultAsync(t => t.Id == tid && t.LetterTypeId == type.Id, ct)
-            : await db.LetterTemplates.AsNoTracking().Where(t => t.LetterTypeId == type.Id && t.IsActive).OrderByDescending(t => t.Version).FirstOrDefaultAsync(ct);
-        if (template is null || !template.IsActive)
-        {
-            return Error.Validation("template.missing", "No active template exists for this letter type.");
-        }
-
-        var model = await BuildModelAsync(employee, type, ct);
-        var subject = renderer.Render(template.Subject, model);
-        var body = renderer.Render(template.Body, model);
-
-        var letter = new EmployeeLetter
-        {
-            EmployeeId = employeeId,
-            LetterTypeId = type.Id,
-            LetterTemplateId = template.Id,
-            TemplateVersion = template.Version,
-            Subject = subject,
-            RenderedText = body,
-            Status = LetterStatuses.Issued,
-            IssuedBy = issuerId,
-            IssuedAt = clock.UtcNow,
-        };
-        db.EmployeeLetters.Add(letter);
-        await db.SaveChangesAsync(ct);
-        return ToDto(letter, type);
-    }
-
-    public async Task<IReadOnlyList<EmployeeLetterDto>> ListLettersAsync(Guid employeeId, CancellationToken ct)
-    {
         var rows = await (
             from l in db.EmployeeLetters.AsNoTracking()
             join t in db.LetterTypes.AsNoTracking() on l.LetterTypeId equals t.Id
@@ -337,7 +403,7 @@ public sealed class EmployeeDocumentService(
         return rows.Select(r => ToDto(r.l, r.t)).ToList();
     }
 
-    public async Task<EmployeeLetterDto?> GetLetterAsync(Guid letterId, CancellationToken ct)
+    public async Task<Result<EmployeeLetterDto>> GetLetterAsync(Guid letterId, CancellationToken ct)
     {
         var row = await (
             from l in db.EmployeeLetters.AsNoTracking()
@@ -345,13 +411,29 @@ public sealed class EmployeeDocumentService(
             where l.Id == letterId
             select new { l, t })
             .FirstOrDefaultAsync(ct);
-        return row is null ? null : ToDto(row.l, row.t);
+        if (row is null)
+        {
+            return Error.NotFound("letter.not_found", "Letter not found.");
+        }
+
+        // Resolve the owning employee before authorizing the id-based read.
+        if (!await scopes.CanAccessEmployeeAsync(FoundationPermissions.LettersView, row.l.EmployeeId, ct))
+        {
+            return Error.NotFound("letter.not_found", "Letter not found.");
+        }
+
+        return ToDto(row.l, row.t);
     }
 
     public async Task<Result> RevokeAsync(Guid letterId, Guid revokerId, string? reason, CancellationToken ct)
     {
         var letter = await db.EmployeeLetters.FirstOrDefaultAsync(l => l.Id == letterId, ct);
         if (letter is null)
+        {
+            return Error.NotFound("letter.not_found", "Letter not found.");
+        }
+
+        if (!await scopes.CanAccessEmployeeAsync(FoundationPermissions.LettersRevoke, letter.EmployeeId, ct))
         {
             return Error.NotFound("letter.not_found", "Letter not found.");
         }
@@ -369,39 +451,11 @@ public sealed class EmployeeDocumentService(
         return Result.Success();
     }
 
-    private async Task<Dictionary<string, object?>> BuildModelAsync(Employee e, LetterType type, CancellationToken ct)
-    {
-        var open = await db.EmploymentHistory.AsNoTracking().FirstOrDefaultAsync(h => h.EmployeeId == e.Id && h.EffectiveTo == null, ct);
-        var company = await db.Companies.AsNoTracking().Where(c => c.Id == e.CompanyId).Select(c => c.Name).FirstOrDefaultAsync(ct);
-        var branch = await db.Branches.AsNoTracking().Where(b => b.Id == e.BranchId).Select(b => b.Name).FirstOrDefaultAsync(ct);
-        var department = open?.DepartmentId is { } dep ? await db.Departments.AsNoTracking().Where(d => d.Id == dep).Select(d => d.Name).FirstOrDefaultAsync(ct) : null;
-        var designation = open?.DesignationId is { } des ? await db.Designations.AsNoTracking().Where(d => d.Id == des).Select(d => d.Name).FirstOrDefaultAsync(ct) : null;
-        var signatory = type.SignatoryEmployeeId is { } sid
-            ? await db.Employees.AsNoTracking().Where(s => s.Id == sid).Select(s => s.DisplayName).FirstOrDefaultAsync(ct)
-            : null;
-
-        return new Dictionary<string, object?>
-        {
-            ["employee_code"] = e.EmployeeCode,
-            ["display_name"] = e.DisplayName,
-            ["first_name"] = e.FirstName ?? e.DisplayName,
-            ["last_name"] = e.LastName ?? string.Empty,
-            ["work_email"] = e.WorkEmail ?? string.Empty,
-            ["employment_type"] = e.EmploymentType ?? EmploymentTypes.Permanent,
-            ["joining_date"] = e.JoiningDate?.ToString("dd MMM yyyy") ?? string.Empty,
-            ["company_name"] = company ?? string.Empty,
-            ["branch_name"] = branch ?? string.Empty,
-            ["department_name"] = department ?? string.Empty,
-            ["designation_name"] = designation ?? string.Empty,
-            ["signatory_name"] = signatory ?? string.Empty,
-            ["letter_type"] = type.Name,
-            ["date"] = DateOnly.FromDateTime(clock.UtcNow.DateTime).ToString("dd MMM yyyy"),
-        };
-    }
-
     private DateOnly Today() => DateOnly.FromDateTime(clock.UtcNow.DateTime);
 
     private static EmployeeLetterDto ToDto(EmployeeLetter l, LetterType t) => new(
         l.Id, l.EmployeeId, l.LetterTypeId, t.Name, l.Subject, l.RenderedText, l.TemplateVersion,
-        l.Status, l.IssuedBy, l.IssuedAt, l.RevokedBy, l.RevokedAt, l.RevokeReason, l.RowVersion);
+        l.Status, l.IssuedBy, l.IssuedAt, l.RevokedBy, l.RevokedAt, l.RevokeReason, l.RowVersion,
+        l.LetterNumber, l.FileId, l.PdfSha256, l.SignatoryName, l.SignatoryDesignation,
+        l.LetterheadSnapshot, l.IssueDate, l.IssueTz, l.SupersedesId);
 }

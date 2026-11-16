@@ -116,6 +116,7 @@ public static class DependencyInjection
         s.AddSingleton<IMalwareScanner, SignatureMalwareScanner>();
         s.AddSingleton<IEmailTransport, SmtpEmailTransport>();
         s.AddSingleton<ITemplateRenderer, ScribanTemplateRenderer>();
+        s.AddSingleton<IPdfService, Hrms.Infrastructure.Pdf.GotenbergPdfService>();
         s.AddSingleton<IPushNotificationSender, NoopPushNotificationSender>();
         s.TryAddSingleton<IRealtimeNotifier, NoopRealtimeNotifier>();
         s.AddSingleton<ITotpService, TotpService>();
@@ -211,6 +212,8 @@ public static class DependencyInjection
         s.AddScoped<EmployeeProfileService>();
         s.AddScoped<LifecycleEventService>();
         s.AddScoped<EmployeeDocumentService>();
+        s.AddScoped<LetterAdminService>();
+        s.AddScoped<LetterIssuanceService>();
         s.AddScoped<SalaryService>();
         s.AddScoped<TenantAuditQueryService>();
         s.AddScoped<PlatformAuditQueryService>();

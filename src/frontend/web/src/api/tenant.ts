@@ -212,10 +212,32 @@ export const tenantApi = {
   missingDocs: (id: string) => api<DocCategory[]>(`/api/v1/employees/${id}/documents/missing`),
   employeeLetters: (id: string) => api<EmpLetter[]>(`/api/v1/employees/${id}/letters`),
   issueLetter: (id: string, letterTypeId: string, letterTemplateId?: string) =>
-    post<{ id: string }>(`/api/v1/employees/${id}/letters`, { letterTypeId, letterTemplateId }),
+    post<IssueLetterResult>(`/api/v1/employees/${id}/letters`, { letterTypeId, letterTemplateId }),
+  previewLetter: (id: string, letterTypeId: string, letterTemplateId?: string) =>
+    post<LetterPreview>(`/api/v1/employees/${id}/letters/preview`, { letterTypeId, letterTemplateId }),
+  retryLetter: (letterId: string) => post<IssueLetterResult>(`/api/v1/employees/letters/${letterId}/retry`),
+  reissueLetter: (letterId: string) => post<IssueLetterResult>(`/api/v1/employees/letters/${letterId}/reissue`),
   revokeLetter: (letterId: string, reason?: string) => post<undefined>(`/api/v1/employees/letters/${letterId}/revoke`, { reason }),
   letterDownloadUrl: (letterId: string) => `/api/v1/employees/letters/${letterId}/download`,
   fileDownloadUrl: (fileId: string) => `/api/v1/files/${fileId}/content`,
+
+  // ---- Letter administration (M2.7 V2) ----
+  letterMergeFields: () => api<MergeField[]>('/api/v1/employee-docs/letter-merge-fields'),
+  letterSignatories: () => api<LetterSignatory[]>('/api/v1/employee-docs/letter-signatories'),
+  createSignatory: (b: SignatoryInput) => post<{ id: string }>('/api/v1/employee-docs/letter-signatories', b),
+  updateSignatory: (id: string, b: SignatoryInput) => put<undefined>(`/api/v1/employee-docs/letter-signatories/${id}`, b),
+  letterheads: () => api<Letterhead[]>('/api/v1/employee-docs/letterheads'),
+  createLetterhead: (b: LetterheadInput) => post<{ id: string }>('/api/v1/employee-docs/letterheads', b),
+  updateLetterhead: (id: string, b: LetterheadInput) => put<undefined>(`/api/v1/employee-docs/letterheads/${id}`, b),
+  letterFamilies: (typeId?: string) => api<LetterTemplateFamily[]>(`/api/v1/employee-docs/letter-template-families${typeId ? `?letterTypeId=${typeId}` : ''}`),
+  createLetterFamily: (b: { letterTypeId: string; name: string }) => post<{ id: string }>('/api/v1/employee-docs/letter-template-families', b),
+  letterFamilyVersions: (familyId: string) => api<LetterTemplateVersion[]>(`/api/v1/employee-docs/letter-template-families/${familyId}/versions`),
+  createLetterVersion: (familyId: string, b: LetterVersionInput, baseTemplateId?: string) =>
+    post<{ id: string }>(`/api/v1/employee-docs/letter-template-families/${familyId}/versions${baseTemplateId ? `?baseTemplateId=${baseTemplateId}` : ''}`, b),
+  updateLetterVersion: (id: string, b: LetterVersionInput) => put<undefined>(`/api/v1/employee-docs/letter-templates/${id}`, b),
+  publishLetterVersion: (id: string) => post<undefined>(`/api/v1/employee-docs/letter-templates/${id}/publish`),
+  retireLetterVersion: (id: string) => post<undefined>(`/api/v1/employee-docs/letter-templates/${id}/retire`),
+  uploadFile: (form: FormData) => api<{ id: string }>('/api/v1/files', { method: 'POST', body: form }),
 }
 
 // ---- Org masters types ----
@@ -410,6 +432,7 @@ export interface DocCategoryInput {
 }
 export interface LetterTypeInput {
   code: string; name: string; description?: string; signatoryEmployeeId?: string;
+  signatoryId?: string; numberPrefix?: string; numberReset?: string;
   isActive: boolean; rowVersion?: number;
 }
 export interface EmpDocument {
@@ -420,11 +443,12 @@ export interface EmpDocument {
 }
 export interface LetterType {
   id: string; code: string; name: string; description?: string; signatoryEmployeeId?: string;
+  signatoryId?: string; numberPrefix?: string; numberReset?: string;
   isActive: boolean; rowVersion: number;
 }
 export interface LetterTemplate {
   id: string; letterTypeId: string; name: string; version: number; subject: string; body: string;
-  isActive: boolean; rowVersion: number;
+  isActive: boolean; rowVersion: number; status: string;
 }
 export interface LetterTemplateInput {
   letterTypeId: string; name: string; subject: string; body: string; isActive: boolean; rowVersion?: number;
@@ -433,4 +457,40 @@ export interface EmpLetter {
   id: string; employeeId: string; letterTypeId: string; letterType: string; subject: string;
   renderedText: string; templateVersion: number; status: string; issuedBy: string; issuedAt: string;
   revokedBy?: string; revokedAt?: string; revokeReason?: string; rowVersion: number;
+  letterNumber: string; fileId?: string | null; pdfSha256?: string | null;
+  signatoryName?: string | null; signatoryDesignation?: string | null;
+  letterheadSnapshot?: string | null; issueDate?: string | null; issueTz?: string | null;
+  supersedesId?: string | null;
+}
+export interface IssueLetterResult { letterId: string; letterNumber: string; fileId?: string; status: string }
+export interface LetterPreview {
+  subject: string; html: string; templateId: string; templateVersion: number; letterNumber?: string | null;
+}
+export interface MergeField { name: string; description: string; requiresSalaryPermission: boolean }
+export interface LetterSignatory {
+  id: string; name: string; designation?: string | null; employeeId?: string | null;
+  isActive: boolean; rowVersion: number;
+}
+export interface SignatoryInput {
+  name: string; designation?: string | null; employeeId?: string | null;
+  isActive: boolean; rowVersion?: number;
+}
+export interface Letterhead {
+  id: string; name: string; companyId?: string | null; branchId?: string | null; logoFileId?: string | null;
+  headerHtml?: string | null; footerHtml?: string | null; marginMm: number; isActive: boolean; rowVersion: number;
+}
+export interface LetterheadInput {
+  name: string; companyId?: string | null; branchId?: string | null; logoFileId?: string | null;
+  headerHtml?: string | null; footerHtml?: string | null; marginMm: number; isActive: boolean; rowVersion?: number;
+}
+export interface LetterTemplateFamily { id: string; letterTypeId: string; name: string; versionCount: number }
+export interface LetterTemplateVersion {
+  id: string; familyId: string; name: string; version: number; status: string;
+  subject: string; body: string; effectiveFrom: string; effectiveTo?: string | null;
+  companyId?: string | null; branchId?: string | null; letterheadId?: string | null;
+  supersedesId?: string | null; publishedAt?: string | null; retiredAt?: string | null; rowVersion: number;
+}
+export interface LetterVersionInput {
+  name: string; subject: string; body: string; effectiveFrom: string; effectiveTo?: string | null;
+  companyId?: string | null; branchId?: string | null; letterheadId?: string | null; rowVersion?: number;
 }

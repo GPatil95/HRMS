@@ -8,7 +8,7 @@ import { Add, Delete, Download, Edit, Upload } from '@mui/icons-material'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   mastersApi, tenantApi, type BankInput, type EmpContactInput, type DocCategory, type Employee,
-  type LifecycleEvent, type Personal, type Statutory,
+  type LetterPreview, type LifecycleEvent, type Personal, type Statutory,
 } from '../../api/tenant'
 import { EmptyState, ErrorAlert, SectionCard, StatusChip, TableSkeleton } from '../../components/ui'
 import { useToast } from '../../components/toast'
@@ -67,8 +67,8 @@ export function PersonalTab({ empId }: { empId: string }) {
     onSuccess: () => { toast('Personal details saved'); inv() },
     ...useErr(toast),
   })
-  if (q.isPending || !form) return <TableSkeleton columns={2} />
   if (q.error) return <ErrorAlert error={q.error} onRetry={() => q.refetch()} />
+  if (q.isPending || !form) return <TableSkeleton columns={2} />
   const f = (k: keyof Personal) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value })
   return (
     <SectionCard title="Personal details" actions={<Button variant="contained" size="small" onClick={() => save.mutate()} disabled={save.isPending}>Save</Button>}>
@@ -256,8 +256,8 @@ export function StatutoryTab({ empId }: { empId: string }) {
     }),
     onSuccess: () => { toast('Statutory details saved'); inv() }, ...useErr(toast),
   })
-  if (q.isPending || !form) return <TableSkeleton columns={2} />
   if (q.error) return <ErrorAlert error={q.error} onRetry={() => q.refetch()} />
+  if (q.isPending || !form) return <TableSkeleton columns={2} />
   const f = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm({ ...form, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value })
   return (
@@ -392,6 +392,10 @@ export function LettersTab({ empId }: { empId: string }) {
   const [dlg, setDlg] = useState(false)
   const [viewId, setViewId] = useState<string | null>(null)
   const [issue, setIssue] = useState({ typeId: '', templateId: '' })
+  const [preview, setPreview] = useState<LetterPreview | null>(null)
+  const [confirm, setConfirm] = useState<{ action: 'revoke' | 'reissue'; id: string; number: string } | null>(null)
+  const perms = useQuery({ queryKey: ['me', 'permissions'], queryFn: tenantApi.permissions })
+  const can = (p: string) => (perms.data ?? []).includes(p)
   const templates = useQuery({
     queryKey: ['letter-templates', issue.typeId],
     queryFn: () => tenantApi.letterTemplates(issue.typeId),
@@ -399,37 +403,68 @@ export function LettersTab({ empId }: { empId: string }) {
   })
   const issueMut = useMutation({
     mutationFn: () => tenantApi.issueLetter(empId, issue.typeId, issue.templateId || undefined),
-    onSuccess: () => { toast('Letter issued'); inv(); setDlg(false); setIssue({ typeId: '', templateId: '' }) }, ...useErr(toast),
+    onSuccess: (r) => { toast(`Letter ${r.letterNumber} issued`); inv(); setDlg(false); setIssue({ typeId: '', templateId: '' }) }, ...useErr(toast),
+  })
+  const previewMut = useMutation({
+    mutationFn: () => tenantApi.previewLetter(empId, issue.typeId, issue.templateId || undefined),
+    onSuccess: (r) => setPreview(r), ...useErr(toast),
+  })
+  const retry = useMutation({
+    mutationFn: (letterId: string) => tenantApi.retryLetter(letterId),
+    onSuccess: (r) => { toast(`Letter ${r.letterNumber} issued`); inv() }, ...useErr(toast),
+  })
+  const reissue = useMutation({
+    mutationFn: (letterId: string) => tenantApi.reissueLetter(letterId),
+    onSuccess: (r) => { toast(`Letter ${r.letterNumber} reissued`); inv(); setConfirm(null) }, ...useErr(toast),
   })
   const revoke = useMutation({
     mutationFn: (letterId: string) => tenantApi.revokeLetter(letterId),
-    onSuccess: () => { toast('Letter revoked'); inv() }, ...useErr(toast),
+    onSuccess: () => { toast('Letter revoked'); inv(); setConfirm(null) }, ...useErr(toast),
   })
   if (q.isPending) return <TableSkeleton columns={4} />
   if (q.error) return <ErrorAlert error={q.error} onRetry={() => q.refetch()} />
   const rows = q.data ?? []
   const viewed = rows.find((l) => l.id === viewId)
   return (
-    <SectionCard title="Letters" actions={<Button size="small" startIcon={<Add />} onClick={() => setDlg(true)}>Issue letter</Button>}>
+    <SectionCard title="Letters" actions={can('employee.letters.issue') && <Button size="small" startIcon={<Add />} onClick={() => setDlg(true)}>Issue letter</Button>}>
       {rows.length === 0 ? <EmptyState title="No letters" hint="Issue a letter from a template — offer, confirmation, experience." /> : (
         <Table size="small">
           <TableHead><TableRow>
-            <TableCell>Type</TableCell><TableCell>Subject</TableCell><TableCell>Issued</TableCell>
+            <TableCell>Number</TableCell><TableCell>Type</TableCell><TableCell>Subject</TableCell><TableCell>Issued</TableCell>
             <TableCell>Status</TableCell><TableCell />
           </TableRow></TableHead>
           <TableBody>
-            {rows.map((l) => (
+            {rows.map((l) => {
+              const prior = l.supersedesId ? rows.find((p) => p.id === l.supersedesId) : undefined
+              const replacement = l.status === 'superseded' ? rows.find((r) => r.supersedesId === l.id) : undefined
+              return (
               <TableRow key={l.id}>
+                <TableCell>
+                  <code>{l.letterNumber || '—'}</code>
+                  {prior && <Typography variant="caption" sx={{ display: 'block' }} color="text.secondary">reissue of {prior.letterNumber}</Typography>}
+                  {replacement && <Typography variant="caption" sx={{ display: 'block' }} color="text.secondary">superseded by {replacement.letterNumber}</Typography>}
+                </TableCell>
                 <TableCell>{l.letterType}</TableCell>
                 <TableCell><Button size="small" onClick={() => setViewId(l.id)}>{l.subject}</Button></TableCell>
-                <TableCell>{l.issuedAt.slice(0, 10)}</TableCell>
+                <TableCell>{(l.issueDate ?? l.issuedAt.slice(0, 10)) || '—'}</TableCell>
                 <TableCell><StatusChip value={l.status} /></TableCell>
                 <TableCell align="right">
-                  <IconButton size="small" href={tenantApi.letterDownloadUrl(l.id)}><Download fontSize="small" /></IconButton>
-                  {l.status === 'issued' && <Button size="small" color="error" onClick={() => revoke.mutate(l.id)}>Revoke</Button>}
+                  {can('employee.letters.view') && l.status !== 'generation_failed' && l.status !== 'issuing' && (
+                    <IconButton size="small" href={tenantApi.letterDownloadUrl(l.id)}><Download fontSize="small" /></IconButton>
+                  )}
+                  {can('employee.letters.issue') && l.status === 'generation_failed' && (
+                    <Button size="small" disabled={retry.isPending} onClick={() => retry.mutate(l.id)}>Retry</Button>
+                  )}
+                  {can('employee.letters.reissue') && (l.status === 'issued' || l.status === 'revoked') && (
+                    <Button size="small" onClick={() => setConfirm({ action: 'reissue', id: l.id, number: l.letterNumber })}>Reissue</Button>
+                  )}
+                  {can('employee.letters.revoke') && l.status === 'issued' && (
+                    <Button size="small" color="error" onClick={() => setConfirm({ action: 'revoke', id: l.id, number: l.letterNumber })}>Revoke</Button>
+                  )}
                 </TableCell>
               </TableRow>
-            ))}
+              )
+            })}
           </TableBody>
         </Table>
       )}
@@ -441,15 +476,26 @@ export function LettersTab({ empId }: { empId: string }) {
           </TF>
           <TF select label="Template" value={issue.templateId} onChange={(e) => setIssue({ ...issue, templateId: e.target.value })}>
             <MenuItem value="">Default template</MenuItem>
-            {(templates.data ?? []).filter((t) => t.isActive).map((t) => <MenuItem key={t.id} value={t.id}>{t.name} (v{t.version})</MenuItem>)}
+            {(templates.data ?? []).filter((t) => t.isActive && t.status === 'published').map((t) => <MenuItem key={t.id} value={t.id}>{t.name} (v{t.version})</MenuItem>)}
           </TF>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDlg(false)}>Cancel</Button>
+          <Button disabled={!issue.typeId || previewMut.isPending} onClick={() => previewMut.mutate()}>
+            {previewMut.isPending ? 'Rendering…' : 'Preview'}
+          </Button>
           <Button variant="contained" disabled={!issue.typeId || issueMut.isPending} onClick={() => issueMut.mutate()}>
             {issueMut.isPending ? 'Issuing…' : 'Issue'}
           </Button>
         </DialogActions>
+      </Dialog>
+      <Dialog open={!!preview} onClose={() => setPreview(null)} fullWidth maxWidth="md">
+        <DialogTitle>{preview?.subject} {preview ? `— template v${preview.templateVersion}` : ''}</DialogTitle>
+        <DialogContent>
+          <Box component="iframe" sandbox="" srcDoc={preview?.html ?? ''}
+            sx={{ width: '100%', height: 480, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'white' }} />
+        </DialogContent>
+        <DialogActions><Button onClick={() => setPreview(null)}>Close</Button></DialogActions>
       </Dialog>
       <Dialog open={!!viewed} onClose={() => setViewId(null)} fullWidth maxWidth="md">
         <DialogTitle>{viewed?.subject}</DialogTitle>
@@ -459,6 +505,24 @@ export function LettersTab({ empId }: { empId: string }) {
           </Typography>
         </DialogContent>
         <DialogActions><Button onClick={() => setViewId(null)}>Close</Button></DialogActions>
+      </Dialog>
+      <Dialog open={!!confirm} onClose={() => setConfirm(null)} fullWidth maxWidth="xs">
+        <DialogTitle>{confirm?.action === 'revoke' ? 'Revoke letter' : 'Reissue letter'}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {confirm?.action === 'revoke'
+              ? `Revoke ${confirm?.number}? The issued PDF and history are kept and marked revoked.`
+              : `Reissue ${confirm?.number}? A new letter number is allocated from the current published template; this letter is marked superseded.`}
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setConfirm(null)}>Cancel</Button>
+          <Button variant="contained" color={confirm?.action === 'revoke' ? 'error' : 'primary'}
+            disabled={revoke.isPending || reissue.isPending}
+            onClick={() => { const c = confirm!; if (c.action === 'revoke') revoke.mutate(c.id); else reissue.mutate(c.id) }}>
+            {revoke.isPending || reissue.isPending ? 'Working…' : confirm?.action === 'revoke' ? 'Revoke' : 'Reissue'}
+          </Button>
+        </DialogActions>
       </Dialog>
     </SectionCard>
   )
@@ -594,6 +658,8 @@ export function LifecycleTab({ emp }: { emp: Employee }) {
   })
   const f = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value })
   if (history.isPending || events.isPending) return <TableSkeleton columns={5} />
+  const queryError = history.error ?? events.error
+  if (queryError) return <ErrorAlert error={queryError} onRetry={() => { void history.refetch(); void events.refetch() }} />
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <SectionCard title="Lifecycle events"

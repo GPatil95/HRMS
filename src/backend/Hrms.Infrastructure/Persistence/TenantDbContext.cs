@@ -46,6 +46,10 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
     public DbSet<LetterType> LetterTypes => Set<LetterType>();
     public DbSet<LetterTemplate> LetterTemplates => Set<LetterTemplate>();
     public DbSet<EmployeeLetter> EmployeeLetters => Set<EmployeeLetter>();
+    public DbSet<LetterSignatory> LetterSignatories => Set<LetterSignatory>();
+    public DbSet<Letterhead> Letterheads => Set<Letterhead>();
+    public DbSet<LetterTemplateFamily> LetterTemplateFamilies => Set<LetterTemplateFamily>();
+    public DbSet<LetterCounter> LetterCounters => Set<LetterCounter>();
     public DbSet<SalaryComponent> SalaryComponents => Set<SalaryComponent>();
     public DbSet<SalaryStructure> SalaryStructures => Set<SalaryStructure>();
     public DbSet<SalaryStructureLine> SalaryStructureLines => Set<SalaryStructureLine>();
@@ -494,6 +498,37 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
             e.HasOne<EmployeeDocument>().WithMany().HasForeignKey(x => x.ReplacedById).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<TenantUser>().WithMany().HasForeignKey(x => x.VerifiedBy).OnDelete(DeleteBehavior.Restrict);
         });
+        b.Entity<LetterSignatory>(e =>
+        {
+            e.ToTable("letter_signatories", "hr");
+            e.Property(x => x.Name).HasMaxLength(160);
+            e.Property(x => x.Designation).HasMaxLength(120);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<Letterhead>(e =>
+        {
+            e.ToTable("letterheads", "hr");
+            e.Property(x => x.Name).HasMaxLength(120);
+            e.Property(x => x.HeaderHtml).HasColumnType("text");
+            e.Property(x => x.FooterHtml).HasColumnType("text");
+            e.HasOne<Company>().WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Branch>().WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<FileObject>().WithMany().HasForeignKey(x => x.LogoFileId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<LetterTemplateFamily>(e =>
+        {
+            e.ToTable("letter_template_families", "hr");
+            e.HasIndex(x => x.LetterTypeId);
+            e.Property(x => x.Name).HasMaxLength(160);
+            e.HasOne<LetterType>().WithMany().HasForeignKey(x => x.LetterTypeId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<LetterCounter>(e =>
+        {
+            e.ToTable("letter_counters", "hr");
+            e.HasKey(x => x.ScopeKey);
+            e.Property(x => x.ScopeKey).HasMaxLength(120);
+            e.Property(x => x.Prefix).HasMaxLength(40);
+        });
         b.Entity<LetterType>(e =>
         {
             e.ToTable("letter_types", "hr");
@@ -501,29 +536,47 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
             e.Property(x => x.Code).HasMaxLength(60);
             e.Property(x => x.Name).HasMaxLength(120);
             e.Property(x => x.Description).HasMaxLength(300);
+            e.Property(x => x.NumberPrefix).HasMaxLength(40);
+            e.Property(x => x.NumberReset).HasMaxLength(10);
             e.HasOne<Employee>().WithMany().HasForeignKey(x => x.SignatoryEmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<LetterSignatory>().WithMany().HasForeignKey(x => x.SignatoryId).OnDelete(DeleteBehavior.Restrict);
         });
         b.Entity<LetterTemplate>(e =>
         {
-            e.ToTable("letter_templates", "hr");
-            e.HasIndex(x => new { x.LetterTypeId, x.Version }).IsUnique();
+            e.ToTable("letter_templates", "hr", t =>
+                t.HasCheckConstraint("ck_letter_templates_status", "status IN ('draft','published','retired')"));
+            e.HasIndex(x => new { x.FamilyId, x.Version }).IsUnique();
             e.Property(x => x.Name).HasMaxLength(160);
             e.Property(x => x.Subject).HasMaxLength(200);
+            e.Property(x => x.Status).HasMaxLength(20);
             e.HasOne<LetterType>().WithMany().HasForeignKey(x => x.LetterTypeId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<LetterTemplateFamily>().WithMany().HasForeignKey(x => x.FamilyId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Company>().WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Branch>().WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Letterhead>().WithMany().HasForeignKey(x => x.LetterheadId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<LetterTemplate>().WithMany().HasForeignKey(x => x.SupersedesId).OnDelete(DeleteBehavior.Restrict);
         });
         b.Entity<EmployeeLetter>(e =>
         {
             e.ToTable("employee_letters", "hr", t =>
-                t.HasCheckConstraint("ck_employee_letters_status", "status IN ('issued','revoked')"));
+                t.HasCheckConstraint("ck_employee_letters_status", "status IN ('issuing','issued','generation_failed','revoked','superseded')"));
             e.HasIndex(x => x.EmployeeId);
             e.HasIndex(x => x.LetterTypeId);
+            e.HasIndex(x => x.LetterNumber).IsUnique();
             e.Property(x => x.Status).HasMaxLength(20);
             e.Property(x => x.Subject).HasMaxLength(200);
+            e.Property(x => x.LetterNumber).HasMaxLength(50);
             e.Property(x => x.RevokeReason).HasMaxLength(300);
-           e.Property(x => x.RenderedText)
-    .HasMaxLength(256)
-    .IsRequired();
+            e.Property(x => x.RenderedText).HasColumnType("text").IsRequired();
+            e.Property(x => x.RenderedHtml).HasColumnType("text");
+            e.Property(x => x.LetterheadSnapshot).HasColumnType("jsonb");
+            e.Property(x => x.SignatoryName).HasMaxLength(160);
+            e.Property(x => x.SignatoryDesignation).HasMaxLength(120);
+            e.Property(x => x.IssueTz).HasMaxLength(50);
+            e.Property(x => x.PdfSha256).HasMaxLength(64);
             e.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<FileObject>().WithMany().HasForeignKey(x => x.FileId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<EmployeeLetter>().WithMany().HasForeignKey(x => x.SupersedesId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<LetterType>().WithMany().HasForeignKey(x => x.LetterTypeId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<LetterTemplate>().WithMany().HasForeignKey(x => x.LetterTemplateId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<TenantUser>().WithMany().HasForeignKey(x => x.IssuedBy).OnDelete(DeleteBehavior.Restrict);

@@ -130,7 +130,7 @@ public sealed class EmployeeSalaryTests(HrmsFixture f)
         // Sweep at day+30 activates the second and closes the first.
         var db = await f.TenantDatabaseAsync("acme");
         await using var ctx = TenantDbContextFactory.Create(f.ServerCs(db));
-        var salary = new SalaryService(ctx, new Hrms.Shared.Primitives.SystemClock());
+        var salary = new SalaryService(ctx, null!, new Hrms.Shared.Primitives.SystemClock());
         await salary.ActivateDueAssignmentsAsync(DateOnly.FromDateTime(DateTime.Today.AddDays(30)), CancellationToken.None);
 
         var cur2 = await admin.Http.GetFromJsonAsync<JsonElement>($"/api/v1/employees/{empId}/salary-assignments/current");

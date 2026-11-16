@@ -1,4 +1,6 @@
 using Hrms.Application.Abstractions;
+using Hrms.Application.Authorization;
+using Hrms.Application.Modules;
 using Hrms.Domain.Tenant;
 using Hrms.Shared.Primitives;
 using Hrms.Shared.Results;
@@ -33,8 +35,14 @@ public sealed record RejectSalaryRequest(string? Reason);
 /// daily sweep or inline)→ active; the previous active row closes at the same date.
 /// Resolved component lines are snapshotted at approval — the payroll-readiness artifact.
 /// </summary>
-public sealed class SalaryService(ITenantDbContext db, IClock clock)
+public sealed class SalaryService(ITenantDbContext db, IDataScopeService scopes, IClock clock)
 {
+    /// <summary>Data-scope gate: out-of-scope employees read as 404 (no existence oracle).</summary>
+    private async Task<Error?> RequireEmployeeScopeAsync(string permissionCode, Guid employeeId, CancellationToken ct) =>
+        await scopes.CanAccessEmployeeAsync(permissionCode, employeeId, ct)
+            ? null
+            : Error.NotFound("employee.not_found", "Employee not found.");
+
     private static readonly string[] PendingStatuses =
         [SalaryAssignmentStatuses.Draft, SalaryAssignmentStatuses.Submitted, SalaryAssignmentStatuses.Approved];
     private static readonly string[] AppliedStatuses =
@@ -233,8 +241,13 @@ public sealed class SalaryService(ITenantDbContext db, IClock clock)
 
     // ---------- Assignments ----------
 
-    public async Task<IReadOnlyList<SalaryAssignmentDto>> ListAssignmentsAsync(Guid employeeId, CancellationToken ct)
+    public async Task<Result<IReadOnlyList<SalaryAssignmentDto>>> ListAssignmentsAsync(Guid employeeId, CancellationToken ct)
     {
+        if (await RequireEmployeeScopeAsync(FoundationPermissions.SalaryAssignmentView, employeeId, ct) is { } scopeError)
+        {
+            return scopeError;
+        }
+
         var rows = await db.EmployeeSalaryAssignments.AsNoTracking().Include(a => a.Lines)
             .Where(a => a.EmployeeId == employeeId).OrderByDescending(a => a.EffectiveFrom).ToListAsync(ct);
         return await MapAsync(rows, ct);
@@ -242,6 +255,11 @@ public sealed class SalaryService(ITenantDbContext db, IClock clock)
 
     public async Task<SalaryAssignmentDto?> CurrentAssignmentAsync(Guid employeeId, CancellationToken ct)
     {
+        if (!await scopes.CanAccessEmployeeAsync(FoundationPermissions.SalaryAssignmentView, employeeId, ct))
+        {
+            return null;
+        }
+
         var row = await db.EmployeeSalaryAssignments.AsNoTracking().Include(a => a.Lines)
             .FirstOrDefaultAsync(a => a.EmployeeId == employeeId && a.Status == SalaryAssignmentStatuses.Active, ct);
         return row is null ? null : (await MapAsync([row], ct)).First();
@@ -250,6 +268,11 @@ public sealed class SalaryService(ITenantDbContext db, IClock clock)
     /// <summary>The employee's salary effective on a given date — the payroll/CTC-as-of read.</summary>
     public async Task<SalaryAssignmentDto?> AssignmentAsOfAsync(Guid employeeId, DateOnly date, CancellationToken ct)
     {
+        if (!await scopes.CanAccessEmployeeAsync(FoundationPermissions.SalaryAssignmentView, employeeId, ct))
+        {
+            return null;
+        }
+
         var row = await db.EmployeeSalaryAssignments.AsNoTracking().Include(a => a.Lines)
             .Where(a => AppliedStatuses.Contains(a.Status) &&
                         a.EffectiveFrom <= date && (a.EffectiveTo == null || a.EffectiveTo > date))
@@ -263,6 +286,11 @@ public sealed class SalaryService(ITenantDbContext db, IClock clock)
         if (!await db.Employees.AnyAsync(e => e.Id == employeeId, ct))
         {
             return Error.NotFound("employee.not_found", "Employee not found.");
+        }
+
+        if (await RequireEmployeeScopeAsync(FoundationPermissions.SalaryAssignmentCreate, employeeId, ct) is { } scopeError)
+        {
+            return scopeError;
         }
 
         var structure = await db.SalaryStructures.AsNoTracking().Include(s => s.Lines)
@@ -313,6 +341,11 @@ public sealed class SalaryService(ITenantDbContext db, IClock clock)
             return Error.NotFound("salary.not_found", "Salary assignment not found.");
         }
 
+        if (!await scopes.CanAccessEmployeeAsync(FoundationPermissions.SalaryAssignmentApprove, a.EmployeeId, ct))
+        {
+            return Error.NotFound("salary.not_found", "Salary assignment not found.");
+        }
+
         if (a.Status != SalaryAssignmentStatuses.Submitted)
         {
             return Error.Conflict("salary.not_submitted", "Only a submitted assignment can be approved.");
@@ -346,6 +379,11 @@ public sealed class SalaryService(ITenantDbContext db, IClock clock)
     {
         var a = await db.EmployeeSalaryAssignments.FirstOrDefaultAsync(x => x.Id == assignmentId, ct);
         if (a is null)
+        {
+            return Error.NotFound("salary.not_found", "Salary assignment not found.");
+        }
+
+        if (!await scopes.CanAccessEmployeeAsync(FoundationPermissions.SalaryAssignmentApprove, a.EmployeeId, ct))
         {
             return Error.NotFound("salary.not_found", "Salary assignment not found.");
         }
@@ -452,6 +490,11 @@ public sealed class SalaryService(ITenantDbContext db, IClock clock)
     {
         var a = await db.EmployeeSalaryAssignments.FirstOrDefaultAsync(x => x.Id == id, ct);
         if (a is null)
+        {
+            return Error.NotFound("salary.not_found", "Salary assignment not found.");
+        }
+
+        if (!await scopes.CanAccessEmployeeAsync(FoundationPermissions.SalaryAssignmentCreate, a.EmployeeId, ct))
         {
             return Error.NotFound("salary.not_found", "Salary assignment not found.");
         }

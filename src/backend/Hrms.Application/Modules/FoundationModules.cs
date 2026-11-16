@@ -53,6 +53,12 @@ public static class FoundationPermissions
     public const string LettersView = "employee.letters.view";
     public const string LettersIssue = "employee.letters.issue";
     public const string LettersManage = "employee.letters.manage";
+    public const string LettersRevoke = "employee.letters.revoke";
+    public const string LettersReissue = "employee.letters.reissue";
+    public const string LettersTemplateManage = "employee.letters.template.manage";
+    public const string LettersTemplatePublish = "employee.letters.template.publish";
+    public const string LettersLetterheadManage = "employee.letters.letterhead.manage";
+    public const string LettersSignatoryManage = "employee.letters.signatory.manage";
     public const string SalaryComponentView = "salary.component.view";
     public const string SalaryComponentManage = "salary.component.manage";
     public const string SalaryStructureView = "salary.structure.view";
@@ -187,7 +193,13 @@ public sealed class EmployeeFoundationModule : ModuleDefinitionBase
         P(FoundationPermissions.DocumentsManage, PermissionActions.Configure, "Manage document categories"),
         P(FoundationPermissions.LettersView, PermissionActions.View, "View issued letters", scoped: true),
         P(FoundationPermissions.LettersIssue, PermissionActions.Create, "Issue letters to employees", scoped: true),
-        P(FoundationPermissions.LettersManage, PermissionActions.Configure, "Manage letter types and templates"),
+        P(FoundationPermissions.LettersManage, PermissionActions.Configure, "Manage letter types and categories"),
+        P(FoundationPermissions.LettersRevoke, PermissionActions.Delete, "Revoke issued letters", scoped: true, sensitive: true),
+        P(FoundationPermissions.LettersReissue, PermissionActions.Process, "Reissue letters", scoped: true),
+        P(FoundationPermissions.LettersTemplateManage, PermissionActions.Configure, "Manage letter templates", sensitive: true),
+        P(FoundationPermissions.LettersTemplatePublish, PermissionActions.Approve, "Publish or retire letter template versions", sensitive: true),
+        P(FoundationPermissions.LettersLetterheadManage, PermissionActions.Configure, "Manage letterheads"),
+        P(FoundationPermissions.LettersSignatoryManage, PermissionActions.Configure, "Manage letter signatories", sensitive: true),
         P(FoundationPermissions.SalaryComponentView, PermissionActions.View, "View salary components"),
         P(FoundationPermissions.SalaryComponentManage, PermissionActions.Configure, "Manage salary components"),
         P(FoundationPermissions.SalaryStructureView, PermissionActions.View, "View salary structures"),
@@ -198,11 +210,14 @@ public sealed class EmployeeFoundationModule : ModuleDefinitionBase
     ];
 
     public const string EmployeeDocumentPurpose = "hr.employee.document";
+    public const string IssuedLetterPurpose = "hr.employee.letter";
 
     public override IReadOnlyList<FilePurposeDefinition> FilePurposes =>
     [
         new(EmployeeDocumentPurpose, ModuleCode, [".pdf", ".png", ".jpg", ".jpeg", ".webp"], 10 * 1024 * 1024,
             FoundationPermissions.DocumentsUpload, FoundationPermissions.DocumentsView, FoundationPermissions.DocumentsUpload, "confidential"),
+        new(IssuedLetterPurpose, ModuleCode, [".pdf"], 10 * 1024 * 1024,
+            FoundationPermissions.LettersIssue, FoundationPermissions.LettersView, FoundationPermissions.LettersRevoke, "confidential"),
     ];
 
     public override IReadOnlyList<MenuItemDefinition> Menu =>

@@ -1,5 +1,6 @@
 
 using Hrms.Domain.Platform;
+using Hrms.Shared.Results;
 
 namespace Hrms.Application.Abstractions;
 
@@ -144,6 +145,12 @@ public interface IEmailTransport
 public interface ITemplateRenderer
 {
     string Render(string template, IReadOnlyDictionary<string, object?> model);
+}
+
+/// <summary>HTML→PDF converter (Gotenberg). Never reachable from template HTML itself — only whole-document HTML goes in.</summary>
+public interface IPdfService
+{
+    Task<Result<byte[]>> RenderPdfAsync(string html, CancellationToken ct);
 }
 
 public interface IPushNotificationSender
