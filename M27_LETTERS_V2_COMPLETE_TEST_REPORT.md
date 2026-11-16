@@ -91,11 +91,13 @@ Frontend: `HrDocsPage` 6 tabs (Categories, Letter types, Template versions, Sign
 | Gate | Result |
 |---|---|
 | `dotnet build` | Clean, 0 warnings |
-| API suite | **117/117** (baseline 104 → +13) |
+| API suite | **125/125** — 117/117 full-suite run + 8/8 `GotenbergPdfTests` run; a later full-suite re-run was blocked by Docker Desktop (`meta.db: read-only file system`) — fixture-init failure, not test failures; backend unchanged since the green runs |
 | Unit suite | 26/26 |
 | `pnpm build` (incl. `tsc -b`) | Green |
 | ESLint | 0 errors, 4 pre-existing warnings |
 | `git diff --check` | Clean |
+
+Committed `96f3f37` on `m2-hr-core` (34 files) — not pushed.
 
 ## Approval requested
 
