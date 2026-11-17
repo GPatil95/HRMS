@@ -1,0 +1,318 @@
+using Hrms.Application.Abstractions;
+using Hrms.Application.Authorization;
+using Hrms.Application.Modules;
+using Hrms.Domain.Tenant;
+using Hrms.Shared.Paging;
+using Hrms.Shared.Results;
+using Microsoft.EntityFrameworkCore;
+
+namespace Hrms.Application.Organization;
+
+public sealed record CompanyDto(Guid Id, string Code, string Name, bool IsActive);
+public sealed record BranchDto(Guid Id, Guid CompanyId, string Code, string Name, bool IsActive);
+public sealed record DepartmentDto(Guid Id, string Code, string Name, Guid? BranchId, bool IsActive);
+public sealed record EmployeeDirectoryDto(
+    Guid Id, string EmployeeCode, string DisplayName,
+    string? FirstName, string? MiddleName, string? LastName,
+    string? WorkEmail, string? WorkPhone,
+    Guid CompanyId, Guid BranchId, Guid? DepartmentId,
+    Guid? DesignationId, Guid? GradeId, Guid? LocationId, Guid? CostCentreId,
+    Guid? ManagerEmployeeId, Guid? UserId,
+    string? EmploymentType, DateOnly? JoiningDate, DateOnly? ProbationEndDate, DateOnly? ConfirmationDate,
+    EmployeeStatus Status, uint RowVersion);
+
+public sealed record CreateCompanyCommand(string Code, string Name, string? LegalName);
+public sealed record CreateBranchCommand(Guid CompanyId, string Code, string Name);
+public sealed record CreateDepartmentCommand(string Code, string Name, Guid? BranchId);
+public sealed record CreateEmployeeCommand(
+    string EmployeeCode, string DisplayName, string? WorkEmail, Guid BranchId, Guid? DepartmentId,
+    Guid? ManagerEmployeeId, bool PreJoining = false,
+    string? FirstName = null, string? MiddleName = null, string? LastName = null, string? WorkPhone = null,
+    Guid? DesignationId = null, Guid? GradeId = null, Guid? LocationId = null, Guid? CostCentreId = null,
+    string? EmploymentType = null, DateOnly? JoiningDate = null, DateOnly? ProbationEndDate = null);
+
+/// <summary>Ordinary profile fields — org-assignment/designation changes go through lifecycle events, not this command.</summary>
+public sealed record UpdateEmployeeCommand(
+    string DisplayName, string? FirstName, string? MiddleName, string? LastName,
+    string? WorkEmail, string? WorkPhone, uint? RowVersion = null);
+
+/// <summary>
+/// Organisation foundation and the minimal employee directory used by data scopes and user linking.
+/// This is NOT the Employee module; personal/job/statutory data arrives in the Employee milestone.
+/// </summary>
+public sealed class OrganizationService(ITenantDbContext db, IDataScopeService scopes,
+    Employees.EmployeeCodeService codes)
+{
+    public Task<List<CompanyDto>> ListCompaniesAsync(CancellationToken ct) =>
+        db.Companies.AsNoTracking().OrderBy(c => c.Code).Select(c => new CompanyDto(c.Id, c.Code, c.Name, c.IsActive)).ToListAsync(ct);
+
+    public Task<List<BranchDto>> ListBranchesAsync(CancellationToken ct) =>
+        db.Branches.AsNoTracking().OrderBy(c => c.Code).Select(c => new BranchDto(c.Id, c.CompanyId, c.Code, c.Name, c.IsActive)).ToListAsync(ct);
+
+    public Task<List<DepartmentDto>> ListDepartmentsAsync(CancellationToken ct) =>
+        db.Departments.AsNoTracking().OrderBy(c => c.Code).Select(c => new DepartmentDto(c.Id, c.Code, c.Name, c.BranchId, c.IsActive)).ToListAsync(ct);
+
+    public async Task<Result<Guid>> CreateCompanyAsync(CreateCompanyCommand cmd, CancellationToken ct)
+    {
+        var code = Normalize(cmd.Code);
+        if (code.Length == 0 || string.IsNullOrWhiteSpace(cmd.Name))
+        {
+            return Error.Validation("invalid-company", "Code and name are required.");
+        }
+
+        if (await db.Companies.AnyAsync(c => c.Code == code, ct))
+        {
+            return Error.Conflict("company-code-taken", "Company code already exists.");
+        }
+
+        var c = new Company { Code = code, Name = cmd.Name.Trim(), LegalName = cmd.LegalName };
+        db.Companies.Add(c);
+        await db.SaveChangesAsync(ct);
+        return c.Id;
+    }
+
+    public async Task<Result<Guid>> CreateBranchAsync(CreateBranchCommand cmd, CancellationToken ct)
+    {
+        var code = Normalize(cmd.Code);
+        if (code.Length == 0 || string.IsNullOrWhiteSpace(cmd.Name))
+        {
+            return Error.Validation("invalid-branch", "Code and name are required.");
+        }
+
+        if (!await db.Companies.AnyAsync(c => c.Id == cmd.CompanyId, ct))
+        {
+            return Error.Validation("company-not-found", "Company not found.");
+        }
+
+        if (await db.Branches.AnyAsync(c => c.Code == code, ct))
+        {
+            return Error.Conflict("branch-code-taken", "Branch code already exists.");
+        }
+
+        var b = new Branch { CompanyId = cmd.CompanyId, Code = code, Name = cmd.Name.Trim() };
+        db.Branches.Add(b);
+        await db.SaveChangesAsync(ct);
+        return b.Id;
+    }
+
+    public async Task<Result<Guid>> CreateDepartmentAsync(CreateDepartmentCommand cmd, CancellationToken ct)
+    {
+        var code = Normalize(cmd.Code);
+        if (code.Length == 0 || string.IsNullOrWhiteSpace(cmd.Name))
+        {
+            return Error.Validation("invalid-department", "Code and name are required.");
+        }
+
+        if (await db.Departments.AnyAsync(c => c.Code == code, ct))
+        {
+            return Error.Conflict("department-code-taken", "Department code already exists.");
+        }
+
+        if (cmd.BranchId is { } bid && !await db.Branches.AnyAsync(b => b.Id == bid, ct))
+        {
+            return Error.Validation("branch-not-found", "Branch not found.");
+        }
+
+        var d = new Department { Code = code, Name = cmd.Name.Trim(), BranchId = cmd.BranchId };
+        db.Departments.Add(d);
+        await db.SaveChangesAsync(ct);
+        return d.Id;
+    }
+
+    public async Task<PagedResult<EmployeeDirectoryDto>> ListEmployeesAsync(PageRequest page, string? search, CancellationToken ct)
+    {
+        var scope = await scopes.ResolveAsync(FoundationPermissions.EmployeeView, ct);
+        var q = scopes.ApplyScope(db.Employees.AsNoTracking(), scope);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim().ToLower();
+            q = q.Where(e => e.DisplayName.ToLower().Contains(s) || e.EmployeeCode.ToLower().Contains(s));
+        }
+
+        var total = await q.CountAsync(ct);
+        var items = await q.OrderBy(e => e.EmployeeCode).Skip(page.Skip).Take(page.SafePageSize).Select(Map).ToListAsync(ct);
+        return new PagedResult<EmployeeDirectoryDto>(items, page.SafePage, page.SafePageSize, total);
+    }
+
+    public async Task<Result<EmployeeDirectoryDto>> GetEmployeeAsync(Guid id, CancellationToken ct)
+    {
+        // Out-of-scope and non-existent records are indistinguishable (no existence oracle).
+        if (!await scopes.CanAccessEmployeeAsync(FoundationPermissions.EmployeeView, id, ct))
+        {
+            return Error.NotFound("employee-not-found", "Employee not found.");
+        }
+
+        return await db.Employees.AsNoTracking().Where(e => e.Id == id).Select(Map).FirstAsync(ct);
+    }
+
+    public async Task<Result<Guid>> CreateEmployeeAsync(CreateEmployeeCommand cmd, CancellationToken ct)
+    {
+        var branch = await db.Branches.AsNoTracking().FirstOrDefaultAsync(b => b.Id == cmd.BranchId, ct);
+        if (branch is null)
+        {
+            return Error.Validation("branch-not-found", "Branch not found.");
+        }
+
+        // Auto-generate when no code supplied (series per configured prefix); manual codes honour allow_manual.
+        var numbering = await codes.ResolveConfigAsync(branch.CompanyId, ct);
+        var code = Normalize(cmd.EmployeeCode);
+        if (code.Length == 0)
+        {
+            code = await codes.NextCodeAsync(numbering.Prefix, numbering.PadWidth, ct);
+        }
+        else
+        {
+            var manual = await codes.ValidateManualCodeAsync(numbering, code, ct);
+            if (!manual.IsSuccess)
+            {
+                return manual.Error!;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(cmd.DisplayName))
+        {
+            return Error.Validation("invalid-employee", "Employee name is required.");
+        }
+
+        var scope = await scopes.ResolveAsync(FoundationPermissions.EmployeeCreate, ct);
+        if (!scope.All && !scope.BranchIds.Contains(cmd.BranchId) && !scope.CompanyIds.Contains(branch.CompanyId))
+        {
+            return Error.Forbidden("out-of-scope", "You cannot create employees in this branch.");
+        }
+
+        if (await db.Employees.AnyAsync(e => e.EmployeeCode == code, ct))
+        {
+            return Error.Conflict("employee-code-taken", "Employee code already exists.");
+        }
+
+        if (cmd.ManagerEmployeeId is { } mid && !await db.Employees.AnyAsync(e => e.Id == mid, ct))
+        {
+            return Error.Validation("manager-not-found", "Manager not found.");
+        }
+
+        if (cmd.DepartmentId is { } deptId && !await db.Departments.AnyAsync(d => d.Id == deptId, ct))
+        {
+            return Error.Validation("department-not-found", "Department not found.");
+        }
+
+        if (cmd.DesignationId is { } desId && !await db.Designations.AnyAsync(d => d.Id == desId && d.IsActive, ct))
+        {
+            return Error.Validation("designation-not-found", "Designation not found or inactive.");
+        }
+
+        if (cmd.GradeId is { } grId && !await db.Grades.AnyAsync(g => g.Id == grId && g.IsActive, ct))
+        {
+            return Error.Validation("grade-not-found", "Grade not found or inactive.");
+        }
+
+        if (cmd.LocationId is { } locId
+            && !await db.WorkLocations.AnyAsync(l => l.Id == locId && l.IsActive && (l.BranchId == null || l.BranchId == cmd.BranchId), ct))
+        {
+            return Error.Validation("location-not-found", "Work location not found, inactive, or scoped to another branch.");
+        }
+
+        if (cmd.CostCentreId is { } ccId
+            && !await db.CostCentres.AnyAsync(c => c.Id == ccId && c.IsActive && c.CompanyId == branch.CompanyId, ct))
+        {
+            return Error.Validation("costcentre-not-found", "Cost centre not found, inactive, or belongs to another company.");
+        }
+
+        var employmentType = cmd.EmploymentType?.Trim().ToLowerInvariant();
+        if (employmentType is { Length: > 0 } && !EmploymentTypes.All.Contains(employmentType))
+        {
+            return Error.Validation("employment-type-invalid", "Employment type must be one of: " + string.Join(", ", EmploymentTypes.All));
+        }
+
+        var e = new Employee
+        {
+            EmployeeCode = code,
+            DisplayName = cmd.DisplayName.Trim(),
+            WorkEmail = cmd.WorkEmail?.Trim().ToLowerInvariant(),
+            CompanyId = branch.CompanyId,
+            BranchId = branch.Id,
+            DepartmentId = cmd.DepartmentId,
+            ManagerEmployeeId = cmd.ManagerEmployeeId,
+            FirstName = cmd.FirstName?.Trim(),
+            MiddleName = cmd.MiddleName?.Trim(),
+            LastName = cmd.LastName?.Trim(),
+            WorkPhone = cmd.WorkPhone?.Trim(),
+            DesignationId = cmd.DesignationId,
+            GradeId = cmd.GradeId,
+            LocationId = cmd.LocationId,
+            CostCentreId = cmd.CostCentreId,
+            EmploymentType = employmentType is { Length: > 0 } ? employmentType : null,
+            JoiningDate = cmd.JoiningDate,
+            ProbationEndDate = cmd.ProbationEndDate,
+            Status = cmd.PreJoining ? EmployeeStatus.PreJoining : EmployeeStatus.Active,
+        };
+        db.Employees.Add(e);
+
+        // Open the initial employment period — the projection's org fields mirror this row.
+        db.EmploymentHistory.Add(new EmploymentHistory
+        {
+            EmployeeId = e.Id, CompanyId = e.CompanyId, BranchId = e.BranchId, DepartmentId = e.DepartmentId,
+            DesignationId = e.DesignationId, GradeId = e.GradeId, LocationId = e.LocationId,
+            CostCentreId = e.CostCentreId, ManagerEmployeeId = e.ManagerEmployeeId,
+            EmploymentType = e.EmploymentType ?? EmploymentTypes.Permanent,
+            EventType = LifecycleEventTypes.InitialAssignment,
+            EffectiveFrom = e.JoiningDate ?? DateOnly.FromDateTime(DateTime.UtcNow.Date),
+        });
+
+        db.ReportingClosure.Add(new ReportingClosure { AncestorId = e.Id, DescendantId = e.Id, Depth = 0 });
+        if (cmd.ManagerEmployeeId is { } managerId)
+        {
+            var ancestors = await db.ReportingClosure.AsNoTracking().Where(r => r.DescendantId == managerId).ToListAsync(ct);
+            foreach (var a in ancestors)
+            {
+                db.ReportingClosure.Add(new ReportingClosure { AncestorId = a.AncestorId, DescendantId = e.Id, Depth = a.Depth + 1 });
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+        return e.Id;
+    }
+
+    /// <summary>Ordinary field edits only — org/designation/manager changes must go through lifecycle events.</summary>
+    public async Task<Result<Guid>> UpdateEmployeeAsync(Guid id, UpdateEmployeeCommand cmd, CancellationToken ct)
+    {
+        if (!await scopes.CanAccessEmployeeAsync(FoundationPermissions.EmployeeEdit, id, ct))
+        {
+            return Error.NotFound("employee-not-found", "Employee not found.");
+        }
+
+        var e = await db.Employees.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (e is null)
+        {
+            return Error.NotFound("employee-not-found", "Employee not found.");
+        }
+
+        if (string.IsNullOrWhiteSpace(cmd.DisplayName))
+        {
+            return Error.Validation("invalid-employee", "Employee name is required.");
+        }
+
+        if (cmd.RowVersion is { } rv && e.RowVersion != rv)
+        {
+            return Error.Conflict("stale-version", "This record was modified elsewhere. Reload and retry.");
+        }
+
+        e.DisplayName = cmd.DisplayName.Trim();
+        e.FirstName = cmd.FirstName?.Trim();
+        e.MiddleName = cmd.MiddleName?.Trim();
+        e.LastName = cmd.LastName?.Trim();
+        e.WorkEmail = cmd.WorkEmail?.Trim().ToLowerInvariant();
+        e.WorkPhone = cmd.WorkPhone?.Trim();
+        await db.SaveChangesAsync(ct);
+        return e.Id;
+    }
+
+    private static string Normalize(string? code) => (code ?? string.Empty).Trim().ToUpperInvariant();
+
+    private static readonly System.Linq.Expressions.Expression<Func<Employee, EmployeeDirectoryDto>> Map =
+        e => new EmployeeDirectoryDto(
+            e.Id, e.EmployeeCode, e.DisplayName, e.FirstName, e.MiddleName, e.LastName,
+            e.WorkEmail, e.WorkPhone, e.CompanyId, e.BranchId, e.DepartmentId,
+            e.DesignationId, e.GradeId, e.LocationId, e.CostCentreId,
+            e.ManagerEmployeeId, e.UserId, e.EmploymentType, e.JoiningDate, e.ProbationEndDate, e.ConfirmationDate,
+            e.Status, e.RowVersion);
+}
