@@ -18,8 +18,12 @@ import { NotFoundPage } from './pages/AppPages'
 import { ForgotPasswordPage, LoginPage, SetPasswordPage } from './pages/AuthPages'
 import { DashboardPage } from './pages/tenant/DashboardPage'
 import { EmployeeDetailPage, EmployeesPage } from './pages/tenant/EmployeesPage'
-import { AuditPage as TenantAuditPage, SecurityEventsPage, TemplatesPage } from './pages/tenant/NotAvailablePage'
+import { AuditPage as TenantAuditPage } from './pages/tenant/AuditPage'
+import { SecurityEventsPage, TemplatesPage } from './pages/tenant/NotAvailablePage'
 import { NotificationsPage } from './pages/tenant/NotificationsPage'
+import { OrgMastersPage } from './pages/tenant/OrgMastersPage'
+import { SalaryMastersPage } from './pages/tenant/SalaryMastersPage'
+import { HrDocsPage } from './pages/tenant/HrDocsPage'
 import { BranchesPage, CompaniesPage, DepartmentsPage } from './pages/tenant/OrgPages'
 import { ReportsPage } from './pages/tenant/ReportsPage'
 import { RolesPage } from './pages/tenant/RolesPage'
@@ -65,8 +69,11 @@ export default function App() {
             <Route path="/org/companies" element={<CompaniesPage />} />
             <Route path="/org/branches" element={<BranchesPage />} />
             <Route path="/org/departments" element={<DepartmentsPage />} />
+            <Route path="/org/masters" element={<OrgMastersPage />} />
             <Route path="/employees" element={<EmployeesPage />} />
             <Route path="/employees/:id" element={<EmployeeDetailPage />} />
+            <Route path="/salary" element={<SalaryMastersPage />} />
+            <Route path="/hr-docs" element={<HrDocsPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/admin/users" element={<UsersPage />} />

@@ -83,19 +83,50 @@ export interface SubscriptionPlan {
   employeeLimit?: number | null
 }
 
+export interface AuditFieldChange {
+  field: string
+  oldValue?: string | null
+  newValue?: string | null
+  oldLabel?: string | null
+  newLabel?: string | null
+  masked: boolean
+}
+
 export interface AuditEntry {
+  id: string
   occurredAt: string
-  tenantId?: string | null
   moduleCode: string
   entityType: string
   entityId: string
+  entityLabel?: string | null
   action: string
   actorType: string
+  actorId?: string | null
   actorDisplay?: string | null
   source: string
+  reason?: string | null
   ipAddress?: string | null
   correlationId?: string | null
-  reason?: string | null
+  fields: AuditFieldChange[]
+}
+
+export interface AuditQuery {
+  moduleCode?: string
+  entityType?: string
+  entityId?: string
+  action?: string
+  actorId?: string
+  from?: string
+  to?: string
+  skip?: number
+  take?: number
+}
+
+export const auditQuery = (base: string) => (q: AuditQuery = {}) => {
+  const p = new URLSearchParams()
+  Object.entries(q).forEach(([k, v]) => { if (v !== undefined && v !== '') p.set(k, String(v)) })
+  const qs = p.toString()
+  return api<AuditEntry[]>(`${base}${qs ? `?${qs}` : ''}`)
 }
 
 export interface SecurityEvent {
@@ -140,7 +171,7 @@ export const platformApi = {
     api(`/api/v1/platform/tenants/${id}/subscription`, { method: 'PUT', body: JSON.stringify({ status, endsOn, reason }) }),
   modules: () => api<CatalogModule[]>('/api/v1/platform/catalog/modules'),
   plans: () => api<SubscriptionPlan[]>('/api/v1/platform/plans'),
-  audit: () => api<AuditEntry[]>('/api/v1/platform/audit'),
+  audit: auditQuery('/api/v1/platform/audit'),
   securityEvents: () => api<SecurityEvent[]>('/api/v1/platform/security-events'),
   operations: (page = 1, pageSize = 50) => api<{ items: ProvisioningOperation[]; page: number; pageSize: number; totalCount: number }>(`/api/v1/platform/operations?page=${page}&pageSize=${pageSize}`),
   operation: (id: string) => api<ProvisioningOperation>(`/api/v1/platform/operations/${id}`),

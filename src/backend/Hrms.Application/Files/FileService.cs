@@ -31,6 +31,7 @@ public sealed partial class FileService(
     IFileStorageService storage,
     IMalwareScanner scanner,
     IAuditWriter audit,
+    IDataScopeService scopes,
     IClock clock)
 {
     private static readonly Dictionary<string, string> ContentTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -181,7 +182,20 @@ public sealed partial class FileService(
             return (null, Error.NotFound("file-not-found", "File not found."));
         }
 
-        return await access.CheckAsync(purpose.ModuleCode, permission(purpose), ct) is { } denied ? (null, denied) : (file, null);
+        if (await access.CheckAsync(purpose.ModuleCode, permission(purpose), ct) is { } denied)
+        {
+            return (null, denied);
+        }
+
+        // Employee-owned files additionally require data scope on the owning employee (owner set at upload).
+        if (string.Equals(file.OwnerEntityType, "employee", StringComparison.OrdinalIgnoreCase)
+            && Guid.TryParse(file.OwnerEntityId, out var ownerEmployeeId)
+            && !await scopes.CanAccessEmployeeAsync(permission(purpose), ownerEmployeeId, ct))
+        {
+            return (null, Error.NotFound("file-not-found", "File not found."));
+        }
+
+        return (file, null);
     }
 
     public static string SanitizeFileName(string? name)

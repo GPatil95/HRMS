@@ -55,6 +55,8 @@ public sealed class TenantSeedService(IModuleCatalog catalog)
             }
         }
 
+        await SeedHrDefaultsAsync(db, ct);
+
         if (!await db.Dashboards.AnyAsync(d => d.Code == "default", ct))
         {
             var dashboard = new Dashboard { Code = "default", Name = "Home", IsSystem = true };
@@ -113,6 +115,137 @@ public sealed class TenantSeedService(IModuleCatalog catalog)
 
             await db.SaveChangesAsync(ct);
         }
+    }
+
+    /// <summary>Additively tops up the built-in manager/employee system roles with permissions they were
+    /// seeded to hold (view-level org/employee perms). Never removes grants; custom roles are untouched.
+    /// Used by migrate-tenants catalog sync so new permission codes reach existing tenants.</summary>
+    public async Task SyncRoleGrantsAsync(ITenantDbContext db, CancellationToken ct)
+    {
+        var permissions = await db.Permissions.Where(p => p.IsActive).ToListAsync(ct);
+
+        async Task GrantMissingAsync(string roleCode, ScopeLevel scope, params string[] codes)
+        {
+            var role = await db.Roles.Include(r => r.Permissions).FirstOrDefaultAsync(r => r.Code == roleCode, ct);
+            if (role is null)
+            {
+                return;
+            }
+
+            var wanted = permissions.Where(p => codes.Contains(p.Code)).ToList();
+            foreach (var p in wanted.Where(p => role.Permissions.All(rp => rp.PermissionId != p.Id)))
+            {
+                role.Permissions.Add(new RolePermission { RoleId = role.Id, PermissionId = p.Id, ScopeLevel = p.SupportsScope ? scope : ScopeLevel.Tenant });
+            }
+        }
+
+        await GrantMissingAsync(SystemRoles.Manager, ScopeLevel.DirectReports,
+            FoundationPermissions.MasterView, FoundationPermissions.EmployeeView, FoundationPermissions.DashboardView);
+        await GrantMissingAsync(SystemRoles.Employee, ScopeLevel.Own,
+            FoundationPermissions.MasterView, FoundationPermissions.EmployeeView, FoundationPermissions.DashboardView);
+
+        var state = await db.AuthorizationState.FirstOrDefaultAsync(ct);
+        if (state is not null)
+        {
+            state.Version++;
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Baseline employee document categories and letter types. Idempotent by code; runs at
+    /// provisioning (SeedAsync) and for existing tenants via the migrate-tenants catalogue sync.</summary>
+    public async Task SeedHrDefaultsAsync(ITenantDbContext db, CancellationToken ct)
+    {
+        // (code, name, requiredForOnboarding, retentionYears, confidential, trackExpiry)
+        (string Code, string Name, bool Required, int? Retention, bool Confidential, bool TrackExpiry)[] categories =
+        [
+            ("photo", "Photograph", false, null, false, false),
+            ("resume", "Resume / CV", false, null, false, false),
+            ("aadhaar", "Aadhaar Card", true, null, true, false),
+            ("pan-card", "PAN Card", true, null, true, false),
+            ("passport", "Passport", false, null, true, true),
+            ("address-proof", "Address Proof", true, null, false, false),
+            ("education", "Education Certificate", true, null, false, false),
+            ("experience", "Experience / Relieving Letter", false, null, false, false),
+            ("bank-proof", "Bank Proof (Cancelled Cheque / Passbook)", true, null, true, false),
+            ("offer-letter", "Signed Offer Letter", true, 8, false, false),
+            ("visa-work-permit", "Visa / Work Permit", false, null, true, true),
+            ("other", "Other", false, null, false, false),
+        ];
+
+        var haveCategories = await db.DocumentCategories.Select(c => c.Code).ToListAsync(ct);
+        foreach (var (code, name, required, retention, confidential, trackExpiry) in categories)
+        {
+            if (!haveCategories.Contains(code))
+            {
+                db.DocumentCategories.Add(new DocumentCategory
+                {
+                    Code = code,
+                    Name = name,
+                    RequiredForOnboarding = required,
+                    RetentionYears = retention,
+                    Confidential = confidential,
+                    TrackExpiry = trackExpiry,
+                });
+            }
+        }
+
+        var haveTypes = await db.LetterTypes.Select(t => t.Code).ToListAsync(ct);
+        (string Code, string Name)[] types =
+        [
+            ("offer", "Offer Letter"),
+            ("appointment", "Appointment Letter"),
+            ("confirmation", "Confirmation Letter"),
+            ("experience", "Experience Letter"),
+            ("relieving", "Relieving Letter"),
+            ("address-proof", "Address Proof Letter"),
+            ("salary-revision", "Salary Revision Letter"),
+            ("warning", "Warning Letter"),
+        ];
+        foreach (var (code, name) in types)
+        {
+            if (!haveTypes.Contains(code))
+            {
+                db.LetterTypes.Add(new LetterType { Code = code, Name = name });
+            }
+        }
+
+        // Baseline salary components — Indian payroll defaults; statutory rows are delete-protected.
+        var haveComponents = await db.SalaryComponents.Select(c => c.Code).ToListAsync(ct);
+        (string Code, string Name, string Type, bool Taxable, bool Statutory, bool Basic, int Order)[] comps =
+        [
+            ("basic", "Basic", "earning", true, false, true, 10),
+            ("hra", "House Rent Allowance", "earning", true, false, false, 20),
+            ("special-allowance", "Special Allowance", "earning", true, false, false, 30),
+            ("conveyance", "Conveyance Allowance", "earning", true, false, false, 40),
+            ("medical-allowance", "Medical Allowance", "earning", true, false, false, 50),
+            ("bonus", "Bonus", "earning", true, false, false, 60),
+            ("pf-employee", "Provident Fund (Employee)", "statutory", false, true, false, 100),
+            ("pf-employer", "Provident Fund (Employer)", "statutory", false, true, false, 101),
+            ("esi-employee", "ESI (Employee)", "statutory", false, true, false, 110),
+            ("esi-employer", "ESI (Employer)", "statutory", false, true, false, 111),
+            ("professional-tax", "Professional Tax", "statutory", false, true, false, 120),
+            ("tds", "Tax Deducted at Source", "statutory", false, true, false, 130),
+            ("lwf", "Labour Welfare Fund", "statutory", false, true, false, 140),
+            ("loan-recovery", "Loan Recovery", "deduction", false, false, false, 200),
+            ("other-deduction", "Other Deduction", "deduction", true, false, false, 210),
+        ];
+        foreach (var (code, name, type, taxable, statutory, basic, order) in comps)
+        {
+            if (!haveComponents.Contains(code))
+            {
+                db.SalaryComponents.Add(new SalaryComponent
+                {
+                    Code = code, Name = name, Type = type, Taxable = taxable,
+                    IsStatutory = statutory, IsBasic = basic, DisplayOrder = order,
+                    PartOfGross = type == "earning" || type == "reimbursement",
+                    PartOfCtc = type != "deduction",
+                });
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
     }
 
     private static async Task EnsureRoleAsync(ITenantDbContext db, string code, string name, IEnumerable<(Permission P, ScopeLevel Level)> perms, CancellationToken ct)

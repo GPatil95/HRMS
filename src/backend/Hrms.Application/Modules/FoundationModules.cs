@@ -25,10 +25,47 @@ public static class FoundationPermissions
     public const string DepartmentView = "org.department.view";
     public const string DepartmentCreate = "org.department.create";
     public const string DepartmentEdit = "org.department.edit";
+    public const string MasterView = "org.master.view";
+    public const string MasterCreate = "org.master.create";
+    public const string MasterEdit = "org.master.edit";
     public const string EmployeeView = "employee.directory.view";
     public const string EmployeeCreate = "employee.directory.create";
     public const string EmployeeEdit = "employee.directory.edit";
     public const string EmployeeExport = "employee.directory.export";
+    public const string ProfileView = "employee.profile.view";
+    public const string PersonalEdit = "employee.personal.edit";
+    public const string ContactsEdit = "employee.contacts.edit";
+    public const string BankView = "employee.bank.view";
+    public const string BankEdit = "employee.bank.edit";
+    public const string BankVerify = "employee.bank.verify";
+    public const string StatutoryView = "employee.statutory.view";
+    public const string StatutoryEdit = "employee.statutory.edit";
+    public const string HistoryView = "employee.history.view";
+    public const string HistoryBackdate = "employee.history.backdate";
+    public const string LifecycleView = "employee.lifecycle.view";
+    public const string LifecycleCreate = "employee.lifecycle.create";
+    public const string LifecycleApprove = "employee.lifecycle.approve";
+    public const string NumberingManage = "employee.numbering.manage";
+    public const string DocumentsView = "employee.documents.view";
+    public const string DocumentsUpload = "employee.documents.upload";
+    public const string DocumentsVerify = "employee.documents.verify";
+    public const string DocumentsManage = "employee.documents.manage";
+    public const string LettersView = "employee.letters.view";
+    public const string LettersIssue = "employee.letters.issue";
+    public const string LettersManage = "employee.letters.manage";
+    public const string LettersRevoke = "employee.letters.revoke";
+    public const string LettersReissue = "employee.letters.reissue";
+    public const string LettersTemplateManage = "employee.letters.template.manage";
+    public const string LettersTemplatePublish = "employee.letters.template.publish";
+    public const string LettersLetterheadManage = "employee.letters.letterhead.manage";
+    public const string LettersSignatoryManage = "employee.letters.signatory.manage";
+    public const string SalaryComponentView = "salary.component.view";
+    public const string SalaryComponentManage = "salary.component.manage";
+    public const string SalaryStructureView = "salary.structure.view";
+    public const string SalaryStructureManage = "salary.structure.manage";
+    public const string SalaryAssignmentView = "salary.assignment.view";
+    public const string SalaryAssignmentCreate = "salary.assignment.create";
+    public const string SalaryAssignmentApprove = "salary.assignment.approve";
     public const string AuditView = "audit.entry.view";
     public const string AuditExport = "audit.entry.export";
     public const string SecurityEventView = "audit.security.view";
@@ -94,6 +131,9 @@ public sealed class OrganizationModule : ModuleDefinitionBase
         P(FoundationPermissions.DepartmentView, PermissionActions.View, "View departments"),
         P(FoundationPermissions.DepartmentCreate, PermissionActions.Create, "Create departments"),
         P(FoundationPermissions.DepartmentEdit, PermissionActions.Edit, "Edit departments"),
+        P(FoundationPermissions.MasterView, PermissionActions.View, "View organization reference masters"),
+        P(FoundationPermissions.MasterCreate, PermissionActions.Create, "Create organization reference masters"),
+        P(FoundationPermissions.MasterEdit, PermissionActions.Edit, "Edit organization reference masters"),
     ];
 
     public override IReadOnlyList<MenuItemDefinition> Menu =>
@@ -102,6 +142,7 @@ public sealed class OrganizationModule : ModuleDefinitionBase
         new("org.companies", "Companies", "/org/companies", "business", 10, ModuleCode, "org", [FoundationPermissions.CompanyView]),
         new("org.branches", "Branches", "/org/branches", "store", 20, ModuleCode, "org", [FoundationPermissions.BranchView]),
         new("org.departments", "Departments", "/org/departments", "account_tree", 30, ModuleCode, "org", [FoundationPermissions.DepartmentView]),
+        new("org.masters", "Masters", "/org/masters", "settings", 40, ModuleCode, "org", [FoundationPermissions.MasterView]),
     ];
 
     public const string LogoPurpose = "core.org.logo";
@@ -132,11 +173,58 @@ public sealed class EmployeeFoundationModule : ModuleDefinitionBase
         P(FoundationPermissions.EmployeeCreate, PermissionActions.Create, "Create directory records", scoped: true),
         P(FoundationPermissions.EmployeeEdit, PermissionActions.Edit, "Edit directory records", scoped: true),
         P(FoundationPermissions.EmployeeExport, PermissionActions.Export, "Export employee directory", scoped: true, sensitive: true),
+        P(FoundationPermissions.ProfileView, PermissionActions.View, "View employee profile sections", scoped: true),
+        P(FoundationPermissions.PersonalEdit, PermissionActions.Edit, "Edit personal/contact sections", scoped: true),
+        P(FoundationPermissions.ContactsEdit, PermissionActions.Edit, "Edit emergency/family/nominee contacts", scoped: true),
+        P(FoundationPermissions.BankView, PermissionActions.View, "View masked bank details", scoped: true, sensitive: true),
+        P(FoundationPermissions.BankEdit, PermissionActions.Edit, "Edit bank accounts", scoped: true, sensitive: true),
+        P(FoundationPermissions.BankVerify, PermissionActions.Approve, "Verify bank accounts", scoped: true, sensitive: true),
+        P(FoundationPermissions.StatutoryView, PermissionActions.View, "View statutory identifiers (masked)", scoped: true, sensitive: true),
+        P(FoundationPermissions.StatutoryEdit, PermissionActions.Edit, "Edit statutory identifiers", scoped: true, sensitive: true),
+        P(FoundationPermissions.HistoryView, PermissionActions.View, "View employment history", scoped: true),
+        P(FoundationPermissions.HistoryBackdate, PermissionActions.Edit, "Backdate/correct employment history", scoped: true, sensitive: true),
+        P(FoundationPermissions.LifecycleView, PermissionActions.View, "View lifecycle events", scoped: true),
+        P(FoundationPermissions.LifecycleCreate, PermissionActions.Create, "Submit lifecycle events", scoped: true),
+        P(FoundationPermissions.LifecycleApprove, "approve", "Approve lifecycle events", scoped: true, sensitive: true),
+        P(FoundationPermissions.NumberingManage, PermissionActions.Configure, "Manage employee-code numbering config"),
+        P(FoundationPermissions.DocumentsView, PermissionActions.View, "View employee documents", scoped: true, sensitive: true),
+        P(FoundationPermissions.DocumentsUpload, PermissionActions.Create, "Upload employee documents", scoped: true, sensitive: true),
+        P(FoundationPermissions.DocumentsVerify, PermissionActions.Approve, "Verify employee documents", scoped: true, sensitive: true),
+        P(FoundationPermissions.DocumentsManage, PermissionActions.Configure, "Manage document categories"),
+        P(FoundationPermissions.LettersView, PermissionActions.View, "View issued letters", scoped: true),
+        P(FoundationPermissions.LettersIssue, PermissionActions.Create, "Issue letters to employees", scoped: true),
+        P(FoundationPermissions.LettersManage, PermissionActions.Configure, "Manage letter types and categories"),
+        P(FoundationPermissions.LettersRevoke, PermissionActions.Delete, "Revoke issued letters", scoped: true, sensitive: true),
+        P(FoundationPermissions.LettersReissue, PermissionActions.Process, "Reissue letters", scoped: true),
+        P(FoundationPermissions.LettersTemplateManage, PermissionActions.Configure, "Manage letter templates", sensitive: true),
+        P(FoundationPermissions.LettersTemplatePublish, PermissionActions.Approve, "Publish or retire letter template versions", sensitive: true),
+        P(FoundationPermissions.LettersLetterheadManage, PermissionActions.Configure, "Manage letterheads"),
+        P(FoundationPermissions.LettersSignatoryManage, PermissionActions.Configure, "Manage letter signatories", sensitive: true),
+        P(FoundationPermissions.SalaryComponentView, PermissionActions.View, "View salary components"),
+        P(FoundationPermissions.SalaryComponentManage, PermissionActions.Configure, "Manage salary components"),
+        P(FoundationPermissions.SalaryStructureView, PermissionActions.View, "View salary structures"),
+        P(FoundationPermissions.SalaryStructureManage, PermissionActions.Configure, "Manage salary structures"),
+        P(FoundationPermissions.SalaryAssignmentView, PermissionActions.View, "View employee salary", scoped: true, sensitive: true),
+        P(FoundationPermissions.SalaryAssignmentCreate, PermissionActions.Create, "Assign or revise employee salary", scoped: true, sensitive: true),
+        P(FoundationPermissions.SalaryAssignmentApprove, PermissionActions.Approve, "Approve salary assignments", scoped: true, sensitive: true),
+    ];
+
+    public const string EmployeeDocumentPurpose = "hr.employee.document";
+    public const string IssuedLetterPurpose = "hr.employee.letter";
+
+    public override IReadOnlyList<FilePurposeDefinition> FilePurposes =>
+    [
+        new(EmployeeDocumentPurpose, ModuleCode, [".pdf", ".png", ".jpg", ".jpeg", ".webp"], 10 * 1024 * 1024,
+            FoundationPermissions.DocumentsUpload, FoundationPermissions.DocumentsView, FoundationPermissions.DocumentsUpload, "confidential"),
+        new(IssuedLetterPurpose, ModuleCode, [".pdf"], 10 * 1024 * 1024,
+            FoundationPermissions.LettersIssue, FoundationPermissions.LettersView, FoundationPermissions.LettersRevoke, "confidential"),
     ];
 
     public override IReadOnlyList<MenuItemDefinition> Menu =>
     [
         new("employees", "Employees", "/employees", "badge", 300, ModuleCode, AnyPermissions: [FoundationPermissions.EmployeeView]),
+        new("hr.salary", "Salary Setup", "/salary", "payments", 310, ModuleCode, AnyPermissions: [FoundationPermissions.SalaryComponentView, FoundationPermissions.SalaryStructureView]),
+        new("hr.docs", "HR Docs Setup", "/hr-docs", "description", 320, ModuleCode, AnyPermissions: [FoundationPermissions.DocumentsManage, FoundationPermissions.LettersManage]),
     ];
 }
 

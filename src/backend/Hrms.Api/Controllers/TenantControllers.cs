@@ -2,12 +2,14 @@ using Asp.Versioning;
 using Hrms.Api.Hosting;
 using Hrms.Api.Security;
 using Hrms.Application.Abstractions;
+using Hrms.Application.Auditing;
 using Hrms.Application.Authorization;
 using Hrms.Application.Dashboards;
 using Hrms.Application.Files;
 using Hrms.Application.Identity;
 using Hrms.Application.Modules;
 using Hrms.Application.Notifications;
+using Hrms.Application.Employees;
 using Hrms.Application.Organization;
 using Hrms.Application.Reporting;
 using Hrms.Domain.Common;
@@ -275,17 +277,400 @@ public sealed class OrgMastersController(OrgMastersService masters) : Controller
         (await masters.PreviewWeeklyOffAsync("department", id, from, to, ct)).ToActionResult();
 }
 
-[ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/employees")]
-public sealed class EmployeeDirectoryController(OrganizationService org) : ControllerBase
+/// <summary>M2.1 organization reference masters: designations, grades, work locations, cost centres.</summary>
+[ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/org")]
+public sealed class OrgReferenceMastersController(OrgReferenceMastersService refs) : ControllerBase
 {
-    [HttpGet, RequirePermission(EmployeeFoundationModule.ModuleCode, P.EmployeeView)]
+    private const string O = OrganizationModule.ModuleCode;
+
+    [HttpGet("designations"), RequirePermission(O, P.MasterView)]
+    public async Task<IActionResult> ListDesignations([FromQuery] bool includeInactive, CancellationToken ct) => Ok(await refs.ListDesignationsAsync(includeInactive, ct));
+
+    [HttpPost("designations"), RequirePermission(O, P.MasterCreate)]
+    public async Task<IActionResult> CreateDesignation(DesignationInput input, CancellationToken ct) => (await refs.CreateDesignationAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpPut("designations/{id:guid}"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> UpdateDesignation(Guid id, DesignationInput input, CancellationToken ct) => (await refs.UpdateDesignationAsync(id, input, ct)).ToActionResult();
+
+    [HttpPatch("designations/{id:guid}/status"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> SetDesignationStatus(Guid id, SetActiveInput input, CancellationToken ct) => (await refs.SetDesignationActiveAsync(id, input.IsActive, ct)).ToActionResult();
+
+    [HttpDelete("designations/{id:guid}"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> DeleteDesignation(Guid id, CancellationToken ct) => (await refs.DeleteDesignationAsync(id, ct)).ToActionResult();
+
+    [HttpGet("grades"), RequirePermission(O, P.MasterView)]
+    public async Task<IActionResult> ListGrades([FromQuery] bool includeInactive, CancellationToken ct) => Ok(await refs.ListGradesAsync(includeInactive, ct));
+
+    [HttpPost("grades"), RequirePermission(O, P.MasterCreate)]
+    public async Task<IActionResult> CreateGrade(GradeInput input, CancellationToken ct) => (await refs.CreateGradeAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpPut("grades/{id:guid}"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> UpdateGrade(Guid id, GradeInput input, CancellationToken ct) => (await refs.UpdateGradeAsync(id, input, ct)).ToActionResult();
+
+    [HttpPatch("grades/{id:guid}/status"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> SetGradeStatus(Guid id, SetActiveInput input, CancellationToken ct) => (await refs.SetGradeActiveAsync(id, input.IsActive, ct)).ToActionResult();
+
+    [HttpDelete("grades/{id:guid}"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> DeleteGrade(Guid id, CancellationToken ct) => (await refs.DeleteGradeAsync(id, ct)).ToActionResult();
+
+    [HttpGet("locations"), RequirePermission(O, P.MasterView)]
+    public async Task<IActionResult> ListLocations([FromQuery] bool includeInactive, CancellationToken ct) => Ok(await refs.ListWorkLocationsAsync(includeInactive, ct));
+
+    [HttpPost("locations"), RequirePermission(O, P.MasterCreate)]
+    public async Task<IActionResult> CreateLocation(WorkLocationInput input, CancellationToken ct) => (await refs.CreateWorkLocationAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpPut("locations/{id:guid}"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> UpdateLocation(Guid id, WorkLocationInput input, CancellationToken ct) => (await refs.UpdateWorkLocationAsync(id, input, ct)).ToActionResult();
+
+    [HttpPatch("locations/{id:guid}/status"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> SetLocationStatus(Guid id, SetActiveInput input, CancellationToken ct) => (await refs.SetWorkLocationActiveAsync(id, input.IsActive, ct)).ToActionResult();
+
+    [HttpDelete("locations/{id:guid}"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> DeleteLocation(Guid id, CancellationToken ct) => (await refs.DeleteWorkLocationAsync(id, ct)).ToActionResult();
+
+    [HttpGet("cost-centres"), RequirePermission(O, P.MasterView)]
+    public async Task<IActionResult> ListCostCentres([FromQuery] bool includeInactive, CancellationToken ct) => Ok(await refs.ListCostCentresAsync(includeInactive, ct));
+
+    [HttpPost("cost-centres"), RequirePermission(O, P.MasterCreate)]
+    public async Task<IActionResult> CreateCostCentre(CostCentreInput input, CancellationToken ct) => (await refs.CreateCostCentreAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpPut("cost-centres/{id:guid}"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> UpdateCostCentre(Guid id, CostCentreInput input, CancellationToken ct) => (await refs.UpdateCostCentreAsync(id, input, ct)).ToActionResult();
+
+    [HttpPatch("cost-centres/{id:guid}/status"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> SetCostCentreStatus(Guid id, SetActiveInput input, CancellationToken ct) => (await refs.SetCostCentreActiveAsync(id, input.IsActive, ct)).ToActionResult();
+
+    [HttpDelete("cost-centres/{id:guid}"), RequirePermission(O, P.MasterEdit)]
+    public async Task<IActionResult> DeleteCostCentre(Guid id, CancellationToken ct) => (await refs.DeleteCostCentreAsync(id, ct)).ToActionResult();
+}
+
+[ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/employees")]
+public sealed class EmployeeDirectoryController(OrganizationService org, EmployeeProfileService profiles,
+    LifecycleEventService lifecycle, EmployeeDocumentService documents, LetterIssuanceService issuance,
+    FileService files, ICurrentUser currentUser) : ControllerBase
+{
+    private const string E = EmployeeFoundationModule.ModuleCode;
+
+    [HttpGet, RequirePermission(E, P.EmployeeView)]
     public async Task<IActionResult> List([FromQuery] PageRequest page, string? search, CancellationToken ct) => Ok(await org.ListEmployeesAsync(page, search, ct));
 
-    [HttpGet("{id:guid}"), RequirePermission(EmployeeFoundationModule.ModuleCode, P.EmployeeView)]
+    [HttpGet("{id:guid}"), RequirePermission(E, P.EmployeeView)]
     public async Task<IActionResult> Get(Guid id, CancellationToken ct) => (await org.GetEmployeeAsync(id, ct)).ToActionResult();
 
-    [HttpPost, RequirePermission(EmployeeFoundationModule.ModuleCode, P.EmployeeCreate)]
+    [HttpPost, RequirePermission(E, P.EmployeeCreate)]
     public async Task<IActionResult> Create(CreateEmployeeCommand cmd, CancellationToken ct) => (await org.CreateEmployeeAsync(cmd, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpPut("{id:guid}"), RequirePermission(E, P.EmployeeEdit)]
+    public async Task<IActionResult> Update(Guid id, UpdateEmployeeCommand cmd, CancellationToken ct) => (await org.UpdateEmployeeAsync(id, cmd, ct)).ToActionResult(id2 => Ok(new { id = id2 }));
+
+    // ---- Profile sections (M2.2). Masked outputs; sensitive writes require dedicated permissions. ----
+
+    [HttpGet("{id:guid}/personal"), RequirePermission(E, P.ProfileView)]
+    public async Task<IActionResult> GetPersonal(Guid id, CancellationToken ct) => (await profiles.GetPersonalAsync(id, ct)).ToActionResult();
+
+    [HttpPut("{id:guid}/personal"), RequirePermission(E, P.PersonalEdit)]
+    public async Task<IActionResult> PutPersonal(Guid id, PersonalInput input, CancellationToken ct) => (await profiles.UpdatePersonalAsync(id, input, ct)).ToActionResult();
+
+    [HttpGet("{id:guid}/contacts"), RequirePermission(E, P.ProfileView)]
+    public async Task<IActionResult> ListContacts(Guid id, CancellationToken ct) => Ok(await profiles.ListContactsAsync(id, ct));
+
+    [HttpPost("{id:guid}/contacts"), RequirePermission(E, P.ContactsEdit)]
+    public async Task<IActionResult> AddContact(Guid id, ContactInput input, CancellationToken ct) => (await profiles.AddContactAsync(id, input, ct)).ToActionResult();
+
+    [HttpPut("{id:guid}/contacts/{contactId:guid}"), RequirePermission(E, P.ContactsEdit)]
+    public async Task<IActionResult> UpdateContact(Guid id, Guid contactId, ContactInput input, CancellationToken ct) => (await profiles.UpdateContactAsync(id, contactId, input, ct)).ToActionResult();
+
+    [HttpDelete("{id:guid}/contacts/{contactId:guid}"), RequirePermission(E, P.ContactsEdit)]
+    public async Task<IActionResult> DeleteContact(Guid id, Guid contactId, CancellationToken ct) => (await profiles.DeleteContactAsync(id, contactId, ct)).ToActionResult();
+
+    [HttpGet("{id:guid}/bank-accounts"), RequirePermission(E, P.BankView)]
+    public async Task<IActionResult> ListBankAccounts(Guid id, CancellationToken ct) => Ok(await profiles.ListBankAccountsAsync(id, ct));
+
+    [HttpPost("{id:guid}/bank-accounts"), RequirePermission(E, P.BankEdit)]
+    public async Task<IActionResult> AddBankAccount(Guid id, EmployeeBankInput input, CancellationToken ct) => (await profiles.AddBankAccountAsync(id, input, ct)).ToActionResult();
+
+    [HttpPost("{id:guid}/bank-accounts/{accountId:guid}/replace"), RequirePermission(E, P.BankEdit)]
+    public async Task<IActionResult> ReplaceBankAccount(Guid id, Guid accountId, EmployeeBankInput input, CancellationToken ct) => (await profiles.ReplaceBankAccountAsync(id, accountId, input, ct)).ToActionResult();
+
+    [HttpPatch("{id:guid}/bank-accounts/{accountId:guid}/verify"), RequirePermission(E, P.BankVerify)]
+    public async Task<IActionResult> VerifyBankAccount(Guid id, Guid accountId, EmployeeBankVerifyInput input, CancellationToken ct) =>
+        (await profiles.VerifyBankAccountAsync(id, accountId, input, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
+
+    [HttpGet("{id:guid}/statutory"), RequirePermission(E, P.StatutoryView)]
+    public async Task<IActionResult> GetStatutory(Guid id, CancellationToken ct) => (await profiles.GetStatutoryAsync(id, ct)).ToActionResult();
+
+    [HttpPut("{id:guid}/statutory"), RequirePermission(E, P.StatutoryEdit)]
+    public async Task<IActionResult> PutStatutory(Guid id, StatutoryInput input, CancellationToken ct) => (await profiles.UpdateStatutoryAsync(id, input, ct)).ToActionResult();
+
+    [HttpGet("{id:guid}/history"), RequirePermission(E, P.HistoryView)]
+    public async Task<IActionResult> History(Guid id, CancellationToken ct) => Ok(await profiles.ListHistoryAsync(id, ct));
+
+    // ---- Lifecycle events (M2.3): joining/transfer/promotion/exit with submit→approve→effective. ----
+
+    [HttpGet("{id:guid}/lifecycle-events"), RequirePermission(E, P.LifecycleView)]
+    public async Task<IActionResult> ListEvents(Guid id, CancellationToken ct) => Ok(await lifecycle.ListAsync(id, ct));
+
+    [HttpPost("{id:guid}/lifecycle-events"), RequirePermission(E, P.LifecycleCreate)]
+    public async Task<IActionResult> CreateEvent(Guid id, LifecycleEventInput input, CancellationToken ct) =>
+        (await lifecycle.CreateAsync(id, input, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult(e => Ok(new { id = e.Id }));
+
+    [HttpGet("lifecycle-events/{eventId:guid}"), RequirePermission(E, P.LifecycleView)]
+    public async Task<IActionResult> GetEvent(Guid eventId, CancellationToken ct) =>
+        (await lifecycle.GetAsync(eventId, ct)) is { } e ? Ok(e) : NotFound();
+
+    [HttpPost("lifecycle-events/{eventId:guid}/submit"), RequirePermission(E, P.LifecycleCreate)]
+    public async Task<IActionResult> SubmitEvent(Guid eventId, CancellationToken ct) =>
+        (await lifecycle.SubmitAsync(eventId, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
+
+    [HttpPost("lifecycle-events/{eventId:guid}/approve"), RequirePermission(E, P.LifecycleApprove)]
+    public async Task<IActionResult> ApproveEvent(Guid eventId, CancellationToken ct) =>
+        (await lifecycle.ApproveAsync(eventId, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
+
+    [HttpPost("lifecycle-events/{eventId:guid}/reject"), RequirePermission(E, P.LifecycleApprove)]
+    public async Task<IActionResult> RejectEvent(Guid eventId, RejectEventRequest req, CancellationToken ct) =>
+        (await lifecycle.RejectAsync(eventId, currentUser.UserId ?? Guid.Empty, req.Reason, ct)).ToActionResult();
+
+    [HttpPost("lifecycle-events/{eventId:guid}/cancel"), RequirePermission(E, P.LifecycleCreate)]
+    public async Task<IActionResult> CancelEvent(Guid eventId, CancellationToken ct) =>
+        (await lifecycle.CancelAsync(eventId, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
+
+    // ---- User <-> employee link (M2.5b). ----
+
+    [HttpPut("{id:guid}/user"), RequirePermission(E, P.EmployeeEdit)]
+    public async Task<IActionResult> LinkUser(Guid id, LinkUserRequest req, CancellationToken ct) =>
+        (await profiles.LinkUserAsync(id, req.UserId, ct)).ToActionResult();
+
+    [HttpDelete("{id:guid}/user"), RequirePermission(E, P.EmployeeEdit)]
+    public async Task<IActionResult> UnlinkUser(Guid id, CancellationToken ct) =>
+        (await profiles.UnlinkUserAsync(id, ct)).ToActionResult();
+
+    // ---- Documents & letters (M2.4). ----
+
+    [HttpGet("{id:guid}/documents"), RequirePermission(E, P.DocumentsView)]
+    public async Task<IActionResult> ListDocuments(Guid id, CancellationToken ct) => (await documents.ListDocumentsAsync(id, ct)).ToActionResult();
+
+    [HttpPost("{id:guid}/documents"), RequirePermission(E, P.DocumentsUpload), RequestSizeLimit(11 * 1024 * 1024)]
+    public async Task<IActionResult> UploadDocument(Guid id, IFormFile file, [FromForm] Guid categoryId, [FromForm] string? label,
+        [FromForm] string? documentNumber, [FromForm] DateOnly? issuedOn, [FromForm] DateOnly? expiresOn,
+        [FromForm] Guid? replacesDocumentId, CancellationToken ct)
+    {
+        await using var stream = file.OpenReadStream();
+        var req = new FileUploadRequest(EmployeeFoundationModule.EmployeeDocumentPurpose, file.FileName, file.ContentType, stream, file.Length, null, null);
+        return (await documents.UploadAsync(id, categoryId, req, label, documentNumber, issuedOn, expiresOn, replacesDocumentId, ct))
+            .ToActionResult(d => Ok(new { id = d.Id }));
+    }
+
+    [HttpPatch("{id:guid}/documents/{documentId:guid}/verify"), RequirePermission(E, P.DocumentsVerify)]
+    public async Task<IActionResult> VerifyDocument(Guid id, Guid documentId, DocumentVerifyInput input, CancellationToken ct) =>
+        (await documents.VerifyAsync(id, documentId, input, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
+
+    [HttpGet("{id:guid}/documents/missing"), RequirePermission(E, P.DocumentsView)]
+    public async Task<IActionResult> MissingOnboardingDocs(Guid id, CancellationToken ct) => (await documents.MissingOnboardingDocsAsync(id, ct)).ToActionResult();
+
+    [HttpGet("{id:guid}/letters"), RequirePermission(E, P.LettersView)]
+    public async Task<IActionResult> ListLetters(Guid id, CancellationToken ct) => (await documents.ListLettersAsync(id, ct)).ToActionResult();
+
+    [HttpPost("{id:guid}/letters/preview"), RequirePermission(E, P.LettersIssue)]
+    public async Task<IActionResult> PreviewLetter(Guid id, IssueLetterInput input, CancellationToken ct) =>
+        (await issuance.PreviewAsync(id, input.LetterTypeId, input.LetterTemplateId, ct)).ToActionResult();
+
+    [HttpPost("{id:guid}/letters"), RequirePermission(E, P.LettersIssue)]
+    public async Task<IActionResult> IssueLetter(Guid id, IssueLetterInput input, CancellationToken ct) =>
+        (await issuance.IssueAsync(id, input.LetterTypeId, input.LetterTemplateId, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
+
+    [HttpGet("letters/{letterId:guid}"), RequirePermission(E, P.LettersView)]
+    public async Task<IActionResult> GetLetter(Guid letterId, CancellationToken ct) =>
+        (await documents.GetLetterAsync(letterId, ct)).ToActionResult();
+
+    [HttpGet("letters/{letterId:guid}/download"), RequirePermission(E, P.LettersView)]
+    public async Task<IActionResult> DownloadLetter(Guid letterId, CancellationToken ct)
+    {
+        // Issued letters carry an immutable PDF (file_id); pre-M2.7 letters fall back to the stored text.
+        var letter = await documents.GetLetterAsync(letterId, ct);
+        if (!letter.IsSuccess)
+        {
+            return letter.ToActionResult();
+        }
+
+        if (letter.Value.FileId is { } fileId)
+        {
+            return (await files.DownloadAsync(fileId, ct)).ToActionResult(d => File(d.Content, d.ContentType, d.FileName));
+        }
+
+        var l = letter.Value;
+        return File(System.Text.Encoding.UTF8.GetBytes(l.RenderedText), "text/plain",
+            FileService.SanitizeFileName($"{l.LetterType}-{l.Subject}.txt"));
+    }
+
+    [HttpPost("letters/{letterId:guid}/retry"), RequirePermission(E, P.LettersIssue)]
+    public async Task<IActionResult> RetryLetter(Guid letterId, CancellationToken ct) =>
+        (await issuance.RetryAsync(letterId, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
+
+    [HttpPost("letters/{letterId:guid}/reissue"), RequirePermission(E, P.LettersReissue)]
+    public async Task<IActionResult> ReissueLetter(Guid letterId, CancellationToken ct) =>
+        (await issuance.ReissueAsync(letterId, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
+
+    [HttpPost("letters/{letterId:guid}/revoke"), RequirePermission(E, P.LettersRevoke)]
+    public async Task<IActionResult> RevokeLetter(Guid letterId, RejectEventRequest req, CancellationToken ct) =>
+        (await documents.RevokeAsync(letterId, currentUser.UserId ?? Guid.Empty, req.Reason, ct)).ToActionResult();
+}
+
+public sealed record RejectEventRequest(string? Reason);
+public sealed record LinkUserRequest(Guid UserId);
+
+[ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/salary")]
+public sealed class SalaryController(SalaryService salary) : ControllerBase
+{
+    private const string E = EmployeeFoundationModule.ModuleCode;
+
+    [HttpGet("components"), RequirePermission(E, P.SalaryComponentView)]
+    public async Task<IActionResult> Components(CancellationToken ct) => Ok(await salary.ListComponentsAsync(ct));
+
+    [HttpPost("components"), RequirePermission(E, P.SalaryComponentManage)]
+    public async Task<IActionResult> UpsertComponent(SalaryComponentInput input, CancellationToken ct) =>
+        (await salary.UpsertComponentAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpDelete("components/{id:guid}"), RequirePermission(E, P.SalaryComponentManage)]
+    public async Task<IActionResult> DeleteComponent(Guid id, CancellationToken ct) =>
+        (await salary.DeleteComponentAsync(id, ct)).ToActionResult();
+
+    [HttpGet("structures"), RequirePermission(E, P.SalaryStructureView)]
+    public async Task<IActionResult> Structures(CancellationToken ct) => Ok(await salary.ListStructuresAsync(ct));
+
+    [HttpPost("structures"), RequirePermission(E, P.SalaryStructureManage)]
+    public async Task<IActionResult> UpsertStructure(SalaryStructureInput input, CancellationToken ct) =>
+        (await salary.UpsertStructureAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+}
+
+[ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/employees")]
+public sealed class EmployeeSalaryController(SalaryService salary, ICurrentUser currentUser) : ControllerBase
+{
+    private const string E = EmployeeFoundationModule.ModuleCode;
+
+    [HttpGet("{id:guid}/salary-assignments"), RequirePermission(E, P.SalaryAssignmentView)]
+    public async Task<IActionResult> List(Guid id, CancellationToken ct) => (await salary.ListAssignmentsAsync(id, ct)).ToActionResult();
+
+    [HttpGet("{id:guid}/salary-assignments/current"), RequirePermission(E, P.SalaryAssignmentView)]
+    public async Task<IActionResult> Current(Guid id, CancellationToken ct) =>
+        (await salary.CurrentAssignmentAsync(id, ct)) is { } a ? Ok(a) : NotFound();
+
+    [HttpGet("{id:guid}/salary-assignments/as-of"), RequirePermission(E, P.SalaryAssignmentView)]
+    public async Task<IActionResult> AsOf(Guid id, [FromQuery] DateOnly date, CancellationToken ct) =>
+        (await salary.AssignmentAsOfAsync(id, date, ct)) is { } a ? Ok(a) : NotFound();
+
+    [HttpPost("{id:guid}/salary-assignments"), RequirePermission(E, P.SalaryAssignmentCreate)]
+    public async Task<IActionResult> Create(Guid id, SalaryAssignmentInput input, CancellationToken ct) =>
+        (await salary.CreateAsync(id, input, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult(a => Ok(new { id = a.Id }));
+
+    [HttpPost("salary-assignments/{assignmentId:guid}/submit"), RequirePermission(E, P.SalaryAssignmentCreate)]
+    public async Task<IActionResult> Submit(Guid assignmentId, CancellationToken ct) =>
+        (await salary.SubmitAsync(assignmentId, ct)).ToActionResult();
+
+    [HttpPost("salary-assignments/{assignmentId:guid}/approve"), RequirePermission(E, P.SalaryAssignmentApprove)]
+    public async Task<IActionResult> Approve(Guid assignmentId, CancellationToken ct) =>
+        (await salary.ApproveAsync(assignmentId, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult(a => Ok(new { id = a.Id }));
+
+    [HttpPost("salary-assignments/{assignmentId:guid}/reject"), RequirePermission(E, P.SalaryAssignmentApprove)]
+    public async Task<IActionResult> Reject(Guid assignmentId, RejectEventRequest req, CancellationToken ct) =>
+        (await salary.RejectAsync(assignmentId, currentUser.UserId ?? Guid.Empty, req.Reason, ct)).ToActionResult();
+
+    [HttpPost("salary-assignments/{assignmentId:guid}/cancel"), RequirePermission(E, P.SalaryAssignmentCreate)]
+    public async Task<IActionResult> Cancel(Guid assignmentId, CancellationToken ct) =>
+        (await salary.CancelAsync(assignmentId, ct)).ToActionResult();
+}
+
+[ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/audit")]
+public sealed class TenantAuditController(TenantAuditQueryService audit) : ControllerBase
+{
+    [HttpGet("entries"), RequirePermission("core.audit", P.AuditView)]
+    public async Task<IActionResult> Entries([FromQuery] AuditQueryParams q, CancellationToken ct) =>
+        Ok(await audit.SearchAsync(q, ct));
+}
+
+[ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/employee-docs")]
+public sealed class EmployeeDocsAdminController(EmployeeDocumentService documents, LetterAdminService letterAdmin, ICurrentUser currentUser) : ControllerBase
+{
+    private const string E = EmployeeFoundationModule.ModuleCode;
+
+    [HttpGet("letter-merge-fields"), RequirePermission(E, P.LettersView)]
+    public IActionResult MergeFields() => Ok(letterAdmin.MergeFields());
+
+    // ---- Signatories ----
+
+    [HttpGet("letter-signatories"), RequirePermission(E, P.LettersView)]
+    public async Task<IActionResult> Signatories(CancellationToken ct) => Ok(await letterAdmin.ListSignatoriesAsync(ct));
+
+    [HttpPost("letter-signatories"), RequirePermission(E, P.LettersSignatoryManage)]
+    public async Task<IActionResult> CreateSignatory(LetterSignatoryInput input, CancellationToken ct) =>
+        (await letterAdmin.CreateSignatoryAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpPut("letter-signatories/{id:guid}"), RequirePermission(E, P.LettersSignatoryManage)]
+    public async Task<IActionResult> UpdateSignatory(Guid id, LetterSignatoryInput input, CancellationToken ct) =>
+        (await letterAdmin.UpdateSignatoryAsync(id, input, ct)).ToActionResult();
+
+    // ---- Letterheads ----
+
+    [HttpGet("letterheads"), RequirePermission(E, P.LettersView)]
+    public async Task<IActionResult> Letterheads(CancellationToken ct) => Ok(await letterAdmin.ListLetterheadsAsync(ct));
+
+    [HttpPost("letterheads"), RequirePermission(E, P.LettersLetterheadManage)]
+    public async Task<IActionResult> CreateLetterhead(LetterheadInput input, CancellationToken ct) =>
+        (await letterAdmin.CreateLetterheadAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpPut("letterheads/{id:guid}"), RequirePermission(E, P.LettersLetterheadManage)]
+    public async Task<IActionResult> UpdateLetterhead(Guid id, LetterheadInput input, CancellationToken ct) =>
+        (await letterAdmin.UpdateLetterheadAsync(id, input, ct)).ToActionResult();
+
+    // ---- Template families + versions ----
+
+    [HttpGet("letter-template-families"), RequirePermission(E, P.LettersView)]
+    public async Task<IActionResult> Families([FromQuery] Guid? letterTypeId, CancellationToken ct) =>
+        Ok(await letterAdmin.ListFamiliesAsync(letterTypeId, ct));
+
+    [HttpPost("letter-template-families"), RequirePermission(E, P.LettersTemplateManage)]
+    public async Task<IActionResult> CreateFamily(LetterTemplateFamilyInput input, CancellationToken ct) =>
+        (await letterAdmin.CreateFamilyAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpGet("letter-template-families/{familyId:guid}/versions"), RequirePermission(E, P.LettersView)]
+    public async Task<IActionResult> Versions(Guid familyId, CancellationToken ct) =>
+        Ok(await letterAdmin.ListVersionsAsync(familyId, ct));
+
+    [HttpPost("letter-template-families/{familyId:guid}/versions"), RequirePermission(E, P.LettersTemplateManage)]
+    public async Task<IActionResult> CreateDraft(Guid familyId, [FromQuery] Guid? baseTemplateId, LetterTemplateVersionInput input, CancellationToken ct) =>
+        (await letterAdmin.CreateDraftAsync(familyId, baseTemplateId, input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpPut("letter-templates/{id:guid}"), RequirePermission(E, P.LettersTemplateManage)]
+    public async Task<IActionResult> UpdateDraft(Guid id, LetterTemplateVersionInput input, CancellationToken ct) =>
+        (await letterAdmin.UpdateDraftAsync(id, input, ct)).ToActionResult();
+
+    [HttpPost("letter-templates/{id:guid}/publish"), RequirePermission(E, P.LettersTemplatePublish)]
+    public async Task<IActionResult> Publish(Guid id, CancellationToken ct) =>
+        (await letterAdmin.PublishAsync(id, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
+
+    [HttpPost("letter-templates/{id:guid}/retire"), RequirePermission(E, P.LettersTemplatePublish)]
+    public async Task<IActionResult> Retire(Guid id, CancellationToken ct) =>
+        (await letterAdmin.RetireAsync(id, currentUser.UserId ?? Guid.Empty, ct)).ToActionResult();
+
+    [HttpGet("categories"), RequirePermission(E, P.DocumentsView)]
+    public async Task<IActionResult> Categories(CancellationToken ct) => Ok(await documents.ListCategoriesAsync(ct));
+
+    [HttpPost("categories"), RequirePermission(E, P.DocumentsManage)]
+    public async Task<IActionResult> UpsertCategory(DocumentCategoryInput input, CancellationToken ct) =>
+        (await documents.UpsertCategoryAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpGet("letter-types"), RequirePermission(E, P.LettersView)]
+    public async Task<IActionResult> LetterTypes(CancellationToken ct) => Ok(await documents.ListLetterTypesAsync(ct));
+
+    [HttpPost("letter-types"), RequirePermission(E, P.LettersManage)]
+    public async Task<IActionResult> UpsertLetterType(LetterTypeInput input, CancellationToken ct) =>
+        (await documents.UpsertLetterTypeAsync(input, ct)).ToActionResult(id => Ok(new { id }));
+
+    [HttpGet("letter-types/{typeId:guid}/templates"), RequirePermission(E, P.LettersView)]
+    public async Task<IActionResult> Templates(Guid typeId, CancellationToken ct) => Ok(await documents.ListTemplatesAsync(typeId, ct));
+
+    [HttpPost("letter-types/{typeId:guid}/templates"), RequirePermission(E, P.LettersManage)]
+    public async Task<IActionResult> CreateTemplate(Guid typeId, LetterTemplateInput input, CancellationToken ct) =>
+        (await documents.CreateTemplateAsync(input with { LetterTypeId = typeId }, ct)).ToActionResult(id => Ok(new { id }));
 }
 
 [ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/files")]

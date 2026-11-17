@@ -117,17 +117,20 @@ export function TenantAvatar({ code, name, size = 36 }: { code: string; name?: s
 }
 
 const tone: Record<string, ChipProps['color']> = {
-  Active: 'success', Online: 'success', Succeeded: 'success', Published: 'success', Approved: 'success',
-  Provisioning: 'info', Pending: 'info', Running: 'info', Trial: 'info', Requested: 'info', MetadataOnly: 'info',
+  Active: 'success', Online: 'success', Succeeded: 'success', Published: 'success', Approved: 'success', Issued: 'success',
+  Provisioning: 'info', Pending: 'info', Running: 'info', Trial: 'info', Requested: 'info', MetadataOnly: 'info', Issuing: 'info',
   Suspended: 'warning', Maintenance: 'warning', PastDue: 'warning', Grace: 'warning', Draft: 'warning', ReadOnly: 'warning',
-  ProvisioningFailed: 'error', Failed: 'error', Offline: 'error', Rejected: 'error', Revoked: 'error', Retired: 'error', ReadWrite: 'error',
+  ProvisioningFailed: 'error', GenerationFailed: 'error', Failed: 'error', Offline: 'error', Rejected: 'error', Revoked: 'error', Retired: 'error', ReadWrite: 'error',
+  Superseded: 'default',
   Inactive: 'default', Expired: 'default', Core: 'default', Optional: 'primary', SubModule: 'secondary',
 }
 
 export function StatusChip({ value }: { value?: string | null }) {
   if (!value) return <Chip size="small" label="—" variant="outlined" />
-  const c = tone[value]
-  return <Chip size="small" label={value} color={c ?? 'default'} variant={c ? 'filled' : 'outlined'} />
+  const key = value.replace(/(^|_)(\w)/g, (_, _b, ch: string) => ch.toUpperCase()).replace(/^_+/, '')
+  const c = tone[value] ?? tone[key]
+  const label = value.replace(/_/g, ' ')
+  return <Chip size="small" label={label} color={c ?? 'default'} variant={c ? 'filled' : 'outlined'} />
 }
 
 export function ErrorAlert({ error, onRetry }: { error: unknown; onRetry?: () => void }) {

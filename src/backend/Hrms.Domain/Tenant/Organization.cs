@@ -229,11 +229,27 @@ public sealed class Employee : AuditableEntity, IConcurrencyAware
 {
     public string EmployeeCode { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
+    public string? FirstName { get; set; }
+    public string? MiddleName { get; set; }
+    public string? LastName { get; set; }
     public string? WorkEmail { get; set; }
+    public string? WorkPhone { get; set; }
+    public Guid? PhotoFileId { get; set; }
+    /// <summary>One of <see cref="EmploymentTypes"/> — denormalized from the open history row.</summary>
+    public string? EmploymentType { get; set; }
+    public DateOnly? JoiningDate { get; set; }
+    public DateOnly? ProbationEndDate { get; set; }
+    public DateOnly? ConfirmationDate { get; set; }
     public Guid CompanyId { get; set; }
     public Guid BranchId { get; set; }
     public Guid? DepartmentId { get; set; }
+    public Guid? DesignationId { get; set; }
+    public Guid? GradeId { get; set; }
+    public Guid? LocationId { get; set; }
+    public Guid? CostCentreId { get; set; }
     public Guid? ManagerEmployeeId { get; set; }
+    /// <summary>Optional login link → identity.users (unique where set).</summary>
+    public Guid? UserId { get; set; }
     public EmployeeStatus Status { get; set; } = EmployeeStatus.Active;
     public uint RowVersion { get; set; }
 }
@@ -244,4 +260,63 @@ public sealed class ReportingClosure
     public Guid AncestorId { get; set; }
     public Guid DescendantId { get; set; }
     public int Depth { get; set; }
+}
+
+/// <summary>Common shape of the organization reference masters (code/name/active lookups).</summary>
+public interface IReferenceMaster
+{
+    Guid Id { get; }
+    string Code { get; set; }
+    string Name { get; set; }
+    bool IsActive { get; set; }
+    uint RowVersion { get; }
+}
+
+/// <summary>Designation master — job title referenced by employees (M2.1).</summary>
+[Audited("core.org")]
+public sealed class Designation : AuditableEntity, IConcurrencyAware, IReferenceMaster
+{
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public int? Level { get; set; }
+    public string? Description { get; set; }
+    public bool IsActive { get; set; } = true;
+    public uint RowVersion { get; set; }
+}
+
+/// <summary>Grade master — pay/level band referenced by employees (M2.1).</summary>
+[Audited("core.org")]
+public sealed class Grade : AuditableEntity, IConcurrencyAware, IReferenceMaster
+{
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public int SortOrder { get; set; }
+    public string? Description { get; set; }
+    public bool IsActive { get; set; } = true;
+    public uint RowVersion { get; set; }
+}
+
+/// <summary>Work-location master — offices, floors, desk zones and client sites, optionally under a branch (M2.1).</summary>
+[Audited("core.org")]
+public sealed class WorkLocation : AuditableEntity, IConcurrencyAware, IReferenceMaster
+{
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public Guid? BranchId { get; set; }
+    public string? LocationType { get; set; }
+    public string? Description { get; set; }
+    public bool IsActive { get; set; } = true;
+    public uint RowVersion { get; set; }
+}
+
+/// <summary>Cost-centre master — optionally scoped to a company; referenced by employees (M2.1).</summary>
+[Audited("core.org")]
+public sealed class CostCentre : AuditableEntity, IConcurrencyAware, IReferenceMaster
+{
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public Guid? CompanyId { get; set; }
+    public string? Description { get; set; }
+    public bool IsActive { get; set; } = true;
+    public uint RowVersion { get; set; }
 }

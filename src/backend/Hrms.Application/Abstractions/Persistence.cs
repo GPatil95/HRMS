@@ -59,8 +59,34 @@ public interface ITenantDbContext
     DbSet<CompanyContact> CompanyContacts { get; }
     DbSet<CompanyBankAccount> CompanyBankAccounts { get; }
     DbSet<DepartmentHodHistory> DepartmentHodHistory { get; }
+    DbSet<Designation> Designations { get; }
+    DbSet<Grade> Grades { get; }
+    DbSet<WorkLocation> WorkLocations { get; }
+    DbSet<CostCentre> CostCentres { get; }
     DbSet<Employee> Employees { get; }
     DbSet<ReportingClosure> ReportingClosure { get; }
+    DbSet<EmployeeNumberingConfig> EmployeeNumberingConfigs { get; }
+    DbSet<EmployeeCodeSeries> EmployeeCodeSeries { get; }
+    DbSet<EmploymentHistory> EmploymentHistory { get; }
+    DbSet<LifecycleEvent> LifecycleEvents { get; }
+    DbSet<EmployeePersonal> EmployeePersonal { get; }
+    DbSet<EmployeeContact> EmployeeContacts { get; }
+    DbSet<EmployeeBankAccount> EmployeeBankAccounts { get; }
+    DbSet<EmployeeStatutory> EmployeeStatutory { get; }
+    DbSet<DocumentCategory> DocumentCategories { get; }
+    DbSet<EmployeeDocument> EmployeeDocuments { get; }
+    DbSet<LetterType> LetterTypes { get; }
+    DbSet<LetterTemplate> LetterTemplates { get; }
+    DbSet<EmployeeLetter> EmployeeLetters { get; }
+    DbSet<LetterSignatory> LetterSignatories { get; }
+    DbSet<Letterhead> Letterheads { get; }
+    DbSet<LetterTemplateFamily> LetterTemplateFamilies { get; }
+    DbSet<LetterCounter> LetterCounters { get; }
+    DbSet<SalaryComponent> SalaryComponents { get; }
+    DbSet<SalaryStructure> SalaryStructures { get; }
+    DbSet<SalaryStructureLine> SalaryStructureLines { get; }
+    DbSet<EmployeeSalaryAssignment> EmployeeSalaryAssignments { get; }
+    DbSet<EmployeeSalaryLine> EmployeeSalaryLines { get; }
     DbSet<FileObject> Files { get; }
     DbSet<FileAccessLog> FileAccessLogs { get; }
     DbSet<Notification> Notifications { get; }
@@ -76,6 +102,8 @@ public interface ITenantDbContext
     DbSet<EmailMessage> EmailMessages { get; }
     DbSet<JobExecution> JobExecutions { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+    /// <summary>Raw relational access (atomic counters, bulk ops). Use sparingly.</summary>
+    Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade Database { get; }
 }
 
 /// <summary>Creates tenant DbContexts for an explicit connection string (provisioning/migration tooling only).</summary>

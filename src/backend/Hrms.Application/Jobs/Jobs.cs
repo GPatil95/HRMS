@@ -22,6 +22,8 @@ public static class JobTypes
     public const string TenantAuditSeal = "audit.seal.tenant";
     public const string PlatformAuditSeal = "audit.seal.platform";
     public const string TenantProvisioning = "tenant.provision";
+    public const string EmployeeLifecycleActivate = "employee.lifecycle.activate";
+    public const string EmployeeLifecycleSweep = "employee.lifecycle.sweep";
 }
 
 /// <summary>Declares a job handler's type and realm statically so the runner can resolve only the matching handler.</summary>

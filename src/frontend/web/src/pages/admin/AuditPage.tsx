@@ -3,11 +3,12 @@ import { Box, Tab, Table, TableBody, TableCell, TableHead, TableRow, Tabs, Typog
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { platformApi } from '../../api/platform'
+import { AuditTrailTable } from '../../components/AuditTrailTable'
 import { EmptyState, ErrorAlert, PageHeader, SectionCard, StatusChip, TableSkeleton } from '../../components/ui'
 
 export function AuditPage() {
   const [tab, setTab] = useState(0)
-  const audit = useQuery({ queryKey: ['audit'], queryFn: platformApi.audit, enabled: tab === 0 })
+  const audit = useQuery({ queryKey: ['audit'], queryFn: () => platformApi.audit(), enabled: tab === 0 })
   const events = useQuery({ queryKey: ['security-events'], queryFn: platformApi.securityEvents, enabled: tab === 1 })
   const q = tab === 0 ? audit : events
 
@@ -21,24 +22,7 @@ export function AuditPage() {
       </SectionCard>
       <SectionCard sx={{ overflowX: 'auto' }}>
         {q.isPending ? <TableSkeleton columns={6} /> : q.error ? <Box sx={{ p: 3 }}><ErrorAlert error={q.error} onRetry={() => void q.refetch()} /></Box> : tab === 0 ? (
-          (audit.data ?? []).length === 0 ? <EmptyState title="No audit entries" icon={<ListAlt />} /> : (
-            <Table size="small">
-              <TableHead>
-                <TableRow><TableCell>When</TableCell><TableCell>Module</TableCell><TableCell>Action</TableCell><TableCell>Entity</TableCell><TableCell>Actor</TableCell><TableCell>Source</TableCell></TableRow>
-              </TableHead>
-              <TableBody>
-                {audit.data!.map((a, i) => (
-                  <TableRow key={i} hover>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}><Typography variant="body2">{new Date(a.occurredAt).toLocaleString()}</Typography></TableCell>
-                    <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12.5 }}>{a.moduleCode}</Typography></TableCell>
-                    <TableCell><Typography variant="body2" sx={{ fontWeight: 600 }}>{a.action}</Typography></TableCell>
-                    <TableCell>{a.entityType}</TableCell><TableCell>{a.actorDisplay ?? a.actorType}</TableCell>
-                    <TableCell><Typography variant="body2" color="text.secondary">{a.source}</Typography></TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )
+          (audit.data ?? []).length === 0 ? <EmptyState title="No audit entries" icon={<ListAlt />} /> : <AuditTrailTable entries={audit.data!} />
         ) : (
           (events.data ?? []).length === 0 ? <EmptyState title="No security events" icon={<VerifiedUser />} /> : (
             <Table size="small">

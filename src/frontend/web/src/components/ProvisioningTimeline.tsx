@@ -26,10 +26,12 @@ export function stepLabel(step?: string | null): string {
 type StepState = 'completed' | 'running' | 'failed' | 'pending'
 
 function stepState(op: ProvisioningOperation, stepKey: string): { state: StepState; at?: string | null; error?: string | null } {
-  const rec = op.steps.find((s) => s.step === stepKey)
+  // Step records append one entry per attempt; the latest attempt wins,
+  // matching the backend's IsStepCompleted semantics.
+  const rec = [...op.steps].reverse().find((s) => s.step === stepKey)
   if (rec?.status === 'completed') return { state: 'completed', at: rec.at }
-  if (rec?.status === 'failed' || (op.status === 'Failed' && rec)) return { state: 'failed', at: rec?.at, error: rec?.error ?? op.error }
   if (op.status === 'Running' && op.currentStep === stepKey) return { state: 'running', at: rec?.at }
+  if (rec?.status === 'failed' || (op.status === 'Failed' && rec)) return { state: 'failed', at: rec?.at, error: rec?.error ?? op.error }
   return { state: 'pending' }
 }
 

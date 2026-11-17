@@ -2,6 +2,7 @@ using Asp.Versioning;
 using Hrms.Api.Hosting;
 using Hrms.Api.Security;
 using Hrms.Application.Abstractions;
+using Hrms.Application.Auditing;
 using Hrms.Application.Jobs;
 using Hrms.Application.Modules;
 using Hrms.Application.Platform;
@@ -83,7 +84,7 @@ public sealed class TenantsController(TenantManagementService tenants, TenantPro
 }
 
 [ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/platform")]
-public sealed class PlatformCatalogController(TenantManagementService tenants) : ControllerBase
+public sealed class PlatformCatalogController(TenantManagementService tenants, PlatformAuditQueryService audit) : ControllerBase
 {
     [HttpGet("catalog/modules"), RequirePlatformPermission(PP.CatalogView)]
     public async Task<IActionResult> Modules(CancellationToken ct) => Ok(await tenants.ListCatalogAsync(ct));
@@ -92,7 +93,8 @@ public sealed class PlatformCatalogController(TenantManagementService tenants) :
     public async Task<IActionResult> Plans(CancellationToken ct) => Ok(await tenants.ListPlansAsync(ct));
 
     [HttpGet("audit"), RequirePlatformPermission(PP.AuditView)]
-    public async Task<IActionResult> Audit(CancellationToken ct) => Ok(await tenants.RecentAuditAsync(100, ct));
+    public async Task<IActionResult> Audit([FromQuery] AuditQueryParams q, CancellationToken ct) =>
+        Ok(await audit.SearchAsync(q with { Take = q.Take == 0 ? 100 : q.Take }, ct));
 
     [HttpGet("security-events"), RequirePlatformPermission(PP.AuditView)]
     public async Task<IActionResult> SecurityEvents(CancellationToken ct) => Ok(await tenants.RecentSecurityEventsAsync(100, ct));
