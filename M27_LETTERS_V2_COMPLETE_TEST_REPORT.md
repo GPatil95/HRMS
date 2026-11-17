@@ -91,7 +91,7 @@ Frontend: `HrDocsPage` 6 tabs (Categories, Letter types, Template versions, Sign
 | Gate | Result |
 |---|---|
 | `dotnet build` | Clean, 0 warnings |
-| API suite | **125/125** — 117/117 full-suite run + 8/8 `GotenbergPdfTests` run; a later full-suite re-run was blocked by Docker Desktop (`meta.db: read-only file system`) — fixture-init failure, not test failures; backend unchanged since the green runs |
+| API suite | **125/125 post-Docker-recovery** (includes 28 `LetterV2Tests` + 8 `GotenbergPdfTests` with real-container conversion) |
 | Unit suite | 26/26 |
 | `pnpm build` (incl. `tsc -b`) | Green |
 | ESLint | 0 errors, 4 pre-existing warnings |
@@ -99,6 +99,18 @@ Frontend: `HrDocsPage` 6 tabs (Categories, Letter types, Template versions, Sign
 
 Committed `96f3f37` on `m2-hr-core` (34 files) — not pushed.
 
-## Approval requested
+## 10. Local E2E on devtest (1009) — 2026-11-17
 
-Approve executing `20261104132820_LetterManagementV2` on devtest (1009) **and** rebuilding the API container (or running from source) so the §15 E2E pass can run.
+Migration `20261104132820_LetterManagementV2` applied to `hrms_tenant_1009` only (fresh verified backup `backups\m27-v2-20261117-124500\` first; 1008 untouched). Source API on `:8081` + Vite `:5173` with `Pdf__GotenbergUrl=http://localhost:3000` (gotenberg/gotenberg:8.39 — the local `:8` image had a corrupt 0-byte binary).
+
+| Check | Result |
+|---|---|
+| Gotenberg HTML→PDF conversion | 200, 7,505-byte valid `%PDF` |
+| Issue → `generation_failed` (PDF service unconfigured) | number `LTR-2026-000001` reserved, traceable record ✓ |
+| Retry after PDF config | **PASS** — same number retained, no duplicate row |
+| Issued state | `status=issued`, `file_id` + 64-char `pdf_sha256` populated |
+| Stored PDF | 27,875 B, `%PDF-`, disk SHA-256 = `pdf_sha256` = `files.files.sha256` (triple match) |
+| Tenant/employee linkage | storage key carries tenant-1009 GUID; owner = Dev Tester `01a1a659-…` |
+| Download | `files.file_access_log` records upload + download by admin |
+
+V2 admin routes (families, signatories, letterheads, merge-fields, letter-types) all live through middleware. Reissue/Revoke UI e2e: pending user-driven pass on a separate test letter.
