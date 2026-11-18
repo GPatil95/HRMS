@@ -128,6 +128,9 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
         await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             await using var tx = await db.Database.BeginTransactionAsync(ct);
+            // The strategy may re-run this delegate; reload so each attempt starts from committed state.
+            await ((DbContext)db).Entry(version).ReloadAsync(ct);
+            foreach (var p in prior) await ((DbContext)db).Entry(p).ReloadAsync(ct);
             foreach (var p in prior) p.EffectiveTo = effectiveFrom.AddDays(-1);
             if (prior.Count > 0) await db.SaveChangesAsync(ct);
             version.Status = AttendanceVersionStatuses.Published;
@@ -399,6 +402,8 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
         await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             await using var tx = await db.Database.BeginTransactionAsync(ct);
+            await ((DbContext)db).Entry(version).ReloadAsync(ct);
+            foreach (var p in priors) await ((DbContext)db).Entry(p).ReloadAsync(ct);
             foreach (var p in priors) p.EffectiveTo = effectiveFrom.AddDays(-1);
             if (priors.Count > 0) await db.SaveChangesAsync(ct);
             version.Status = AttendanceVersionStatuses.Published;
@@ -469,6 +474,7 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
             await using var tx = await db.Database.BeginTransactionAsync(ct);
             foreach (var prior in overlapping)
             {
+                await ((DbContext)db).Entry(prior).ReloadAsync(ct);
                 prior.EffectiveTo = input.EffectiveFrom.AddDays(-1);
             }
             if (overlapping.Count > 0) await db.SaveChangesAsync(ct);
@@ -538,7 +544,11 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
         await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             await using var tx = await db.Database.BeginTransactionAsync(ct);
-            foreach (var prior in overlapping) prior.EffectiveTo = input.EffectiveFrom.AddDays(-1);
+            foreach (var prior in overlapping)
+            {
+                await ((DbContext)db).Entry(prior).ReloadAsync(ct);
+                prior.EffectiveTo = input.EffectiveFrom.AddDays(-1);
+            }
             if (overlapping.Count > 0) await db.SaveChangesAsync(ct);
             var assignment = new PolicyAssignment
             {
