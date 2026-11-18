@@ -125,20 +125,32 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
         // Close-then-insert in separate saves inside one transaction: the gist exclusion constraint is
         // checked per-statement, and a failed insert must not leave the prior window truncated. The
         // execution-strategy wrapper is required by EnableRetryOnFailure.
-        await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        var published = await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             await using var tx = await db.Database.BeginTransactionAsync(ct);
-            // The strategy may re-run this delegate; reload so each attempt starts from committed state.
+            // The strategy may re-run this delegate; reload so each attempt starts from committed state,
+            // then re-verify the draft check — a concurrent publish may have committed in between.
             await ((DbContext)db).Entry(version).ReloadAsync(ct);
+            if (version.Status != AttendanceVersionStatuses.Draft) return false;
             foreach (var p in prior) await ((DbContext)db).Entry(p).ReloadAsync(ct);
             foreach (var p in prior) p.EffectiveTo = effectiveFrom.AddDays(-1);
             if (prior.Count > 0) await db.SaveChangesAsync(ct);
             version.Status = AttendanceVersionStatuses.Published;
             version.EffectiveFrom = effectiveFrom;
             version.EffectiveTo = null;
-            await db.SaveChangesAsync(ct);
-            await tx.CommitAsync(ct);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                return false; // lost a concurrent status transition — report as conflict below
+            }
+            return true;
         });
+        if (!published)
+            return Error.Conflict("shift_version.not_draft", "The version was published or retired concurrently.");
         return version.ToDto();
     }
 
@@ -399,19 +411,30 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
         if (conflicting is not null)
             return Error.Conflict("policy_version.overlap",
                 $"A published version already covers {conflicting.EffectiveFrom:yyyy-MM-dd} onward — retire it or choose a later start.");
-        await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        var published = await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             await using var tx = await db.Database.BeginTransactionAsync(ct);
             await ((DbContext)db).Entry(version).ReloadAsync(ct);
+            if (version.Status != AttendanceVersionStatuses.Draft) return false;
             foreach (var p in priors) await ((DbContext)db).Entry(p).ReloadAsync(ct);
             foreach (var p in priors) p.EffectiveTo = effectiveFrom.AddDays(-1);
             if (priors.Count > 0) await db.SaveChangesAsync(ct);
             version.Status = AttendanceVersionStatuses.Published;
             version.EffectiveFrom = effectiveFrom;
             version.EffectiveTo = null;
-            await db.SaveChangesAsync(ct);
-            await tx.CommitAsync(ct);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                return false; // lost a concurrent status transition — report as conflict below
+            }
+            return true;
         });
+        if (!published)
+            return Error.Conflict("policy_version.not_draft", "The version was published or retired concurrently.");
         return version.ToDto();
     }
 
