@@ -123,15 +123,19 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
             return Error.Conflict("shift_version.overlap",
                 $"A published version already covers {conflicting.EffectiveFrom:yyyy-MM-dd} onward — retire it or choose a later start.");
         // Close-then-insert in separate saves inside one transaction: the gist exclusion constraint is
-        // checked per-statement, and a failed insert must not leave the prior window truncated.
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-        foreach (var p in prior) p.EffectiveTo = effectiveFrom.AddDays(-1);
-        if (prior.Count > 0) await db.SaveChangesAsync(ct);
-        version.Status = AttendanceVersionStatuses.Published;
-        version.EffectiveFrom = effectiveFrom;
-        version.EffectiveTo = null;
-        await db.SaveChangesAsync(ct);
-        await tx.CommitAsync(ct);
+        // checked per-statement, and a failed insert must not leave the prior window truncated. The
+        // execution-strategy wrapper is required by EnableRetryOnFailure.
+        await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            foreach (var p in prior) p.EffectiveTo = effectiveFrom.AddDays(-1);
+            if (prior.Count > 0) await db.SaveChangesAsync(ct);
+            version.Status = AttendanceVersionStatuses.Published;
+            version.EffectiveFrom = effectiveFrom;
+            version.EffectiveTo = null;
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        });
         return version.ToDto();
     }
 
@@ -392,14 +396,17 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
         if (conflicting is not null)
             return Error.Conflict("policy_version.overlap",
                 $"A published version already covers {conflicting.EffectiveFrom:yyyy-MM-dd} onward — retire it or choose a later start.");
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-        foreach (var p in priors) p.EffectiveTo = effectiveFrom.AddDays(-1);
-        if (priors.Count > 0) await db.SaveChangesAsync(ct);
-        version.Status = AttendanceVersionStatuses.Published;
-        version.EffectiveFrom = effectiveFrom;
-        version.EffectiveTo = null;
-        await db.SaveChangesAsync(ct);
-        await tx.CommitAsync(ct);
+        await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            foreach (var p in priors) p.EffectiveTo = effectiveFrom.AddDays(-1);
+            if (priors.Count > 0) await db.SaveChangesAsync(ct);
+            version.Status = AttendanceVersionStatuses.Published;
+            version.EffectiveFrom = effectiveFrom;
+            version.EffectiveTo = null;
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        });
         return version.ToDto();
     }
 
@@ -456,21 +463,26 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
             .ToListAsync(ct);
         if (overlapping.Any(a => a.EffectiveFrom >= input.EffectiveFrom))
             return Error.Conflict("assignment.overlap", "An assignment already covers that start date — end it first.");
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-        foreach (var prior in overlapping)
+        var createdId = Guid.Empty;
+        await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
-            prior.EffectiveTo = input.EffectiveFrom.AddDays(-1);
-        }
-        if (overlapping.Count > 0) await db.SaveChangesAsync(ct);
-        var assignment = new ShiftAssignment
-        {
-            EmployeeId = input.EmployeeId, ShiftId = input.ShiftId,
-            EffectiveFrom = input.EffectiveFrom, EffectiveTo = input.EffectiveTo, Reason = input.Reason,
-        };
-        db.ShiftAssignments.Add(assignment);
-        await db.SaveChangesAsync(ct);
-        await tx.CommitAsync(ct);
-        return assignment.Id;
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            foreach (var prior in overlapping)
+            {
+                prior.EffectiveTo = input.EffectiveFrom.AddDays(-1);
+            }
+            if (overlapping.Count > 0) await db.SaveChangesAsync(ct);
+            var assignment = new ShiftAssignment
+            {
+                EmployeeId = input.EmployeeId, ShiftId = input.ShiftId,
+                EffectiveFrom = input.EffectiveFrom, EffectiveTo = input.EffectiveTo, Reason = input.Reason,
+            };
+            db.ShiftAssignments.Add(assignment);
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            createdId = assignment.Id;
+        });
+        return createdId;
     }
 
     public async Task<Result> EndShiftAssignmentAsync(Guid id, DateOnly effectiveTo, CancellationToken ct)
@@ -522,18 +534,23 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
             .ToListAsync(ct);
         if (overlapping.Any(a => a.EffectiveFrom >= input.EffectiveFrom))
             return Error.Conflict("assignment.overlap", "An assignment already covers that start date — end it first.");
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-        foreach (var prior in overlapping) prior.EffectiveTo = input.EffectiveFrom.AddDays(-1);
-        if (overlapping.Count > 0) await db.SaveChangesAsync(ct);
-        var assignment = new PolicyAssignment
+        var createdId = Guid.Empty;
+        await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
-            EmployeeId = input.EmployeeId, PolicyId = input.PolicyId,
-            EffectiveFrom = input.EffectiveFrom, EffectiveTo = input.EffectiveTo, Reason = input.Reason,
-        };
-        db.PolicyAssignments.Add(assignment);
-        await db.SaveChangesAsync(ct);
-        await tx.CommitAsync(ct);
-        return assignment.Id;
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            foreach (var prior in overlapping) prior.EffectiveTo = input.EffectiveFrom.AddDays(-1);
+            if (overlapping.Count > 0) await db.SaveChangesAsync(ct);
+            var assignment = new PolicyAssignment
+            {
+                EmployeeId = input.EmployeeId, PolicyId = input.PolicyId,
+                EffectiveFrom = input.EffectiveFrom, EffectiveTo = input.EffectiveTo, Reason = input.Reason,
+            };
+            db.PolicyAssignments.Add(assignment);
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            createdId = assignment.Id;
+        });
+        return createdId;
     }
 
     public async Task<Result> EndPolicyAssignmentAsync(Guid id, DateOnly effectiveTo, CancellationToken ct)

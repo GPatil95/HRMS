@@ -107,10 +107,12 @@ public sealed class AttendanceConfigResolver(ITenantDbContext db)
         }
 
         // Retired versions keep their window for historical dates; drafts never resolve.
+        // A published replacement covering the same date wins over an overlapping retired window.
         var shiftVersion = shift is null ? null : await db.ShiftVersions.AsNoTracking()
             .Where(v => v.ShiftId == shift.Id && v.Status != AttendanceVersionStatuses.Draft
                 && v.EffectiveFrom <= date && (v.EffectiveTo == null || v.EffectiveTo >= date))
-            .OrderByDescending(v => v.EffectiveFrom).FirstOrDefaultAsync(ct);
+            .OrderByDescending(v => v.Status == AttendanceVersionStatuses.Published)
+            .ThenByDescending(v => v.EffectiveFrom).FirstOrDefaultAsync(ct);
 
         // 3. Policy: explicit assignment → dept → branch → company → default.
         AttendancePolicy? policy = null;
@@ -141,7 +143,8 @@ public sealed class AttendanceConfigResolver(ITenantDbContext db)
         var policyVersion = policy is null ? null : await db.PolicyVersions.AsNoTracking()
             .Where(v => v.PolicyId == policy.Id && v.Status != AttendanceVersionStatuses.Draft
                 && v.EffectiveFrom <= date && (v.EffectiveTo == null || v.EffectiveTo >= date))
-            .OrderByDescending(v => v.EffectiveFrom).FirstOrDefaultAsync(ct);
+            .OrderByDescending(v => v.Status == AttendanceVersionStatuses.Published)
+            .ThenByDescending(v => v.EffectiveFrom).FirstOrDefaultAsync(ct);
         var rules = policyVersion is null ? AttendanceRulesV1.Defaults()
             : AttendanceRulesV1.Parse(policyVersion.RulesJson) ?? AttendanceRulesV1.Defaults();
 
