@@ -92,7 +92,14 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
         var error = ValidateShiftVersion(input);
         if (error is not null) return error;
         ApplyShiftVersionInput(version, input);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Error.Conflict("shift_version.immutable", "The version was published or retired concurrently — create a new draft.");
+        }
         return Result.Success();
     }
 
@@ -115,17 +122,20 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
         if (conflicting is not null)
             return Error.Conflict("shift_version.overlap",
                 $"A published version already covers {conflicting.EffectiveFrom:yyyy-MM-dd} onward — retire it or choose a later start.");
-        // Close-then-insert in separate saves: the gist exclusion constraint is checked per-statement.
+        // Close-then-insert in separate saves inside one transaction: the gist exclusion constraint is
+        // checked per-statement, and a failed insert must not leave the prior window truncated.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         foreach (var p in prior) p.EffectiveTo = effectiveFrom.AddDays(-1);
         if (prior.Count > 0) await db.SaveChangesAsync(ct);
         version.Status = AttendanceVersionStatuses.Published;
         version.EffectiveFrom = effectiveFrom;
         version.EffectiveTo = null;
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return version.ToDto();
     }
 
-    public async Task<Result> RetireShiftVersionAsync(Guid versionId, DateOnly effectiveTo, CancellationToken ct)
+    public async Task<Result> RetireShiftVersionAsync(Guid versionId, DateOnly effectiveTo, bool canBackdate, CancellationToken ct)
     {
         var version = await db.ShiftVersions.FirstOrDefaultAsync(v => v.Id == versionId, ct);
         if (version is null) return Error.NotFound("shift_version.not_found", "Shift version not found.");
@@ -133,6 +143,8 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
             return Error.Conflict("shift_version.not_published", "Only published versions can be retired.");
         if (effectiveTo < version.EffectiveFrom)
             return Error.Validation("shift_version.bad_window", "Effective-to cannot precede effective-from.");
+        if (effectiveTo < Today && !canBackdate)
+            return Error.Forbidden("shift_version.backdate_forbidden", "Backdated retirement requires the attendance.masters.backdate permission.");
         version.Status = AttendanceVersionStatuses.Retired;
         version.EffectiveTo = effectiveTo;
         await db.SaveChangesAsync(ct);
@@ -288,6 +300,8 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
         var code = input.Code.Trim().ToUpperInvariant();
         if (await db.AttendancePolicies.AnyAsync(p => p.Code == code, ct))
             return Error.Conflict("policy.duplicate_code", $"Policy '{code}' already exists.");
+        if (input.IsDefault && await db.AttendancePolicies.AnyAsync(p => p.IsDefault && p.IsActive, ct))
+            return Error.Conflict("policy.default_exists", "A default policy already exists — unset it first.");
         var policy = new AttendancePolicy { Code = code, Name = input.Name.Trim(), IsDefault = input.IsDefault, IsActive = input.IsActive };
         db.AttendancePolicies.Add(policy);
         await db.SaveChangesAsync(ct);
@@ -301,6 +315,8 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
         if (!string.Equals(policy.Code, input.Code.Trim(), StringComparison.OrdinalIgnoreCase)
             && await db.AttendancePolicies.AnyAsync(p => p.Code == input.Code.Trim(), ct))
             return Error.Conflict("policy.duplicate_code", $"Policy '{input.Code}' already exists.");
+        if (input.IsDefault && !policy.IsDefault && await db.AttendancePolicies.AnyAsync(p => p.IsDefault && p.IsActive && p.Id != id, ct))
+            return Error.Conflict("policy.default_exists", "A default policy already exists — unset it first.");
         policy.Code = input.Code.Trim().ToUpperInvariant();
         policy.Name = input.Name.Trim();
         policy.IsDefault = input.IsDefault;
@@ -347,7 +363,14 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
         if (errors.Count > 0)
             return Error.Validation("rules.invalid", "Attendance rules failed validation.", errors);
         version.RulesJson = input.Rules.ToJson();
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Error.Conflict("policy_version.immutable", "The version was published or retired concurrently — create a new draft.");
+        }
         return Result.Success();
     }
 
@@ -369,16 +392,18 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
         if (conflicting is not null)
             return Error.Conflict("policy_version.overlap",
                 $"A published version already covers {conflicting.EffectiveFrom:yyyy-MM-dd} onward — retire it or choose a later start.");
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         foreach (var p in priors) p.EffectiveTo = effectiveFrom.AddDays(-1);
         if (priors.Count > 0) await db.SaveChangesAsync(ct);
         version.Status = AttendanceVersionStatuses.Published;
         version.EffectiveFrom = effectiveFrom;
         version.EffectiveTo = null;
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return version.ToDto();
     }
 
-    public async Task<Result> RetirePolicyVersionAsync(Guid versionId, DateOnly effectiveTo, CancellationToken ct)
+    public async Task<Result> RetirePolicyVersionAsync(Guid versionId, DateOnly effectiveTo, bool canBackdate, CancellationToken ct)
     {
         var version = await db.PolicyVersions.FirstOrDefaultAsync(v => v.Id == versionId, ct);
         if (version is null) return Error.NotFound("policy_version.not_found", "Policy version not found.");
@@ -386,6 +411,8 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
             return Error.Conflict("policy_version.not_published", "Only published versions can be retired.");
         if (effectiveTo < version.EffectiveFrom)
             return Error.Validation("policy_version.bad_window", "Effective-to cannot precede effective-from.");
+        if (effectiveTo < Today && !canBackdate)
+            return Error.Forbidden("policy_version.backdate_forbidden", "Backdated retirement requires the attendance.masters.backdate permission.");
         version.Status = AttendanceVersionStatuses.Retired;
         version.EffectiveTo = effectiveTo;
         await db.SaveChangesAsync(ct);
@@ -429,6 +456,7 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
             .ToListAsync(ct);
         if (overlapping.Any(a => a.EffectiveFrom >= input.EffectiveFrom))
             return Error.Conflict("assignment.overlap", "An assignment already covers that start date — end it first.");
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         foreach (var prior in overlapping)
         {
             prior.EffectiveTo = input.EffectiveFrom.AddDays(-1);
@@ -441,6 +469,7 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
         };
         db.ShiftAssignments.Add(assignment);
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return assignment.Id;
     }
 
@@ -448,6 +477,8 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
     {
         var a = await db.ShiftAssignments.FirstOrDefaultAsync(x => x.Id == id, ct);
         if (a is null) return Error.NotFound("assignment.not_found", "Assignment not found.");
+        if (!await EmployeeInScopeAsync(a.EmployeeId, ct))
+            return Error.Forbidden("scope.denied", "Employee is outside your data scope.");
         if (effectiveTo < a.EffectiveFrom)
             return Error.Validation("assignment.window", "effective_to cannot precede effective_from.");
         // Ending past another assignment's start would overlap it — reject, don't rely on the DB constraint.
@@ -491,6 +522,7 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
             .ToListAsync(ct);
         if (overlapping.Any(a => a.EffectiveFrom >= input.EffectiveFrom))
             return Error.Conflict("assignment.overlap", "An assignment already covers that start date — end it first.");
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         foreach (var prior in overlapping) prior.EffectiveTo = input.EffectiveFrom.AddDays(-1);
         if (overlapping.Count > 0) await db.SaveChangesAsync(ct);
         var assignment = new PolicyAssignment
@@ -500,6 +532,7 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
         };
         db.PolicyAssignments.Add(assignment);
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return assignment.Id;
     }
 
@@ -507,6 +540,8 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
     {
         var a = await db.PolicyAssignments.FirstOrDefaultAsync(x => x.Id == id, ct);
         if (a is null) return Error.NotFound("assignment.not_found", "Assignment not found.");
+        if (!await EmployeeInScopeAsync(a.EmployeeId, ct))
+            return Error.Forbidden("scope.denied", "Employee is outside your data scope.");
         if (effectiveTo < a.EffectiveFrom)
             return Error.Validation("assignment.window", "effective_to cannot precede effective_from.");
         var collides = await db.PolicyAssignments.AnyAsync(x => x.Id != id && x.EmployeeId == a.EmployeeId

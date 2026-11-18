@@ -739,7 +739,7 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
                 t.HasCheckConstraint("ck_shift_versions_status", "status IN ('draft','published','retired')"));
             e.HasIndex(x => new { x.ShiftId, x.Version }).IsUnique();
             e.HasIndex(x => new { x.ShiftId, x.EffectiveFrom });
-            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.Status).HasMaxLength(20).IsConcurrencyToken();
             e.Property(x => x.ShiftType).HasMaxLength(20);
             e.Property(x => x.WeeklyOffConfigJson).HasColumnType("jsonb");
             e.HasOne<Shift>().WithMany().HasForeignKey(x => x.ShiftId).OnDelete(DeleteBehavior.Cascade);
@@ -775,7 +775,7 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
                 t.HasCheckConstraint("ck_policy_versions_status", "status IN ('draft','published','retired')"));
             e.HasIndex(x => new { x.PolicyId, x.Version }).IsUnique();
             e.HasIndex(x => new { x.PolicyId, x.EffectiveFrom });
-            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.Status).HasMaxLength(20).IsConcurrencyToken();
             e.Property(x => x.RulesJson).HasColumnType("jsonb").IsRequired();
             e.HasOne<AttendancePolicy>().WithMany().HasForeignKey(x => x.PolicyId).OnDelete(DeleteBehavior.Cascade);
         });

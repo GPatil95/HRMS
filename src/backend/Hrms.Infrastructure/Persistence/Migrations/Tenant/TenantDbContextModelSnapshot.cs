@@ -4307,6 +4307,7 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
+                        .IsConcurrencyToken()
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
 
@@ -4859,6 +4860,7 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
+                        .IsConcurrencyToken()
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
 

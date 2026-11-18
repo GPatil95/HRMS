@@ -59,7 +59,8 @@ public sealed class AttendanceConfigResolver(ITenantDbContext db)
             .OrderByDescending(h => h.EffectiveFrom).FirstOrDefaultAsync(ct);
         var companyId = org?.CompanyId ?? employee.CompanyId;
         var branchId = org?.BranchId ?? employee.BranchId;
-        var departmentId = org?.DepartmentId ?? employee.DepartmentId;
+        // When a history row exists it is authoritative: a null DepartmentId means departmentless then.
+        var departmentId = org is null ? employee.DepartmentId : org.DepartmentId;
         var orgSource = org is null ? "employee-current" : "employment-history";
 
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == companyId, ct);
@@ -105,8 +106,9 @@ public sealed class AttendanceConfigResolver(ITenantDbContext db)
             }
         }
 
+        // Retired versions keep their window for historical dates; drafts never resolve.
         var shiftVersion = shift is null ? null : await db.ShiftVersions.AsNoTracking()
-            .Where(v => v.ShiftId == shift.Id && v.Status == AttendanceVersionStatuses.Published
+            .Where(v => v.ShiftId == shift.Id && v.Status != AttendanceVersionStatuses.Draft
                 && v.EffectiveFrom <= date && (v.EffectiveTo == null || v.EffectiveTo >= date))
             .OrderByDescending(v => v.EffectiveFrom).FirstOrDefaultAsync(ct);
 
@@ -137,7 +139,7 @@ public sealed class AttendanceConfigResolver(ITenantDbContext db)
         }
 
         var policyVersion = policy is null ? null : await db.PolicyVersions.AsNoTracking()
-            .Where(v => v.PolicyId == policy.Id && v.Status == AttendanceVersionStatuses.Published
+            .Where(v => v.PolicyId == policy.Id && v.Status != AttendanceVersionStatuses.Draft
                 && v.EffectiveFrom <= date && (v.EffectiveTo == null || v.EffectiveTo >= date))
             .OrderByDescending(v => v.EffectiveFrom).FirstOrDefaultAsync(ct);
         var rules = policyVersion is null ? AttendanceRulesV1.Defaults()
@@ -180,18 +182,18 @@ public sealed class AttendanceConfigResolver(ITenantDbContext db)
         }
         else
         {
-            // Weekly off: org chain pattern; 'shift_based' defers to the resolved shift version's config.
+            // Weekly off: org chain pattern; 'shift_based' evaluates every rule in the shift version's config.
             var (pattern, cfgJson) = ResolveWeeklyOff(department, branch, company);
-            WeeklyOffConfig? cfg;
-            if (pattern == WeeklyOffPatterns.ShiftBased)
-            {
-                cfg = shiftVersion?.WeeklyOffConfigJson is { } j ? WeeklyOffRules.Parse(j) : null;
-            }
-            else
-            {
-                cfg = WeeklyOffRules.Parse(cfgJson);
-            }
-            dayType = WeeklyOffRules.IsWeeklyOff(pattern, cfg, date) ? ResolvedDayTypes.WeeklyOff : ResolvedDayTypes.Working;
+            var isOff = pattern == WeeklyOffPatterns.ShiftBased
+                ? WeeklyOffRules.IsOffByConfig(shiftVersion?.WeeklyOffConfigJson is { } j ? WeeklyOffRules.Parse(j) : null, date)
+                : WeeklyOffRules.IsWeeklyOff(pattern, WeeklyOffRules.Parse(cfgJson), date);
+            dayType = isOff ? ResolvedDayTypes.WeeklyOff : ResolvedDayTypes.Working;
+        }
+        // A rostered working day is an explicit schedule: it overrides a natural off (holiday/weekly-off).
+        if (roster?.ShiftId is not null
+            && dayType is ResolvedDayTypes.Holiday or ResolvedDayTypes.OptionalHoliday or ResolvedDayTypes.WeeklyOff)
+        {
+            dayType = ResolvedDayTypes.WorkingOverride;
         }
 
         // 6. Planned instants in branch tz (overnight shifts cross midnight; DST handled by TZ rules).

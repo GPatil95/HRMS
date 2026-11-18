@@ -51,7 +51,7 @@ public sealed class AttendanceController(
 
     [HttpPost("shift-versions/{id:guid}/retire"), RequirePermission(M, AttendancePermissions.MastersManage)]
     public async Task<IActionResult> RetireShiftVersion(Guid id, RetireVersionRequest req, CancellationToken ct) =>
-        (await masters.RetireShiftVersionAsync(id, req.EffectiveTo, ct)).ToActionResult();
+        (await masters.RetireShiftVersionAsync(id, req.EffectiveTo, await CanBackdate(ct), ct)).ToActionResult();
 
     // ---------- Calendars ----------
     [HttpGet("calendars"), RequirePermission(M, AttendancePermissions.MastersView)]
@@ -108,7 +108,7 @@ public sealed class AttendanceController(
 
     [HttpPost("policy-versions/{id:guid}/retire"), RequirePermission(M, AttendancePermissions.MastersManage)]
     public async Task<IActionResult> RetirePolicyVersion(Guid id, RetireVersionRequest req, CancellationToken ct) =>
-        (await masters.RetirePolicyVersionAsync(id, req.EffectiveTo, ct)).ToActionResult();
+        (await masters.RetirePolicyVersionAsync(id, req.EffectiveTo, await CanBackdate(ct), ct)).ToActionResult();
 
     // ---------- Assignments ----------
     [HttpGet("shift-assignments"), RequirePermission(M, AttendancePermissions.AssignmentsManage)]

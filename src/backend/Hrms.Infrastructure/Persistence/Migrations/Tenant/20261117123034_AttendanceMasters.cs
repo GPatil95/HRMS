@@ -396,7 +396,7 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                 add constraint ex_shift_versions_no_overlap
                 exclude using gist (
                   shift_id with =,
-                  daterange(effective_from, coalesce(effective_to, 'infinity'::date), '[)') with &&
+                  daterange(effective_from, coalesce(effective_to, 'infinity'::date), '[]') with &&
                 ) where (status = 'published');
                 """);
 
@@ -406,7 +406,7 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                 add constraint ex_policy_versions_no_overlap
                 exclude using gist (
                   policy_id with =,
-                  daterange(effective_from, coalesce(effective_to, 'infinity'::date), '[)') with &&
+                  daterange(effective_from, coalesce(effective_to, 'infinity'::date), '[]') with &&
                 ) where (status = 'published');
                 """);
 
@@ -416,7 +416,7 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                 add constraint ex_shift_assignments_no_overlap
                 exclude using gist (
                   employee_id with =,
-                  daterange(effective_from, coalesce(effective_to, 'infinity'::date), '[)') with &&
+                  daterange(effective_from, coalesce(effective_to, 'infinity'::date), '[]') with &&
                 );
                 """);
 
@@ -426,7 +426,7 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                 add constraint ex_policy_assignments_no_overlap
                 exclude using gist (
                   employee_id with =,
-                  daterange(effective_from, coalesce(effective_to, 'infinity'::date), '[)') with &&
+                  daterange(effective_from, coalesce(effective_to, 'infinity'::date), '[]') with &&
                 );
                 """);
         }
