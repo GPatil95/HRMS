@@ -69,6 +69,15 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
     public DbSet<AuditSeal> AuditSeals => Set<AuditSeal>();
     public DbSet<EmailMessage> EmailMessages => Set<EmailMessage>();
     public DbSet<JobExecution> JobExecutions => Set<JobExecution>();
+    public DbSet<Shift> Shifts => Set<Shift>();
+    public DbSet<ShiftVersion> ShiftVersions => Set<ShiftVersion>();
+    public DbSet<WorkCalendar> WorkCalendars => Set<WorkCalendar>();
+    public DbSet<CalendarDay> CalendarDays => Set<CalendarDay>();
+    public DbSet<AttendancePolicy> AttendancePolicies => Set<AttendancePolicy>();
+    public DbSet<PolicyVersion> PolicyVersions => Set<PolicyVersion>();
+    public DbSet<ShiftAssignment> ShiftAssignments => Set<ShiftAssignment>();
+    public DbSet<PolicyAssignment> PolicyAssignments => Set<PolicyAssignment>();
+    public DbSet<AttendanceRoster> AttendanceRosters => Set<AttendanceRoster>();
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -715,6 +724,87 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
             e.HasIndex(x => x.Key).IsUnique();
             e.Property(x => x.Key).HasMaxLength(128);
             e.Property(x => x.Value).HasColumnType("jsonb");
+        });
+
+        b.Entity<Shift>(e =>
+        {
+            e.ToTable("shifts", "att");
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32);
+            e.Property(x => x.Name).HasMaxLength(128);
+        });
+        b.Entity<ShiftVersion>(e =>
+        {
+            e.ToTable("shift_versions", "att", t =>
+                t.HasCheckConstraint("ck_shift_versions_status", "status IN ('draft','published','retired')"));
+            e.HasIndex(x => new { x.ShiftId, x.Version }).IsUnique();
+            e.HasIndex(x => new { x.ShiftId, x.EffectiveFrom });
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.ShiftType).HasMaxLength(20);
+            e.Property(x => x.WeeklyOffConfigJson).HasColumnType("jsonb");
+            e.HasOne<Shift>().WithMany().HasForeignKey(x => x.ShiftId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<WorkCalendar>(e =>
+        {
+            e.ToTable("work_calendars", "att");
+            e.HasIndex(x => x.Code).IsUnique();
+            e.HasIndex(x => x.IsDefault).HasFilter("is_default");
+            e.Property(x => x.Code).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(160);
+        });
+        b.Entity<CalendarDay>(e =>
+        {
+            e.ToTable("calendar_days", "att", t =>
+                t.HasCheckConstraint("ck_calendar_days_type", "day_type IN ('holiday','optional_holiday','working_override','half_day')"));
+            e.HasIndex(x => new { x.CalendarId, x.Date }).IsUnique();
+            e.Property(x => x.DayType).HasMaxLength(24);
+            e.Property(x => x.Name).HasMaxLength(160);
+            e.Property(x => x.AppliesToJson).HasColumnType("jsonb");
+            e.HasOne<WorkCalendar>().WithMany().HasForeignKey(x => x.CalendarId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<AttendancePolicy>(e =>
+        {
+            e.ToTable("attendance_policies", "att");
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(160);
+        });
+        b.Entity<PolicyVersion>(e =>
+        {
+            e.ToTable("policy_versions", "att", t =>
+                t.HasCheckConstraint("ck_policy_versions_status", "status IN ('draft','published','retired')"));
+            e.HasIndex(x => new { x.PolicyId, x.Version }).IsUnique();
+            e.HasIndex(x => new { x.PolicyId, x.EffectiveFrom });
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.RulesJson).HasColumnType("jsonb").IsRequired();
+            e.HasOne<AttendancePolicy>().WithMany().HasForeignKey(x => x.PolicyId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ShiftAssignment>(e =>
+        {
+            e.ToTable("shift_assignments", "att");
+            e.HasIndex(x => new { x.EmployeeId, x.EffectiveFrom });
+            e.Property(x => x.Source).HasMaxLength(20);
+            e.Property(x => x.Reason).HasMaxLength(400);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Shift>().WithMany().HasForeignKey(x => x.ShiftId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<PolicyAssignment>(e =>
+        {
+            e.ToTable("policy_assignments", "att");
+            e.HasIndex(x => new { x.EmployeeId, x.EffectiveFrom });
+            e.Property(x => x.Reason).HasMaxLength(400);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<AttendancePolicy>().WithMany().HasForeignKey(x => x.PolicyId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<AttendanceRoster>(e =>
+        {
+            e.ToTable("rosters", "att", t =>
+                t.HasCheckConstraint("ck_rosters_off_or_shift", "is_off OR shift_id IS NOT NULL"));
+            e.HasIndex(x => new { x.EmployeeId, x.WorkDate }).IsUnique();
+            e.Property(x => x.Source).HasMaxLength(20);
+            e.Property(x => x.Reason).HasMaxLength(400);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Shift>().WithMany().HasForeignKey(x => x.ShiftId).OnDelete(DeleteBehavior.Restrict);
         });
 
         CommonModel.ConfigureShared(b);

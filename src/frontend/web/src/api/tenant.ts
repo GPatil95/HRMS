@@ -238,6 +238,135 @@ export const tenantApi = {
   publishLetterVersion: (id: string) => post<undefined>(`/api/v1/employee-docs/letter-templates/${id}/publish`),
   retireLetterVersion: (id: string) => post<undefined>(`/api/v1/employee-docs/letter-templates/${id}/retire`),
   uploadFile: (form: FormData) => api<{ id: string }>('/api/v1/files', { method: 'POST', body: form }),
+
+  // ---- Attendance masters (M3.1) ----
+  shifts: () => api<AttendanceShift[]>('/api/v1/attendance/shifts'),
+  createShift: (b: ShiftInput) => post<AttendanceShift>('/api/v1/attendance/shifts', b),
+  updateShift: (id: string, b: ShiftInput) => put<undefined>(`/api/v1/attendance/shifts/${id}`, b),
+  shiftVersions: (shiftId: string) => api<ShiftVersion[]>(`/api/v1/attendance/shifts/${shiftId}/versions`),
+  createShiftVersion: (shiftId: string, b: ShiftVersionInput) => post<ShiftVersion>(`/api/v1/attendance/shifts/${shiftId}/versions`, b),
+  updateShiftVersion: (id: string, b: ShiftVersionInput) => put<undefined>(`/api/v1/attendance/shift-versions/${id}`, b),
+  publishShiftVersion: (id: string, effectiveFrom: string) =>
+    post<ShiftVersion>(`/api/v1/attendance/shift-versions/${id}/publish`, { effectiveFrom }),
+  retireShiftVersion: (id: string, effectiveTo: string) =>
+    post<undefined>(`/api/v1/attendance/shift-versions/${id}/retire`, { effectiveTo }),
+  calendars: () => api<WorkCalendar[]>('/api/v1/attendance/calendars'),
+  createCalendar: (b: WorkCalendarInput) => post<WorkCalendar>('/api/v1/attendance/calendars', b),
+  updateCalendar: (id: string, b: WorkCalendarInput) => put<undefined>(`/api/v1/attendance/calendars/${id}`, b),
+  calendarDays: (id: string, from?: string, to?: string) =>
+    api<CalendarDay[]>(`/api/v1/attendance/calendars/${id}/days${from ? `?from=${from}&to=${to ?? from}` : ''}`),
+  upsertCalendarDays: (id: string, days: CalendarDayInput[]) =>
+    post<{ upserted: number }>(`/api/v1/attendance/calendars/${id}/days`, days),
+  deleteCalendarDay: (id: string, date: string) => del(`/api/v1/attendance/calendars/${id}/days/${date}`),
+  policies: () => api<AttendancePolicy[]>('/api/v1/attendance/policies'),
+  createPolicy: (b: PolicyInput) => post<AttendancePolicy>('/api/v1/attendance/policies', b),
+  updatePolicy: (id: string, b: PolicyInput) => put<undefined>(`/api/v1/attendance/policies/${id}`, b),
+  policyVersions: (policyId: string) => api<PolicyVersion[]>(`/api/v1/attendance/policies/${policyId}/versions`),
+  createPolicyVersion: (policyId: string, b: PolicyVersionInput) =>
+    post<PolicyVersion>(`/api/v1/attendance/policies/${policyId}/versions`, b),
+  updatePolicyVersion: (id: string, b: PolicyVersionInput) => put<undefined>(`/api/v1/attendance/policy-versions/${id}`, b),
+  publishPolicyVersion: (id: string, effectiveFrom: string) =>
+    post<PolicyVersion>(`/api/v1/attendance/policy-versions/${id}/publish`, { effectiveFrom }),
+  retirePolicyVersion: (id: string, effectiveTo: string) =>
+    post<undefined>(`/api/v1/attendance/policy-versions/${id}/retire`, { effectiveTo }),
+  shiftAssignments: (employeeId?: string, current?: boolean) =>
+    api<ShiftAssignment[]>(`/api/v1/attendance/shift-assignments${employeeId ? `?employeeId=${employeeId}&current=${current ?? false}` : ''}`),
+  createShiftAssignment: (b: ShiftAssignmentInput) => post<{ id: string }>('/api/v1/attendance/shift-assignments', b),
+  endShiftAssignment: (id: string, effectiveTo: string) =>
+    post<undefined>(`/api/v1/attendance/shift-assignments/${id}/end`, { effectiveTo }),
+  policyAssignments: (employeeId?: string) =>
+    api<PolicyAssignment[]>(`/api/v1/attendance/policy-assignments${employeeId ? `?employeeId=${employeeId}` : ''}`),
+  createPolicyAssignment: (b: PolicyAssignmentInput) => post<{ id: string }>('/api/v1/attendance/policy-assignments', b),
+  endPolicyAssignment: (id: string, effectiveTo: string) =>
+    post<undefined>(`/api/v1/attendance/policy-assignments/${id}/end`, { effectiveTo }),
+  roster: (employeeId: string, from: string, to: string) =>
+    api<RosterEntry[]>(`/api/v1/attendance/rosters?employeeId=${employeeId}&from=${from}&to=${to}`),
+  upsertRoster: (entries: RosterEntry[]) =>
+    post<{ upserted: number; skipped: number }>('/api/v1/attendance/rosters', { entries }),
+  resolveConfig: (employeeId: string, date: string) =>
+    api<ResolvedAttendance>(`/api/v1/attendance/config/resolve?employeeId=${employeeId}&date=${date}`),
+  resolveConfigRange: (employeeId: string, from: string, to: string) =>
+    api<ResolvedAttendance[]>(`/api/v1/attendance/config/resolve-range?employeeId=${employeeId}&from=${from}&to=${to}`),
+  mastersImpactPreview: (kind: 'shift' | 'policy', versionId: string, effectiveFrom: string) =>
+    post<ImpactPreview>('/api/v1/attendance/masters/impact-preview', { kind, versionId, effectiveFrom }),
+}
+
+// ---- Attendance types (M3.1) ----
+export interface AttendanceShift {
+  id: string; code: string; name: string; isActive: boolean; versionCount: number
+  activeVersion?: number | null; activeFrom?: string | null; activeTo?: string | null
+}
+export interface ShiftInput { code: string; name: string; isActive: boolean }
+export interface ShiftVersion {
+  id: string; shiftId: string; version: number; status: string
+  effectiveFrom: string; effectiveTo?: string | null; shiftType: string
+  startTime: string; endTime: string; crossesMidnight: boolean; breakMinutes: number; breakPaid: boolean
+  coreStart?: string | null; coreEnd?: string | null; requiredMinutes?: number | null
+  graceInMinutes?: number | null; graceOutMinutes?: number | null
+  inWindowBeforeMinutes: number; outWindowAfterMinutes: number
+  otAllowed: boolean; weeklyOffConfigJson?: string | null
+}
+export interface ShiftVersionInput {
+  shiftType: string; startTime: string; endTime: string; breakMinutes: number; breakPaid: boolean
+  coreStart?: string | null; coreEnd?: string | null; requiredMinutes?: number | null
+  graceInMinutes?: number | null; graceOutMinutes?: number | null
+  inWindowBeforeMinutes?: number | null; outWindowAfterMinutes?: number | null
+  otAllowed: boolean; weeklyOffConfigJson?: string | null
+}
+export interface WorkCalendar {
+  id: string; code: string; name: string; year?: number | null; isDefault: boolean; isActive: boolean; dayCount: number
+}
+export interface WorkCalendarInput { code: string; name: string; year?: number | null; isDefault: boolean; isActive: boolean }
+export interface CalendarDay {
+  id: string; date: string; dayType: string; name: string; halfDayMinutes?: number | null; appliesToJson?: string | null
+}
+export type CalendarDayInput = Omit<CalendarDay, 'id'>
+export interface AttendancePolicy {
+  id: string; code: string; name: string; isDefault: boolean; isActive: boolean
+  versionCount: number; activeVersion?: number | null
+}
+export interface PolicyInput { code: string; name: string; isDefault: boolean; isActive: boolean }
+export interface PolicyVersion {
+  id: string; policyId: string; version: number; status: string
+  effectiveFrom: string; effectiveTo?: string | null; rules: AttendanceRules
+}
+export interface PolicyVersionInput { rules: AttendanceRules }
+export interface AttendanceRules {
+  schema?: number
+  late?: { graceMinutes?: number; markAfterMinutes?: number; countFrom?: string }
+  early?: { graceMinutes?: number; markAfterMinutes?: number; countFrom?: string }
+  thresholds?: { halfDayBelowMinutes?: number; absentBelowMinutes?: number; basis?: string }
+  punch?: { mode?: string; duplicateWindowSeconds?: number; minSessionMinutes?: number }
+  missingPunch?: { status?: string; lockTreatment?: string; reminderAfterHours?: number }
+  overtime?: Record<string, unknown>
+  regularization?: Record<string, unknown>
+  selfPunch?: Record<string, unknown>
+  payableDaysBasis?: string
+}
+export interface ShiftAssignment {
+  id: string; employeeId: string; employeeCode: string; employeeName: string
+  shiftId: string; shiftCode: string; shiftName: string
+  effectiveFrom: string; effectiveTo?: string | null; reason?: string | null; source: string
+}
+export interface ShiftAssignmentInput { employeeId: string; shiftId: string; effectiveFrom: string; effectiveTo?: string | null; reason?: string | null }
+export interface PolicyAssignment {
+  id: string; employeeId: string; employeeCode: string; employeeName: string
+  policyId: string; policyCode: string; policyName: string
+  effectiveFrom: string; effectiveTo?: string | null; reason?: string | null
+}
+export interface PolicyAssignmentInput { employeeId: string; policyId: string; effectiveFrom: string; effectiveTo?: string | null; reason?: string | null }
+export interface RosterEntry { employeeId: string; workDate: string; shiftId?: string | null; isOff: boolean; reason?: string | null; source: string }
+export interface ResolvedAttendance {
+  employeeId: string; date: string; timeZone: string; dayType: string
+  shiftId?: string | null; shiftCode?: string | null; shiftVersion?: number | null; shiftSource?: string | null
+  policyId?: string | null; policyCode?: string | null; policyVersion?: number | null; policySource?: string | null
+  calendarId?: string | null; calendarCode?: string | null; calendarSource?: string | null
+  plannedStart?: string | null; plannedEnd?: string | null; plannedMinutes?: number | null
+  graceInMinutes: number; graceOutMinutes: number; orgSource?: string | null
+}
+export interface ImpactPreview {
+  affectedEmployees: number; newDaysChanged: number
+  sample: { employeeId: string; employeeCode: string; displayName: string; date: string; before?: string | null; after?: string | null }[]
 }
 
 // ---- Org masters types ----

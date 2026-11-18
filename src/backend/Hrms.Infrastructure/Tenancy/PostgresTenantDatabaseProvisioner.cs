@@ -15,7 +15,7 @@ namespace Hrms.Infrastructure.Tenancy;
 /// </summary>
 public sealed partial class PostgresTenantDatabaseProvisioner(IOptions<ProvisioningOptions> options) : ITenantDatabaseProvisioner
 {
-    public static readonly string[] Schemas = ["identity", "org", "hr", "files", "notify", "dashboard", "config", "audit", "ops"];
+    public static readonly string[] Schemas = ["identity", "org", "hr", "files", "notify", "dashboard", "config", "audit", "ops", "att"];
 
     [GeneratedRegex("^[a-z_][a-z0-9_]{0,62}$")]
     private static partial Regex Identifier();
