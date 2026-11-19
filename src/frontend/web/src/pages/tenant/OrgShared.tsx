@@ -195,20 +195,27 @@ export function ShiftField({ form, setForm, errors, disabled }: {
     return <TextInput label="Default shift" field="defaultShiftName" form={form} setForm={setForm} errors={errors} disabled={disabled} />
   }
   const list = shifts.data ?? []
-  const options = list.map((s) => ({ value: s.code, label: `${s.name} (${s.code})` }))
-  if (value && !options.some((o) => o.value === value) && !list.some((s) => s.name === value)) {
-    options.push({ value, label: `${value} (unmatched)` })
-  }
+  // The resolver ignores inactive shifts: offer only active ones. A stored value that
+  // doesn't resolve (unknown code, or an inactive shift) stays visible via a labeled
+  // fallback so the select never renders blank.
   const resolved = list.find((s) => s.code === value || s.name === value)
+  const displayValue = resolved?.code ?? value
+  const options = list.filter((s) => s.isActive).map((s) => ({ value: s.code, label: `${s.name} (${s.code})` }))
+  if (displayValue && !options.some((o) => o.value === displayValue)) {
+    options.push({
+      value: displayValue,
+      label: resolved ? `${resolved.name} (${resolved.code}) — inactive` : `${displayValue} (unmatched)`,
+    })
+  }
   return (
     <Box>
-      <TextField select size="small" fullWidth label="Default shift" value={value}
+      <TextField select size="small" fullWidth label="Default shift" value={displayValue}
         onChange={(e) => setForm({ ...form, defaultShiftName: e.target.value || null })}
         error={!!err} helperText={err ?? 'Empty = inherit from the parent level'} disabled={disabled}>
         <MenuItem value="">Inherit / not set</MenuItem>
         {options.map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
       </TextField>
-      <ShiftTimingsCaption shift={resolved} />
+      <ShiftTimingsCaption shift={resolved?.isActive ? resolved : undefined} />
     </Box>
   )
 }
