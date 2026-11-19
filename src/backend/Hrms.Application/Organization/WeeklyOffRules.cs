@@ -154,6 +154,15 @@ public static class WeeklyOffRules
         return false;
     }
 
+    /// <summary>
+    /// True when <paramref name="date"/> is off under any rule in <paramref name="cfg"/> — used for the
+    /// 'shift_based' pattern, where the resolved shift version carries the config and every rule type applies.
+    /// </summary>
+    public static bool IsOffByConfig(WeeklyOffConfig? cfg, DateOnly date) =>
+        cfg is not null
+        && (IsWeeklyOff(WeeklyOffPatterns.Fixed, cfg, date)
+            || (cfg.Rotation is not null && IsWeeklyOff(WeeklyOffPatterns.Rotating, cfg, date)));
+
     public static List<DateOnly> OffDays(string? pattern, string? configJson, DateOnly from, DateOnly to)
     {
         var cfg = Parse(configJson);

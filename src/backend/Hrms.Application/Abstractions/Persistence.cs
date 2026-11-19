@@ -101,6 +101,15 @@ public interface ITenantDbContext
     DbSet<AuditSeal> AuditSeals { get; }
     DbSet<EmailMessage> EmailMessages { get; }
     DbSet<JobExecution> JobExecutions { get; }
+    DbSet<Shift> Shifts { get; }
+    DbSet<ShiftVersion> ShiftVersions { get; }
+    DbSet<WorkCalendar> WorkCalendars { get; }
+    DbSet<CalendarDay> CalendarDays { get; }
+    DbSet<AttendancePolicy> AttendancePolicies { get; }
+    DbSet<PolicyVersion> PolicyVersions { get; }
+    DbSet<ShiftAssignment> ShiftAssignments { get; }
+    DbSet<PolicyAssignment> PolicyAssignments { get; }
+    DbSet<AttendanceRoster> AttendanceRosters { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     /// <summary>Raw relational access (atomic counters, bulk ops). Use sparingly.</summary>
     Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade Database { get; }

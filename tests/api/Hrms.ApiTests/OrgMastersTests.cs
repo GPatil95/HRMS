@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Hrms.Application.Modules;
 using Hrms.Testing;
 
 namespace Hrms.ApiTests;
@@ -325,6 +326,110 @@ public sealed class OrgMastersTests(HrmsFixture f)
         // weekly-off preview walks the effective (department) config
         var preview = await admin.GetJsonAsync($"/api/v1/org/departments/{dept}/weekly-off-preview?from=2026-01-01&to=2026-01-11");
         preview.GetProperty("offDays").EnumerateArray().Select(x => x.GetString()).ShouldBe(["2026-01-03", "2026-01-04", "2026-01-10", "2026-01-11"]);
+    }
+
+    /// <summary>Effective-config derives timings/OT from the versioned attendance masters
+    /// (the resolver's sources), drops the legacy org timing/OT rows, and inherits
+    /// dept → branch → company.</summary>
+    [Fact]
+    public async Task EffectiveConfigUsesAttendanceMasters()
+    {
+        using (var platform = await f.PlatformAdminAsync())
+        {
+            var en = await platform.Http.PutAsJsonAsync($"/api/v1/platform/tenants/{f.AcmeId}/modules",
+                new { moduleCode = AttendanceModule.ModuleCode, enabled = true, reason = "effective-config test", validTo = (DateOnly?)null });
+            en.IsSuccessStatusCode.ShouldBeTrue(await en.Content.ReadAsStringAsync());
+        }
+
+        using var admin = await f.AcmeAdminAsync();
+        var cid = await CompanyAsync(admin);
+        var bid = await BranchAsync(admin, cid);
+        var dept = await DepartmentAsync(admin, bid);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd");
+
+        var mkShift = await admin.Http.PostAsJsonAsync("/api/v1/attendance/shifts",
+            new { code = "SH-ORG", name = "Org Day", isActive = true });
+        mkShift.EnsureSuccessStatusCode();
+        var shiftId = (await mkShift.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var mkV = await admin.Http.PostAsJsonAsync($"/api/v1/attendance/shifts/{shiftId}/versions", new
+        {
+            shiftType = "fixed", startTime = "09:00", endTime = "18:00", breakMinutes = 45, breakPaid = false, otAllowed = false,
+        });
+        mkV.EnsureSuccessStatusCode();
+        var vid = (await mkV.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        (await admin.Http.PostAsJsonAsync($"/api/v1/attendance/shift-versions/{vid}/publish", new { effectiveFrom = today }))
+            .EnsureSuccessStatusCode();
+        // a draft version with different times must not leak into today's resolution
+        (await admin.Http.PostAsJsonAsync($"/api/v1/attendance/shifts/{shiftId}/versions", new
+        {
+            shiftType = "fixed", startTime = "23:00", endTime = "23:30", breakMinutes = 0, breakPaid = false, otAllowed = false,
+        })).EnsureSuccessStatusCode();
+
+        var mkDef = await admin.Http.PostAsJsonAsync("/api/v1/attendance/policies",
+            new { code = "P-DEF-EC", name = "Default", isDefault = true, isActive = true });
+        mkDef.EnsureSuccessStatusCode();
+        var defId = (await mkDef.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var mkDv = await admin.Http.PostAsJsonAsync($"/api/v1/attendance/policies/{defId}/versions",
+            new { rules = new { overtime = new { enabled = true } } });
+        mkDv.EnsureSuccessStatusCode();
+        var dvid = (await mkDv.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        (await admin.Http.PostAsJsonAsync($"/api/v1/attendance/policy-versions/{dvid}/publish", new { effectiveFrom = today }))
+            .EnsureSuccessStatusCode();
+
+        var mkNoot = await admin.Http.PostAsJsonAsync("/api/v1/attendance/policies",
+            new { code = "P-NOOT", name = "No OT", isDefault = false, isActive = true });
+        mkNoot.EnsureSuccessStatusCode();
+        var nootId = (await mkNoot.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var mkNv = await admin.Http.PostAsJsonAsync($"/api/v1/attendance/policies/{nootId}/versions",
+            new { rules = new { overtime = new { enabled = false } } });
+        mkNv.EnsureSuccessStatusCode();
+        var nvid = (await mkNv.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        (await admin.Http.PostAsJsonAsync($"/api/v1/attendance/policy-versions/{nvid}/publish", new { effectiveFrom = today }))
+            .EnsureSuccessStatusCode();
+
+        (await PutJson(admin, $"/api/v1/org/branches/{bid}", new
+        {
+            companyId = cid, code = "EC-B", name = "EC-B", timeZone = "Asia/Kolkata",
+            defaultShiftName = "SH-ORG", isActive = true,
+        })).EnsureSuccessStatusCode();
+
+        // dept inherits the branch shift: published-version timings + tenant-default OT
+        var cfg = await admin.GetJsonAsync($"/api/v1/org/departments/{dept}/effective-config");
+        var settings = cfg.GetProperty("settings").EnumerateArray().ToDictionary(s => s.GetProperty("key").GetString()!);
+        settings.ShouldNotContainKey("workStart");
+        settings.ShouldNotContainKey("workEnd");
+        settings.ShouldNotContainKey("breakMinutes");
+        settings["shift"].GetProperty("source").GetString().ShouldBe("branch");
+        settings["shiftTimings"].GetProperty("source").GetString().ShouldBe("branch");
+        settings["shiftTimings"].GetProperty("value").GetString()!.ShouldContain("09:00");
+        settings["shiftTimings"].GetProperty("value").GetString()!.ShouldContain("v1");
+        settings["overtimeAllowed"].GetProperty("value").GetBoolean().ShouldBeTrue();
+        settings["overtimeAllowed"].GetProperty("source").GetString().ShouldBe("tenant-default");
+        settings["overtimeAllowed"].GetProperty("sourceName").GetString().ShouldBe("P-DEF-EC");
+
+        // dept override: unknown shift reports cleanly and stays marked as an override;
+        // explicit policy code flips the resolved OT flag and its source
+        var rotating = $"{{\"rotation\":{{\"anchor\":\"{today}\",\"cycleDays\":3,\"offOffsets\":[2]}}}}";
+        (await PutJson(admin, $"/api/v1/org/departments/{dept}", new
+        {
+            code = "EC-D", name = "EC-D", branchId = bid,
+            defaultShiftName = "SH-GONE", attendancePolicyCode = "P-NOOT",
+            weeklyOffPattern = "rotating", weeklyOffConfigJson = rotating, isActive = true,
+        })).EnsureSuccessStatusCode();
+        cfg = await admin.GetJsonAsync($"/api/v1/org/departments/{dept}/effective-config");
+        settings = cfg.GetProperty("settings").EnumerateArray().ToDictionary(s => s.GetProperty("key").GetString()!);
+        settings["shiftTimings"].GetProperty("value").GetString()!.ShouldContain("not found");
+        settings["shiftTimings"].GetProperty("isOverride").GetBoolean().ShouldBeTrue();
+        settings["overtimeAllowed"].GetProperty("value").GetBoolean().ShouldBeFalse();
+        settings["overtimeAllowed"].GetProperty("source").GetString().ShouldBe("department");
+        settings["overtimeAllowed"].GetProperty("sourceName").GetString().ShouldBe("P-NOOT");
+
+        // rotating weekly-off resolves through the org-level preview
+        var to = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(6)).ToString("yyyy-MM-dd");
+        var prev = await admin.GetJsonAsync($"/api/v1/org/departments/{dept}/weekly-off-preview?from={today}&to={to}");
+        var days = prev.GetProperty("offDays").EnumerateArray().Select(x => x.GetString()).ToList();
+        days.ShouldContain(DateOnly.FromDateTime(DateTime.UtcNow.AddDays(2)).ToString("yyyy-MM-dd"));
+        days.ShouldContain(DateOnly.FromDateTime(DateTime.UtcNow.AddDays(5)).ToString("yyyy-MM-dd"));
     }
 
     [Fact]

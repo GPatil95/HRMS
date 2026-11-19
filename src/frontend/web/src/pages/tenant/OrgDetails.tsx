@@ -13,7 +13,7 @@ import { DataList } from '../../components/tenant'
 import { useToast } from '../../components/toast'
 import {
   AddressesPanel, BankAccountsPanel, BoolInput, ContactsPanel, DocumentsPanel, EffectiveConfigPanel,
-  EmployeeSelect, Field, FormGrid, LogoCard, RegistrationsPanel, SaveBar, TextInput,
+  EmployeeSelect, Field, FormGrid, LogoCard, RegistrationsPanel, SaveBar, ShiftField, TextInput,
   WeeklyOffEditor, usePermissions,
   type FormState,
 } from './OrgShared'
@@ -169,7 +169,7 @@ export function CompanyDetailBody({ id }: { id: string }) {
           <SectionCard title="Default policies" subtitle="These are company defaults — branches and departments inherit them unless explicitly overridden.">
             <ServerErrors errors={errors} />
             <FormGrid>
-              <TextInput label="Default shift" field="defaultShiftName" form={form} setForm={setForm} errors={errors} disabled={!canEdit} />
+              <ShiftField form={form} setForm={setForm} errors={errors} disabled={!canEdit} />
               <TextInput label="Leave policy" field="defaultLeavePolicyCode" form={form} setForm={setForm} errors={errors} disabled={!canEdit} />
               <TextInput label="Holiday calendar" field="defaultHolidayCalendarCode" form={form} setForm={setForm} errors={errors} disabled={!canEdit} />
               <TextInput label="Attendance policy" field="defaultAttendancePolicyCode" form={form} setForm={setForm} errors={errors} disabled={!canEdit} />
@@ -276,12 +276,12 @@ export function BranchDetailBody({ id }: { id: string }) {
           <SectionCard title="Working schedule" subtitle="Empty fields inherit the company default">
             <ServerErrors errors={errors} />
             <FormGrid>
-              <TextInput label="Default shift" field="defaultShiftName" form={form} setForm={setForm} errors={errors} disabled={!canEdit} />
-              <TextInput label="Work start" field="workStart" form={form} setForm={setForm} type="time" errors={errors} disabled={!canEdit} />
-              <TextInput label="Work end" field="workEnd" form={form} setForm={setForm} type="time" errors={errors} disabled={!canEdit} />
-              <TextInput label="Break (minutes)" field="breakMinutes" form={form} setForm={setForm} type="number" errors={errors} disabled={!canEdit} />
+              <ShiftField form={form} setForm={setForm} errors={errors} disabled={!canEdit} />
               <TextInput label="Holiday calendar" field="holidayCalendarCode" form={form} setForm={setForm} errors={errors} disabled={!canEdit} />
             </FormGrid>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+              Actual timings come from the published Shift Version — see the resolved timings above the picker and Attendance Admin.
+            </Typography>
           </SectionCard>
           <SectionCard title="Weekly-off override">
             <WeeklyOffEditor form={form} setForm={setForm} errors={errors} />
@@ -296,7 +296,6 @@ export function BranchDetailBody({ id }: { id: string }) {
           <ServerErrors errors={errors} />
           <FormGrid>
             <TextInput label="Grace (minutes)" field="graceMinutes" form={form} setForm={setForm} type="number" errors={errors} disabled={!canEdit} />
-            <BoolInput label="Overtime allowed" field="overtimeAllowed" form={form} setForm={setForm} />
             <TextInput label="Attendance mode" field="attendanceMode" form={form} setForm={setForm} select options={ATTENDANCE_MODES} errors={errors} disabled={!canEdit} />
             <TextInput label="Attendance policy" field="attendancePolicyCode" form={form} setForm={setForm} errors={errors} disabled={!canEdit} />
           </FormGrid>
@@ -473,7 +472,14 @@ export function DepartmentDetailBody({ id }: { id: string }) {
             <WeeklyOffEditor form={form} setForm={setForm} errors={errors} />
             {canEdit && <SaveBar saving={save.isPending} onSave={() => save.mutate()} />}
           </SectionCard>
-          {preview.data && preview.data.offDays.length > 0 && (
+          {preview.data?.pattern === 'shift_based' && (
+            <SectionCard title="Upcoming offs (next 4 weeks)" subtitle={`Resolved from ${preview.data.source} — pattern: shift_based`}>
+              <Alert severity="info" variant="outlined">
+                Shift-based weekly offs come from the employee's resolved Shift Version — preview them per employee in Attendance Admin → Config Resolver.
+              </Alert>
+            </SectionCard>
+          )}
+          {preview.data && preview.data.pattern !== 'shift_based' && preview.data.offDays.length > 0 && (
             <SectionCard title="Upcoming offs (next 4 weeks)" subtitle={`Resolved from ${preview.data.source} — pattern: ${preview.data.pattern ?? 'none'}`}>
               <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                 {preview.data.offDays.map((d) => <Chip key={d} size="small" variant="outlined" label={new Date(d + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })} />)}
@@ -488,13 +494,9 @@ export function DepartmentDetailBody({ id }: { id: string }) {
         <SectionCard title="Work schedule">
           <ServerErrors errors={errors} />
           <FormGrid>
-            <TextInput label="Default shift" field="defaultShiftName" form={form} setForm={setForm} errors={errors} disabled={!canEdit} />
-            <TextInput label="Work start" field="workStart" form={form} setForm={setForm} type="time" errors={errors} disabled={!canEdit} />
-            <TextInput label="Work end" field="workEnd" form={form} setForm={setForm} type="time" errors={errors} disabled={!canEdit} />
-            <TextInput label="Break (minutes)" field="breakMinutes" form={form} setForm={setForm} type="number" errors={errors} disabled={!canEdit} />
+            <ShiftField form={form} setForm={setForm} errors={errors} disabled={!canEdit} />
             <TextInput label="Grace (minutes)" field="graceMinutes" form={form} setForm={setForm} type="number" errors={errors} disabled={!canEdit} />
             <TextInput label="Holiday calendar" field="holidayCalendarCode" form={form} setForm={setForm} errors={errors} disabled={!canEdit} />
-            <BoolInput label="Overtime allowed" field="overtimeAllowed" form={form} setForm={setForm} />
             <BoolInput label="WFH / field eligible" field="wfhAllowed" form={form} setForm={setForm} />
             <TextInput label="Attendance policy" field="attendancePolicyCode" form={form} setForm={setForm} errors={errors} disabled={!canEdit} />
           </FormGrid>

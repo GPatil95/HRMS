@@ -446,6 +446,136 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         });
                 });
 
+            modelBuilder.Entity("Hrms.Domain.Tenant.AttendancePolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_default");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("name");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_attendance_policies");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_attendance_policies_code");
+
+                    b.HasIndex("IsDefault")
+                        .IsUnique()
+                        .HasDatabaseName("ix_attendance_policies_is_default")
+                        .HasFilter("is_default");
+
+                    b.ToTable("attendance_policies", "att");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.AttendanceRoster", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<bool>("IsOff")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_off");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("reason");
+
+                    b.Property<Guid?>("ShiftId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("shift_id");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("source");
+
+                    b.Property<DateOnly>("WorkDate")
+                        .HasColumnType("date")
+                        .HasColumnName("work_date");
+
+                    b.HasKey("Id")
+                        .HasName("pk_rosters");
+
+                    b.HasIndex("ShiftId")
+                        .HasDatabaseName("ix_rosters_shift_id");
+
+                    b.HasIndex("EmployeeId", "WorkDate")
+                        .IsUnique()
+                        .HasDatabaseName("ix_rosters_employee_id_work_date");
+
+                    b.ToTable("rosters", "att", t =>
+                        {
+                            t.HasCheckConstraint("ck_rosters_off_or_shift", "is_off OR shift_id IS NOT NULL");
+                        });
+                });
+
             modelBuilder.Entity("Hrms.Domain.Tenant.AuthorizationState", b =>
                 {
                     b.Property<int>("Id")
@@ -680,6 +810,70 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasDatabaseName("ix_branches_manager_employee_id");
 
                     b.ToTable("branches", "org");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.CalendarDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AppliesToJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("applies_to_json");
+
+                    b.Property<Guid>("CalendarId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("calendar_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date")
+                        .HasColumnName("date");
+
+                    b.Property<string>("DayType")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("day_type");
+
+                    b.Property<int?>("HalfDayMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("half_day_minutes");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_calendar_days");
+
+                    b.HasIndex("CalendarId", "Date")
+                        .IsUnique()
+                        .HasDatabaseName("ix_calendar_days_calendar_id_date");
+
+                    b.ToTable("calendar_days", "att", t =>
+                        {
+                            t.HasCheckConstraint("ck_calendar_days_type", "day_type IN ('holiday','optional_holiday','working_override','half_day')");
+                        });
                 });
 
             modelBuilder.Entity("Hrms.Domain.Tenant.Company", b =>
@@ -4019,6 +4213,129 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                     b.ToTable("permissions", "identity");
                 });
 
+            modelBuilder.Entity("Hrms.Domain.Tenant.PolicyAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_from");
+
+                    b.Property<DateOnly?>("EffectiveTo")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_to");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<Guid>("PolicyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("policy_id");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("reason");
+
+                    b.HasKey("Id")
+                        .HasName("pk_policy_assignments");
+
+                    b.HasIndex("PolicyId")
+                        .HasDatabaseName("ix_policy_assignments_policy_id");
+
+                    b.HasIndex("EmployeeId", "EffectiveFrom")
+                        .HasDatabaseName("ix_policy_assignments_employee_id_effective_from");
+
+                    b.ToTable("policy_assignments", "att");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.PolicyVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_from");
+
+                    b.Property<DateOnly?>("EffectiveTo")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_to");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<Guid>("PolicyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("policy_id");
+
+                    b.Property<string>("RulesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("rules_json");
+
+                    b.Property<string>("Status")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_policy_versions");
+
+                    b.HasIndex("PolicyId", "EffectiveFrom")
+                        .HasDatabaseName("ix_policy_versions_policy_id_effective_from");
+
+                    b.HasIndex("PolicyId", "Version")
+                        .IsUnique()
+                        .HasDatabaseName("ix_policy_versions_policy_id_version");
+
+                    b.ToTable("policy_versions", "att", t =>
+                        {
+                            t.HasCheckConstraint("ck_policy_versions_status", "status IN ('draft','published','retired')");
+                        });
+                });
+
             modelBuilder.Entity("Hrms.Domain.Tenant.ReportingClosure", b =>
                 {
                     b.Property<Guid>("AncestorId")
@@ -4336,6 +4653,243 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                     b.ToTable("salary_structure_lines", "hr", t =>
                         {
                             t.HasCheckConstraint("ck_salary_structure_lines_calc", "calc_type IN ('fixed','percent_of_basic','percent_of_gross','formula')");
+                        });
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.Shift", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("name");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_shifts");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_shifts_code");
+
+                    b.ToTable("shifts", "att");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.ShiftAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_from");
+
+                    b.Property<DateOnly?>("EffectiveTo")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_to");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("reason");
+
+                    b.Property<Guid>("ShiftId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("shift_id");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("source");
+
+                    b.HasKey("Id")
+                        .HasName("pk_shift_assignments");
+
+                    b.HasIndex("ShiftId")
+                        .HasDatabaseName("ix_shift_assignments_shift_id");
+
+                    b.HasIndex("EmployeeId", "EffectiveFrom")
+                        .HasDatabaseName("ix_shift_assignments_employee_id_effective_from");
+
+                    b.ToTable("shift_assignments", "att");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.ShiftVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("BreakMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("break_minutes");
+
+                    b.Property<bool>("BreakPaid")
+                        .HasColumnType("boolean")
+                        .HasColumnName("break_paid");
+
+                    b.Property<TimeOnly?>("CoreEnd")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("core_end");
+
+                    b.Property<TimeOnly?>("CoreStart")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("core_start");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_from");
+
+                    b.Property<DateOnly?>("EffectiveTo")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_to");
+
+                    b.Property<TimeOnly>("EndTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("end_time");
+
+                    b.Property<int?>("GraceInMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("grace_in_minutes");
+
+                    b.Property<int?>("GraceOutMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("grace_out_minutes");
+
+                    b.Property<int>("InWindowBeforeMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("in_window_before_minutes");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<bool>("OtAllowed")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ot_allowed");
+
+                    b.Property<int>("OutWindowAfterMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("out_window_after_minutes");
+
+                    b.Property<int?>("RequiredMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("required_minutes");
+
+                    b.Property<Guid>("ShiftId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("shift_id");
+
+                    b.Property<string>("ShiftType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("shift_type");
+
+                    b.Property<TimeOnly>("StartTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("start_time");
+
+                    b.Property<string>("Status")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.Property<string>("WeeklyOffConfigJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("weekly_off_config_json");
+
+                    b.HasKey("Id")
+                        .HasName("pk_shift_versions");
+
+                    b.HasIndex("ShiftId", "EffectiveFrom")
+                        .HasDatabaseName("ix_shift_versions_shift_id_effective_from");
+
+                    b.HasIndex("ShiftId", "Version")
+                        .IsUnique()
+                        .HasDatabaseName("ix_shift_versions_shift_id_version");
+
+                    b.ToTable("shift_versions", "att", t =>
+                        {
+                            t.HasCheckConstraint("ck_shift_versions_status", "status IN ('draft','published','retired')");
                         });
                 });
 
@@ -4756,6 +5310,74 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         });
                 });
 
+            modelBuilder.Entity("Hrms.Domain.Tenant.WorkCalendar", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_default");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("name");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<int?>("Year")
+                        .HasColumnType("integer")
+                        .HasColumnName("year");
+
+                    b.HasKey("Id")
+                        .HasName("pk_work_calendars");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_work_calendars_code");
+
+                    b.HasIndex("IsDefault")
+                        .IsUnique()
+                        .HasDatabaseName("ix_work_calendars_is_default")
+                        .HasFilter("is_default");
+
+                    b.ToTable("work_calendars", "att");
+                });
+
             modelBuilder.Entity("Hrms.Domain.Tenant.WorkLocation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4838,6 +5460,22 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasConstraintName("fk_assignment_scope_targets_user_role_assignments_assignment_id");
                 });
 
+            modelBuilder.Entity("Hrms.Domain.Tenant.AttendanceRoster", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_rosters_employees_employee_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.Shift", null)
+                        .WithMany()
+                        .HasForeignKey("ShiftId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_rosters_shifts_shift_id");
+                });
+
             modelBuilder.Entity("Hrms.Domain.Tenant.Branch", b =>
                 {
                     b.HasOne("Hrms.Domain.Tenant.Company", null)
@@ -4858,6 +5496,16 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasForeignKey("ManagerEmployeeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_branches_employees_manager_employee_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.CalendarDay", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.WorkCalendar", null)
+                        .WithMany()
+                        .HasForeignKey("CalendarId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_calendar_days_work_calendars_calendar_id");
                 });
 
             modelBuilder.Entity("Hrms.Domain.Tenant.Company", b =>
@@ -5461,6 +6109,33 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasConstraintName("fk_org_registrations_files_document_file_id");
                 });
 
+            modelBuilder.Entity("Hrms.Domain.Tenant.PolicyAssignment", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_policy_assignments_employees_employee_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.AttendancePolicy", null)
+                        .WithMany()
+                        .HasForeignKey("PolicyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_policy_assignments_attendance_policies_policy_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.PolicyVersion", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.AttendancePolicy", null)
+                        .WithMany()
+                        .HasForeignKey("PolicyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_policy_versions_attendance_policies_policy_id");
+                });
+
             modelBuilder.Entity("Hrms.Domain.Tenant.ReportingClosure", b =>
                 {
                     b.HasOne("Hrms.Domain.Tenant.Employee", null)
@@ -5512,6 +6187,33 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_salary_structure_lines_salary_structures_salary_structure_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.ShiftAssignment", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_shift_assignments_employees_employee_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.Shift", null)
+                        .WithMany()
+                        .HasForeignKey("ShiftId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_shift_assignments_shifts_shift_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.ShiftVersion", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.Shift", null)
+                        .WithMany()
+                        .HasForeignKey("ShiftId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_shift_versions_shifts_shift_id");
                 });
 
             modelBuilder.Entity("Hrms.Domain.Tenant.TenantSession", b =>
