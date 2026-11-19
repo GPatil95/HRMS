@@ -5,7 +5,7 @@ import {
 } from '@mui/material'
 import { CloudUpload, Delete, Download, InsertDriveFile, OpenInNew } from '@mui/icons-material'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { tenantApi, type BankAccount, type BankAccountInput, type Employee, type OrgContact, type ContactInput,
+import { tenantApi, type AttendanceShift, type BankAccount, type BankAccountInput, type Employee, type OrgContact, type ContactInput,
   type OrgAddress, type AddressInput, type OrgDocument, type Registration, type RegistrationInput } from '../../api/tenant'
 import { ApiError } from '../../api/client'
 import { EmptyState, SectionCard } from '../../components/ui'
@@ -165,7 +165,10 @@ export function WeeklyOffEditor({ form, setForm, errors }: { form: FormState; se
         </Box>
       )}
       {pattern === 'shift_based' && (
-        <Alert severity="info" variant="outlined">Weekly offs follow the employee's shift roster — no day configuration needed here.</Alert>
+        <Alert severity="info" variant="outlined">
+          Weekly offs are resolved from the employee's shift — configure them on the Shift Master's version
+          (weekly-off config) in Attendance Admin; no day configuration needed here.
+        </Alert>
       )}
       {pattern && pattern !== 'shift_based' && (
         <FormGrid>
@@ -177,6 +180,54 @@ export function WeeklyOffEditor({ form, setForm, errors }: { form: FormState; se
       )}
     </Box>
   )
+}
+
+/// Default-shift picker bound to the Attendance Shift Master. Stores the shift's stable
+/// code (the resolver matches code, then name for legacy values); empty = inherit.
+export function ShiftField({ form, setForm, errors, disabled }: {
+  form: FormState; setForm: (f: FormState) => void; errors?: Record<string, string[]>; disabled?: boolean
+}) {
+  const shifts = useQuery({ queryKey: ['attendance', 'shifts'], queryFn: tenantApi.shifts, retry: false })
+  const value = (form.defaultShiftName as string) ?? ''
+  const err = errors?.defaultShiftName?.[0]
+  if (shifts.isError) {
+    // Without attendance.masters.view the catalogue is unreachable — keep the field editable as free text.
+    return <TextInput label="Default shift" field="defaultShiftName" form={form} setForm={setForm} errors={errors} disabled={disabled} />
+  }
+  const list = shifts.data ?? []
+  const options = list.map((s) => ({ value: s.code, label: `${s.name} (${s.code})` }))
+  if (value && !options.some((o) => o.value === value) && !list.some((s) => s.name === value)) {
+    options.push({ value, label: `${value} (unmatched)` })
+  }
+  const resolved = list.find((s) => s.code === value || s.name === value)
+  return (
+    <Box>
+      <TextField select size="small" fullWidth label="Default shift" value={value}
+        onChange={(e) => setForm({ ...form, defaultShiftName: e.target.value || null })}
+        error={!!err} helperText={err ?? 'Empty = inherit from the parent level'} disabled={disabled}>
+        <MenuItem value="">Inherit / not set</MenuItem>
+        {options.map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+      </TextField>
+      <ShiftTimingsCaption shift={resolved} />
+    </Box>
+  )
+}
+
+function ShiftTimingsCaption({ shift }: { shift?: AttendanceShift }) {
+  const versions = useQuery({
+    queryKey: ['attendance', 'shift-versions', shift?.id],
+    queryFn: () => tenantApi.shiftVersions(shift!.id),
+    enabled: !!shift,
+  })
+  if (!shift) return null
+  const today = new Date().toISOString().slice(0, 10)
+  const v = (versions.data ?? [])
+    .filter((x) => x.status !== 'draft' && x.effectiveFrom <= today && (!x.effectiveTo || x.effectiveTo >= today))
+    .sort((a, b) => Number(b.status === 'published') - Number(a.status === 'published') || b.effectiveFrom.localeCompare(a.effectiveFrom))[0]
+  const text = v
+    ? `Today: ${v.startTime}–${v.endTime}${v.crossesMidnight ? ' (+1d)' : ''} · break ${v.breakMinutes}m${v.breakPaid ? ' paid' : ' unpaid'} · v${v.version}`
+    : 'No published version covers today'
+  return <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>{text}</Typography>
 }
 
 export function EffectiveConfigPanel({ level, id, hide }: { level: 'companies' | 'branches' | 'departments' | 'employees'; id: string; hide?: string[] }) {

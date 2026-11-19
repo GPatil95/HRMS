@@ -102,3 +102,17 @@ validation; absent≤half-day threshold; `ParseValidated` bad-JSON/schema/valid 
 No changes to M1/M2 behaviour (single additive line in grant schema list). No punches,
 no day computation, no jobs, no requests/approvals, no periods. Masters are versioned +
 effective-dated; published versions immutable; every write audited.
+
+## Org-screens cleanup (follow-up)
+
+- Removed the misleading legacy inputs (`WorkStart`/`WorkEnd`/`BreakMinutes`, `OvertimeAllowed`)
+  from Branch/Department Work Schedule + Attendance rules screens — columns, DTOs and stored
+  data preserved (no migration, no behavior change for stored values).
+- Default Shift is now a dropdown bound to `att.shifts` (stores the stable shift **code**;
+  legacy name values still resolve). Resolved shift timings for today are shown from the
+  published ShiftVersion; overtime now resolves from the applicable policy version
+  (`overtimeAllowed` effective-config row, source = org level or `tenant-default`).
+- Effective Config shows only resolver-used settings + derived `shiftTimings`/`overtimeAllowed`.
+- `shift_based` weekly-off explains config comes from the resolved shift version (org + preview card).
+- New API regression test `EffectiveConfigUsesAttendanceMasters` (139 total API tests):
+  inheritance, overrides, draft-version exclusion, missing shift, OT policy source, rotating preview.

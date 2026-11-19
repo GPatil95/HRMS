@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Hrms.Application.Abstractions;
+using Hrms.Application.Attendance;
 using Hrms.Application.Auditing;
 using Hrms.Application.Files;
 using Hrms.Application.Modules;
@@ -842,18 +843,16 @@ public sealed partial class OrgMastersService(ITenantDbContext db, FileService f
             company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == branch.CompanyId, ct);
         }
 
+        // Only settings the attendance resolver actually reads. Timings/OT come from the
+        // versioned attendance masters (rows derived below), not the legacy org fields.
         var settings = new List<EffectiveSettingDto>
         {
             Resolve("shift", "Default shift", level, company?.DefaultShiftName, branch?.DefaultShiftName, dept?.DefaultShiftName, company, branch, dept),
-            Resolve("workStart", "Work start", level, null, branch?.WorkStart, dept?.WorkStart, company, branch, dept),
-            Resolve("workEnd", "Work end", level, null, branch?.WorkEnd, dept?.WorkEnd, company, branch, dept),
-            Resolve("breakMinutes", "Break (minutes)", level, null, branch?.BreakMinutes, dept?.BreakMinutes, company, branch, dept),
             Resolve("weeklyOffPattern", "Weekly-off pattern", level, company?.WeeklyOffPattern, branch?.WeeklyOffPattern, dept?.WeeklyOffPattern, company, branch, dept),
             Resolve("weeklyOffConfig", "Weekly-off rules", level, company?.WeeklyOffPattern is null ? null : company.WeeklyOffConfigJson,
                 branch?.WeeklyOffPattern is null ? null : branch.WeeklyOffConfigJson, dept?.WeeklyOffPattern is null ? null : dept.WeeklyOffConfigJson, company, branch, dept),
             Resolve("holidayCalendar", "Holiday calendar", level, company?.DefaultHolidayCalendarCode, branch?.HolidayCalendarCode, dept?.HolidayCalendarCode, company, branch, dept),
             Resolve("graceMinutes", "Grace (minutes)", level, company?.GraceMinutes, branch?.GraceMinutes, dept?.GraceMinutes, company, branch, dept),
-            Resolve("overtimeAllowed", "Overtime allowed", level, null, branch?.OvertimeAllowed, dept?.OvertimeAllowed, company, branch, dept),
             Resolve("attendancePolicy", "Attendance policy", level, company?.DefaultAttendancePolicyCode, branch?.AttendancePolicyCode, dept?.AttendancePolicyCode, company, branch, dept),
         };
 
@@ -871,6 +870,49 @@ public sealed partial class OrgMastersService(ITenantDbContext db, FileService f
                 _ => null,
             },
         };
+
+        // Resolved shift timings: the shift code resolves to a Shift master, whose
+        // published-or-retired version covering today supplies the actual times —
+        // same semantics as AttendanceConfigResolver (published wins over retired).
+        var shiftSetting = settings.First(s => s.Key == "shift");
+        if (shiftSetting.Value is string shiftRef)
+        {
+            var shift = await db.Shifts.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.IsActive && (s.Code == shiftRef || s.Name == shiftRef), ct);
+            var sv = shift is null ? null : await db.ShiftVersions.AsNoTracking()
+                .Where(v => v.ShiftId == shift.Id && v.Status != AttendanceVersionStatuses.Draft
+                    && v.EffectiveFrom <= Today && (v.EffectiveTo == null || v.EffectiveTo >= Today))
+                .OrderByDescending(v => v.Status == AttendanceVersionStatuses.Published)
+                .ThenByDescending(v => v.EffectiveFrom).FirstOrDefaultAsync(ct);
+            var timings = shift is null ? $"shift '{shiftRef}' not found"
+                : sv is null ? $"{shift.Code} — no published version covers today"
+                : $"{sv.StartTime:HH\\:mm}–{sv.EndTime:HH\\:mm}{(sv.EndTime <= sv.StartTime ? " (+1d)" : "")} · break {sv.BreakMinutes}m{(sv.BreakPaid ? " paid" : " unpaid")} · v{sv.Version}";
+            settings.Add(new EffectiveSettingDto("shiftTimings", "Shift timings (today)", timings,
+                shiftSetting.Source, shiftSetting.SourceId, shiftSetting.SourceName, shiftSetting.IsOverride));
+        }
+        else
+        {
+            settings.Add(new EffectiveSettingDto("shiftTimings", "Shift timings (today)", null, "not_set", null, null, false));
+        }
+
+        // Resolved overtime: comes from the applicable attendance policy's published
+        // version (org code chain → tenant default), not the legacy org OT flag.
+        var policySetting = settings.First(s => s.Key == "attendancePolicy");
+        var policyCode = policySetting.Value as string;
+        var policy = policyCode is not null
+            ? await db.AttendancePolicies.AsNoTracking().FirstOrDefaultAsync(x => x.Code == policyCode && x.IsActive, ct)
+            : null;
+        policy ??= await db.AttendancePolicies.AsNoTracking().FirstOrDefaultAsync(x => x.IsDefault && x.IsActive, ct);
+        var pv = policy is null ? null : await db.PolicyVersions.AsNoTracking()
+            .Where(v => v.PolicyId == policy.Id && v.Status != AttendanceVersionStatuses.Draft
+                && v.EffectiveFrom <= Today && (v.EffectiveTo == null || v.EffectiveTo >= Today))
+            .OrderByDescending(v => v.Status == AttendanceVersionStatuses.Published)
+            .ThenByDescending(v => v.EffectiveFrom).FirstOrDefaultAsync(ct);
+        var policyFromOrg = policy is not null && policy.Code == policyCode;
+        settings.Add(new EffectiveSettingDto("overtimeAllowed", "Overtime allowed (policy)",
+            pv is null ? null : AttendanceRulesV1.Parse(pv.RulesJson)?.Overtime.Enabled,
+            policy is null ? "not_set" : policyFromOrg ? policySetting.Source : "tenant-default",
+            policy?.Id, policy?.Code, policyFromOrg && policySetting.IsOverride));
 
         return new EffectiveConfigDto(level, id, settings);
     }
