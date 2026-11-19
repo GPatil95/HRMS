@@ -878,7 +878,8 @@ public sealed partial class OrgMastersService(ITenantDbContext db, FileService f
         if (shiftSetting.Value is string shiftRef)
         {
             var shift = await db.Shifts.AsNoTracking()
-                .FirstOrDefaultAsync(s => s.IsActive && (s.Code == shiftRef || s.Name == shiftRef), ct);
+                .Where(s => s.IsActive && (s.Code == shiftRef || s.Name == shiftRef))
+                .OrderByDescending(s => s.Code == shiftRef).FirstOrDefaultAsync(ct);
             var sv = shift is null ? null : await db.ShiftVersions.AsNoTracking()
                 .Where(v => v.ShiftId == shift.Id && v.Status != AttendanceVersionStatuses.Draft
                     && v.EffectiveFrom <= Today && (v.EffectiveTo == null || v.EffectiveTo >= Today))

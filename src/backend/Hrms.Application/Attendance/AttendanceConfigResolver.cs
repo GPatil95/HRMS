@@ -101,7 +101,8 @@ public sealed class AttendanceConfigResolver(ITenantDbContext db)
             if (defaultCode is not null)
             {
                 shift = await db.Shifts.AsNoTracking()
-                    .FirstOrDefaultAsync(s => s.IsActive && (s.Code == defaultCode || s.Name == defaultCode), ct);
+                    .Where(s => s.IsActive && (s.Code == defaultCode || s.Name == defaultCode))
+                    .OrderByDescending(s => s.Code == defaultCode).FirstOrDefaultAsync(ct);
                 if (shift is not null) shiftSource = "org-default";
             }
         }

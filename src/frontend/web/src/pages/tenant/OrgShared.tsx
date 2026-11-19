@@ -198,7 +198,9 @@ export function ShiftField({ form, setForm, errors, disabled }: {
   // The resolver ignores inactive shifts: offer only active ones. A stored value that
   // doesn't resolve (unknown code, or an inactive shift) stays visible via a labeled
   // fallback so the select never renders blank.
-  const resolved = list.find((s) => s.code === value || s.name === value)
+  // Code wins over name — a stored code must display its own shift even when another
+  // shift happens to have that string as its name.
+  const resolved = list.find((s) => s.code === value) ?? list.find((s) => s.name === value)
   const displayValue = resolved?.code ?? value
   const options = list.filter((s) => s.isActive).map((s) => ({ value: s.code, label: `${s.name} (${s.code})` }))
   if (displayValue && !options.some((o) => o.value === displayValue)) {
