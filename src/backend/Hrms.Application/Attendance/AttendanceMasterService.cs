@@ -224,7 +224,14 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
             return Error.Conflict("calendar.default_exists", "A default calendar already exists — unset it first.");
         var cal = new WorkCalendar { Code = code, Name = input.Name.Trim(), Year = input.Year, IsDefault = input.IsDefault, IsActive = input.IsActive };
         db.WorkCalendars.Add(cal);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (TryMapUniqueViolation(ex, out var conflict))
+        {
+            return conflict!;
+        }
         return cal.ToDto(0);
     }
 
@@ -242,7 +249,14 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
         cal.Year = input.Year;
         cal.IsDefault = input.IsDefault;
         cal.IsActive = input.IsActive;
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (TryMapUniqueViolation(ex, out var conflict))
+        {
+            return conflict!;
+        }
         return Result.Success();
     }
 
@@ -323,7 +337,14 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
             return Error.Conflict("policy.default_exists", "A default policy already exists — unset it first.");
         var policy = new AttendancePolicy { Code = code, Name = input.Name.Trim(), IsDefault = input.IsDefault, IsActive = input.IsActive };
         db.AttendancePolicies.Add(policy);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (TryMapUniqueViolation(ex, out var conflict))
+        {
+            return conflict!;
+        }
         return policy.ToDto(0, null);
     }
 
@@ -340,7 +361,14 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
         policy.Name = input.Name.Trim();
         policy.IsDefault = input.IsDefault;
         policy.IsActive = input.IsActive;
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (TryMapUniqueViolation(ex, out var conflict))
+        {
+            return conflict!;
+        }
         return Result.Success();
     }
 
@@ -660,5 +688,28 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
     {
         var scope = await scopes.ResolveAsync(Modules.AttendancePermissions.AssignmentsManage, ct);
         return await scopes.ApplyEmployeeScope(db.Employees.Where(e => e.Id == employeeId), e => e.Id, scope).AnyAsync(ct);
+    }
+
+    // Postgres raises 23505 when the pre-check loses a concurrent race (e.g. two requests
+    // inserting is_default=true rows past the AnyAsync guard). Application has no Npgsql
+    // reference, so the constraint is identified from the provider message text.
+    private static bool TryMapUniqueViolation(DbUpdateException ex, out Error? conflict)
+    {
+        var msg = ex.InnerException?.Message;
+        conflict = msg is not null && msg.Contains("23505", StringComparison.Ordinal)
+            ? msg switch
+            {
+                var m when m.Contains("ix_attendance_policies_is_default", StringComparison.Ordinal)
+                    => Error.Conflict("policy.default_exists", "A default policy already exists — unset it first."),
+                var m when m.Contains("ix_work_calendars_is_default", StringComparison.Ordinal)
+                    => Error.Conflict("calendar.default_exists", "A default calendar already exists — unset it first."),
+                var m when m.Contains("ix_attendance_policies_code", StringComparison.Ordinal)
+                    => Error.Conflict("policy.duplicate_code", "A policy with this code already exists."),
+                var m when m.Contains("ix_work_calendars_code", StringComparison.Ordinal)
+                    => Error.Conflict("calendar.duplicate_code", "A calendar with this code already exists."),
+                _ => null,
+            }
+            : null;
+        return conflict is not null;
     }
 }

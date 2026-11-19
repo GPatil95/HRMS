@@ -748,7 +748,7 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
         {
             e.ToTable("work_calendars", "att");
             e.HasIndex(x => x.Code).IsUnique();
-            e.HasIndex(x => x.IsDefault).HasFilter("is_default");
+            e.HasIndex(x => x.IsDefault).IsUnique().HasFilter("is_default");
             e.Property(x => x.Code).HasMaxLength(64);
             e.Property(x => x.Name).HasMaxLength(160);
         });
@@ -766,6 +766,7 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
         {
             e.ToTable("attendance_policies", "att");
             e.HasIndex(x => x.Code).IsUnique();
+            e.HasIndex(x => x.IsDefault).IsUnique().HasFilter("is_default");
             e.Property(x => x.Code).HasMaxLength(64);
             e.Property(x => x.Name).HasMaxLength(160);
         });

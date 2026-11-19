@@ -28,13 +28,18 @@ M3 design (Rev 3). No punch processing, no calculation engine, no regularization
   Config Resolver tabs; menu gated by `attendance` module entitlement + permissions.
 - **Infra**: `att` added to tenant grant schema list (`PostgresTenantDatabaseProvisioner.Schemas`)
   — required for the app role to access the new schema; additive only.
+- **Default uniqueness (hardening, review follow-up)**: Postgres partial unique indexes
+  `UNIQUE (is_default) WHERE is_default` on `att.attendance_policies` and
+  `att.work_calendars` (migration `20261119055553_AttendanceDefaultIndexes`, generated,
+  not applied) backstop the service-level `default_exists` checks against concurrent
+  creates; provider unique violations (23505) are translated to HTTP 409.
 
 ## Test results
 
 | Suite | Result |
 |---|---|
 | Unit (`Hrms.UnitTests`) | **33/33 pass** (7 new `AttendanceRulesTests`) |
-| API (`Hrms.ApiTests`, Testcontainers) | **136/136 pass** (11 new `AttendanceMastersTests`) |
+| API (`Hrms.ApiTests`, Testcontainers) | **138/138 pass** (13 `AttendanceMastersTests`) |
 | Frontend `tsc -b` | 0 errors |
 | Frontend ESLint | 0 errors (4 pre-existing warnings in unrelated files) |
 | Frontend `pnpm build` | success (2m57s) |
@@ -57,6 +62,10 @@ validation; absent≤half-day threshold; `ParseValidated` bad-JSON/schema/valid 
 - `EntitlementOffDeniesModule` — module disabled → 403; enabled → 200.
 - `CrossTenantWritesReturnNotFound` — globex cannot read/update acme's shift (404).
 - `AuditEntriesWrittenAndDataStaysInTenantDb` — `Shift` create audited; row present in acme DB, absent in globex DB.
+- `DefaultPolicyUniqueSequentiallyAndConcurrently` — second default on create → 409;
+  update-to-default on another policy → 409; two parallel default creates → exactly one
+  201 + one 409 (unique index + 23505→409 translation).
+- `DefaultCalendarUniqueSequentiallyAndConcurrently` — same coverage for `work_calendars`.
 
 ## Issues found and fixed during testing
 
@@ -71,9 +80,17 @@ validation; absent≤half-day threshold; `ParseValidated` bad-JSON/schema/valid 
 ## Not covered / deferred
 
 - Migration application to devtest (1009) — needs separate approval (backup → dry-run → apply → verify).
-- `shift_based` weekly-off resolution path and `RotationRule` boundary dates are implemented
-  in the resolver but covered only indirectly (existing `WeeklyOffRules` is exercised through
-  the `fixed` pattern); dedicated rotation cases land with M3.2 punch/day work.
+- **M3.2 requirement (explicit)**: `shift_based` weekly-off resolution and `RotationRule`
+  (rotating pattern, Nth-weekday, cycle offsets, boundary dates) are implemented in the
+  resolver but **not fully tested in M3.1** — covered only indirectly (`fixed` branch
+  pattern + manual roster offs). Dedicated cases are required work for M3.2.
+- **Future hardening (recorded, not done)**: employee-referencing FKs
+  (`shift_assignments`, `policy_assignments`, `rosters`) use `ON DELETE CASCADE`.
+  Employees cannot be hard-deleted through the app today, so it is unreachable; if
+  hard-delete is ever introduced, switch these to `ON DELETE RESTRICT`.
+- `UpdateCalendarAsync`/`UpdatePolicyAsync` retain the app-level `default_exists`
+  pre-check (better UX + scoped error code); the DB unique index is the backstop for
+  races — both layers return 409.
 - Frontend e2e needs your authenticated devtest session.
 
 ## Boundaries kept

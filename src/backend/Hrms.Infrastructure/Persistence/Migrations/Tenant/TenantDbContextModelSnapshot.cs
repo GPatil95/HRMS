@@ -502,6 +502,11 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .IsUnique()
                         .HasDatabaseName("ix_attendance_policies_code");
 
+                    b.HasIndex("IsDefault")
+                        .IsUnique()
+                        .HasDatabaseName("ix_attendance_policies_is_default")
+                        .HasFilter("is_default");
+
                     b.ToTable("attendance_policies", "att");
                 });
 
@@ -4305,9 +4310,9 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasColumnName("rules_json");
 
                     b.Property<string>("Status")
+                        .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(20)
-                        .IsConcurrencyToken()
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
 
@@ -4858,9 +4863,9 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasColumnName("start_time");
 
                     b.Property<string>("Status")
+                        .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(20)
-                        .IsConcurrencyToken()
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
 
@@ -5366,6 +5371,7 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasDatabaseName("ix_work_calendars_code");
 
                     b.HasIndex("IsDefault")
+                        .IsUnique()
                         .HasDatabaseName("ix_work_calendars_is_default")
                         .HasFilter("is_default");
 

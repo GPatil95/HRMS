@@ -367,4 +367,72 @@ public sealed class AttendanceMastersTests(HrmsFixture f)
         var globexDb = await f.TenantDatabaseAsync("globex");
         (await f.ScalarAsync<long>(globexDb, "select count(*) from att.shifts where id = @i", ("i", (object)shiftId))).ShouldBe(0);
     }
+
+    [Fact]
+    public async Task DefaultPolicyUniqueSequentiallyAndConcurrently()
+    {
+        await EnableAsync(f.GlobexId);
+        using var admin = await f.GlobexAdminAsync();
+        object Policy(string suffix, bool def) => new
+        {
+            code = TestData.Unique("POL") + suffix, name = "Policy " + suffix, isDefault = def, isActive = true,
+        };
+
+        var first = await admin.Http.PostAsJsonAsync("/api/v1/attendance/policies", Policy("A", true));
+        first.StatusCode.ShouldBe(HttpStatusCode.OK, await first.Content.ReadAsStringAsync());
+        var firstId = (await first.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        // Sequential duplicate on create and on update are both rejected.
+        (await admin.Http.PostAsJsonAsync("/api/v1/attendance/policies", Policy("B", true)))
+            .StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        var plain = await admin.Http.PostAsJsonAsync("/api/v1/attendance/policies", Policy("C", false));
+        plain.StatusCode.ShouldBe(HttpStatusCode.OK, await plain.Content.ReadAsStringAsync());
+        var plainId = (await plain.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        (await admin.Http.PutAsJsonAsync($"/api/v1/attendance/policies/{plainId}", Policy("C", true)))
+            .StatusCode.ShouldBe(HttpStatusCode.Conflict);
+
+        // Concurrent creates: exactly one wins, the loser is a clean 409 (not a 500
+        // from the partial unique index on is_default).
+        var r = await Task.WhenAll(
+            admin.Http.PostAsJsonAsync("/api/v1/attendance/policies", Policy("X", true)),
+            admin.Http.PostAsJsonAsync("/api/v1/attendance/policies", Policy("Y", true)));
+        r.Count(x => x.StatusCode == HttpStatusCode.Conflict).ShouldBe(2); // firstId already holds the default
+        (await admin.Http.PutAsJsonAsync($"/api/v1/attendance/policies/{firstId}", Policy("A", false)))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var r2 = await Task.WhenAll(
+            admin.Http.PostAsJsonAsync("/api/v1/attendance/policies", Policy("P", true)),
+            admin.Http.PostAsJsonAsync("/api/v1/attendance/policies", Policy("Q", true)));
+        r2.Count(x => x.StatusCode == HttpStatusCode.OK).ShouldBe(1);
+        r2.Count(x => x.StatusCode == HttpStatusCode.Conflict).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task DefaultCalendarUniqueSequentiallyAndConcurrently()
+    {
+        await EnableAsync(f.GlobexId);
+        using var admin = await f.GlobexAdminAsync();
+        object Calendar(bool def) => new
+        {
+            code = TestData.Unique("CAL"), name = "Cal", year = (int?)null, isDefault = def, isActive = true,
+        };
+
+        var first = await admin.Http.PostAsJsonAsync("/api/v1/attendance/calendars", Calendar(true));
+        first.StatusCode.ShouldBe(HttpStatusCode.OK, await first.Content.ReadAsStringAsync());
+        var firstId = (await first.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        (await admin.Http.PostAsJsonAsync("/api/v1/attendance/calendars", Calendar(true)))
+            .StatusCode.ShouldBe(HttpStatusCode.Conflict);
+
+        // Concurrent creates while no default exists: exactly one wins, loser gets 409.
+        var winner = await admin.Http.PutAsJsonAsync($"/api/v1/attendance/calendars/{firstId}", new
+        {
+            code = TestData.Unique("CAL"), name = "Cal", year = (int?)null, isDefault = false, isActive = true,
+        });
+        winner.StatusCode.ShouldBe(HttpStatusCode.NoContent, await winner.Content.ReadAsStringAsync());
+        var r = await Task.WhenAll(
+            admin.Http.PostAsJsonAsync("/api/v1/attendance/calendars", Calendar(true)),
+            admin.Http.PostAsJsonAsync("/api/v1/attendance/calendars", Calendar(true)));
+        r.Count(x => x.StatusCode == HttpStatusCode.OK).ShouldBe(1);
+        r.Count(x => x.StatusCode == HttpStatusCode.Conflict).ShouldBe(1);
+    }
 }
