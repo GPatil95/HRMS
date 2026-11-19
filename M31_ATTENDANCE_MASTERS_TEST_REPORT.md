@@ -41,7 +41,7 @@ M3 design (Rev 3). No punch processing, no calculation engine, no regularization
 | Suite | Result |
 |---|---|
 | Unit (`Hrms.UnitTests`) | **33/33 pass** (7 new `AttendanceRulesTests`) |
-| API (`Hrms.ApiTests`, Testcontainers) | **138/138 pass** (13 `AttendanceMastersTests`) |
+| API (`Hrms.ApiTests`, Testcontainers) | **139/139 pass** (14 `AttendanceMastersTests` incl. `EffectiveConfigUsesAttendanceMasters` in `OrgMastersTests`) |
 | Frontend `tsc -b` | 0 errors |
 | Frontend ESLint | 0 errors (4 pre-existing warnings in unrelated files) |
 | Frontend `pnpm build` | success (2m57s) |
@@ -83,7 +83,10 @@ validation; absent≤half-day threshold; `ParseValidated` bad-JSON/schema/valid 
 
 ## Not covered / deferred
 
-- Migration application to devtest (1009) — needs separate approval (backup → dry-run → apply → verify).
+- Devtest (1009): both migrations (`AttendanceMasters`, `AttendanceDefaultIndexes`) were
+  applied on 2026-11-19 with explicit user approval (backup → apply → verify: `att`
+  schema, all 9 tables, both unique filtered `is_default` indexes; grants + permission
+  seeds + module entitlement completed). **No other tenant database was modified.**
 - **M3.2 requirement (explicit)**: `shift_based` weekly-off resolution and `RotationRule`
   (rotating pattern, Nth-weekday, cycle offsets, boundary dates) are implemented in the
   resolver but **not fully tested in M3.1** — covered only indirectly (`fixed` branch
