@@ -382,14 +382,19 @@ public sealed class AttendanceMastersTests(HrmsFixture f)
         first.StatusCode.ShouldBe(HttpStatusCode.OK, await first.Content.ReadAsStringAsync());
         var firstId = (await first.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
 
-        // Sequential duplicate on create and on update are both rejected.
-        (await admin.Http.PostAsJsonAsync("/api/v1/attendance/policies", Policy("B", true)))
-            .StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        // Sequential duplicate on create and on update are both rejected with the
+        // specific error code.
+        var dup = await admin.Http.PostAsJsonAsync("/api/v1/attendance/policies", Policy("B", true));
+        dup.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await dup.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+            .ShouldBe("policy.default_exists");
         var plain = await admin.Http.PostAsJsonAsync("/api/v1/attendance/policies", Policy("C", false));
         plain.StatusCode.ShouldBe(HttpStatusCode.OK, await plain.Content.ReadAsStringAsync());
         var plainId = (await plain.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
-        (await admin.Http.PutAsJsonAsync($"/api/v1/attendance/policies/{plainId}", Policy("C", true)))
-            .StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        var dupUpdate = await admin.Http.PutAsJsonAsync($"/api/v1/attendance/policies/{plainId}", Policy("C", true));
+        dupUpdate.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await dupUpdate.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+            .ShouldBe("policy.default_exists");
 
         // Concurrent creates: exactly one wins, the loser is a clean 409 (not a 500
         // from the partial unique index on is_default).
@@ -397,13 +402,18 @@ public sealed class AttendanceMastersTests(HrmsFixture f)
             admin.Http.PostAsJsonAsync("/api/v1/attendance/policies", Policy("X", true)),
             admin.Http.PostAsJsonAsync("/api/v1/attendance/policies", Policy("Y", true)));
         r.Count(x => x.StatusCode == HttpStatusCode.Conflict).ShouldBe(2); // firstId already holds the default
+        foreach (var res in r)
+            (await res.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+                .ShouldBe("policy.default_exists");
         (await admin.Http.PutAsJsonAsync($"/api/v1/attendance/policies/{firstId}", Policy("A", false)))
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
         var r2 = await Task.WhenAll(
             admin.Http.PostAsJsonAsync("/api/v1/attendance/policies", Policy("P", true)),
             admin.Http.PostAsJsonAsync("/api/v1/attendance/policies", Policy("Q", true)));
         r2.Count(x => x.StatusCode == HttpStatusCode.OK).ShouldBe(1);
-        r2.Count(x => x.StatusCode == HttpStatusCode.Conflict).ShouldBe(1);
+        var loser = r2.Single(x => x.StatusCode == HttpStatusCode.Conflict);
+        (await loser.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+            .ShouldBe("policy.default_exists");
     }
 
     [Fact]
@@ -420,8 +430,10 @@ public sealed class AttendanceMastersTests(HrmsFixture f)
         first.StatusCode.ShouldBe(HttpStatusCode.OK, await first.Content.ReadAsStringAsync());
         var firstId = (await first.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
 
-        (await admin.Http.PostAsJsonAsync("/api/v1/attendance/calendars", Calendar(true)))
-            .StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        var dup = await admin.Http.PostAsJsonAsync("/api/v1/attendance/calendars", Calendar(true));
+        dup.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await dup.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+            .ShouldBe("calendar.default_exists");
 
         // Concurrent creates while no default exists: exactly one wins, loser gets 409.
         var winner = await admin.Http.PutAsJsonAsync($"/api/v1/attendance/calendars/{firstId}", new
@@ -433,6 +445,8 @@ public sealed class AttendanceMastersTests(HrmsFixture f)
             admin.Http.PostAsJsonAsync("/api/v1/attendance/calendars", Calendar(true)),
             admin.Http.PostAsJsonAsync("/api/v1/attendance/calendars", Calendar(true)));
         r.Count(x => x.StatusCode == HttpStatusCode.OK).ShouldBe(1);
-        r.Count(x => x.StatusCode == HttpStatusCode.Conflict).ShouldBe(1);
+        var loser = r.Single(x => x.StatusCode == HttpStatusCode.Conflict);
+        (await loser.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+            .ShouldBe("calendar.default_exists");
     }
 }

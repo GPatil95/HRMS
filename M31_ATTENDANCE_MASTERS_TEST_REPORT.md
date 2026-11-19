@@ -32,7 +32,9 @@ M3 design (Rev 3). No punch processing, no calculation engine, no regularization
   `UNIQUE (is_default) WHERE is_default` on `att.attendance_policies` and
   `att.work_calendars` (migration `20261119055553_AttendanceDefaultIndexes`, generated,
   not applied) backstop the service-level `default_exists` checks against concurrent
-  creates; provider unique violations (23505) are translated to HTTP 409.
+  creates; provider unique violations are translated to HTTP 409 via typed
+  `PostgresException.SqlState`/`ConstraintName` metadata (23505 → `default_exists` /
+  `duplicate_code` per violated index).
 
 ## Test results
 
@@ -62,10 +64,12 @@ validation; absent≤half-day threshold; `ParseValidated` bad-JSON/schema/valid 
 - `EntitlementOffDeniesModule` — module disabled → 403; enabled → 200.
 - `CrossTenantWritesReturnNotFound` — globex cannot read/update acme's shift (404).
 - `AuditEntriesWrittenAndDataStaysInTenantDb` — `Shift` create audited; row present in acme DB, absent in globex DB.
-- `DefaultPolicyUniqueSequentiallyAndConcurrently` — second default on create → 409;
-  update-to-default on another policy → 409; two parallel default creates → exactly one
-  201 + one 409 (unique index + 23505→409 translation).
-- `DefaultCalendarUniqueSequentiallyAndConcurrently` — same coverage for `work_calendars`.
+- `DefaultPolicyUniqueSequentiallyAndConcurrently` — second default on create → 409
+  `policy.default_exists`; update-to-default → 409 same code; parallel default creates
+  → exactly one 201 + one 409 `policy.default_exists` (unique index + 23505→409
+  translation verified on the raced loser).
+- `DefaultCalendarUniqueSequentiallyAndConcurrently` — same coverage for
+  `work_calendars` (`calendar.default_exists`).
 
 ## Issues found and fixed during testing
 

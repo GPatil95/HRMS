@@ -4,6 +4,7 @@ using Hrms.Domain.Tenant;
 using Hrms.Shared.Primitives;
 using Hrms.Shared.Results;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Hrms.Application.Attendance;
 
@@ -691,21 +692,20 @@ public sealed class AttendanceMasterService(ITenantDbContext db, IClock clock, I
     }
 
     // Postgres raises 23505 when the pre-check loses a concurrent race (e.g. two requests
-    // inserting is_default=true rows past the AnyAsync guard). Application has no Npgsql
-    // reference, so the constraint is identified from the provider message text.
+    // inserting is_default=true rows past the AnyAsync guard); map the violating
+    // constraint to the matching 409 error code.
     private static bool TryMapUniqueViolation(DbUpdateException ex, out Error? conflict)
     {
-        var msg = ex.InnerException?.Message;
-        conflict = msg is not null && msg.Contains("23505", StringComparison.Ordinal)
-            ? msg switch
+        conflict = ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } pg
+            ? pg.ConstraintName switch
             {
-                var m when m.Contains("ix_attendance_policies_is_default", StringComparison.Ordinal)
+                "ix_attendance_policies_is_default"
                     => Error.Conflict("policy.default_exists", "A default policy already exists — unset it first."),
-                var m when m.Contains("ix_work_calendars_is_default", StringComparison.Ordinal)
+                "ix_work_calendars_is_default"
                     => Error.Conflict("calendar.default_exists", "A default calendar already exists — unset it first."),
-                var m when m.Contains("ix_attendance_policies_code", StringComparison.Ordinal)
+                "ix_attendance_policies_code"
                     => Error.Conflict("policy.duplicate_code", "A policy with this code already exists."),
-                var m when m.Contains("ix_work_calendars_code", StringComparison.Ordinal)
+                "ix_work_calendars_code"
                     => Error.Conflict("calendar.duplicate_code", "A calendar with this code already exists."),
                 _ => null,
             }
