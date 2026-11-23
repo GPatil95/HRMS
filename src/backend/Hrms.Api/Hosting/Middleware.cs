@@ -119,7 +119,10 @@ public sealed class AntiforgeryMiddleware(RequestDelegate next)
 {
     public async Task InvokeAsync(HttpContext ctx, IAntiforgery antiforgery)
     {
-        if (ctx.Request.Path.StartsWithSegments("/api") && !HttpMethods.IsGet(ctx.Request.Method) && !HttpMethods.IsHead(ctx.Request.Method) && !HttpMethods.IsOptions(ctx.Request.Method)
+        // Device-token calls carry no cookies, so double-submit CSRF is meaningless for them.
+        var isDeviceAuth = ctx.Request.Headers.Authorization.ToString()
+            .StartsWith("Device ", StringComparison.OrdinalIgnoreCase);
+        if (ctx.Request.Path.StartsWithSegments("/api") && !isDeviceAuth && !HttpMethods.IsGet(ctx.Request.Method) && !HttpMethods.IsHead(ctx.Request.Method) && !HttpMethods.IsOptions(ctx.Request.Method)
             && !await antiforgery.IsRequestValidAsync(ctx))
         {
             await TenantResolutionMiddleware.Problem(ctx, StatusCodes.Status400BadRequest, "csrf.invalid", "Missing or invalid CSRF token.");

@@ -24,6 +24,9 @@ public static class JobTypes
     public const string TenantProvisioning = "tenant.provision";
     public const string EmployeeLifecycleActivate = "employee.lifecycle.activate";
     public const string EmployeeLifecycleSweep = "employee.lifecycle.sweep";
+    public const string AttendanceDeviceMap = "attendance.device.map";
+    public const string AttendanceDeviceOfflineSweep = "attendance.devices.offline.sweep";
+    public const string AttendanceDeviceOfflineCheck = "attendance.devices.offline";
 }
 
 /// <summary>Declares a job handler's type and realm statically so the runner can resolve only the matching handler.</summary>

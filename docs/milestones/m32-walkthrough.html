@@ -1,0 +1,441 @@
+<div id="root"></div>
+<script type="text/jsx">
+const archNodes = [
+  { id: "org", title: "Organization", sub: "Company → Branch → Dept → Employee", group: "g1" },
+  { id: "masters", title: "Attendance Masters", sub: "Shifts · Policies · Calendars (versioned)", group: "g1" },
+  { id: "assign", title: "Assignments & Rosters", sub: "shift/policy binding per employee", group: "g1" },
+  { id: "resolver", title: "AttendanceConfigResolver", sub: "effective config per employee+date", group: "g1" },
+  { id: "devices", title: "att.devices", sub: "biometric terminals, tokens, branch link", group: "g2" },
+  { id: "map", title: "att.device_user_map", sub: "device badge code → employee", group: "g2" },
+  { id: "push", title: "Push / Self / Manual / CSV", sub: "4 punch sources", group: "g2" },
+  { id: "ingest", title: "PunchIngestService", sub: "dedup, mapping, batches", group: "g2" },
+  { id: "punches", title: "att.punches (append-only)", sub: "+ punch_voids + ingest_batches", group: "g2" },
+  { id: "engine", title: "Processing Engine", sub: "M3.3 — days, late, OT, payable", group: "g3" },
+];
+const archEdges = [
+  { from: "org", to: "resolver" },
+  { from: "masters", to: "resolver" },
+  { from: "assign", to: "resolver" },
+  { from: "devices", to: "map" },
+  { from: "push", to: "ingest" },
+  { from: "devices", to: "ingest" },
+  { from: "map", to: "ingest" },
+  { from: "ingest", to: "punches" },
+  { from: "punches", to: "engine", label: "reads raw events" },
+  { from: "resolver", to: "engine", label: "effective config" },
+];
+const archGroups = [
+  { id: "g1", label: "M3.1 — exists today (read-only for M3.2)" },
+  { id: "g2", label: "M3.2 — new (this plan)" },
+  { id: "g3", label: "M3.3+ — future, not built now" },
+];
+
+const erNodes = [
+  { id: "branches", title: "core.branches", sub: "existing" },
+  { id: "devices", title: "att.devices", sub: "token_hash, protocol, tz_mode" },
+  { id: "map", title: "att.device_user_map", sub: "badge code + effectivity" },
+  { id: "employees", title: "core.employees", sub: "existing" },
+  { id: "batches", title: "att.ingest_batches", sub: "counts + idempotency_key" },
+  { id: "punches", title: "att.punches", sub: "append-only, dedup_key UNIQUE" },
+  { id: "voids", title: "att.punch_voids", sub: "correction markers" },
+];
+const erEdges = [
+  { from: "branches", to: "devices", label: "located at" },
+  { from: "devices", to: "map", label: "1:N" },
+  { from: "map", to: "employees", label: "resolves" },
+  { from: "devices", to: "punches", label: "emits" },
+  { from: "batches", to: "punches", label: "1:N" },
+  { from: "employees", to: "punches", label: "nullable" },
+  { from: "punches", to: "voids", label: "1:0..1" },
+];
+
+const impactRows = [
+  ["Shift Master + Versions", "Yes (M3.1)", "No", "Read-only", "None", "Nothing changes; timings stay the single source"],
+  ["Shift Assignment + Roster", "Yes (M3.1)", "No", "Read-only", "None", "M3.2 stores raw punches; engine uses them later"],
+  ["Attendance Policy + Versions", "Yes (M3.1)", "No", "Read-only", "None", "Policy rules still govern nothing in M3.2 — no calculations"],
+  ["Work Calendar + Weekly Off", "Yes (M3.1)", "No", "Read-only", "None", "Resolver continues to resolve; untouched"],
+  ["Org-level defaults (Company/Branch/Dept)", "Yes (M3.1)", "No", "Read-only", "None", "Inheritance chain unchanged"],
+  ["Employees / Org structure", "Yes (M1/M2)", "No", "FK target", "None", "No schema or data change to core tables"],
+  ["Config Resolver", "Yes (M3.1)", "No", "Called by self-punch (geofence/policy)", "None", "Same service, no edits"],
+];
+
+const punchCols = [
+  ["id", "uuid PK", "row id"],
+  ["employee_id", "uuid NULL → core.employees", "NULL = not yet mapped; back-filled once"],
+  ["punched_at", "timestamptz", "canonical instant (UTC)"],
+  ["local_wall_time", "timestamp", "raw clock value as emitted — never recomputed"],
+  ["source", "text", "device | self | manual | import"],
+  ["direction", "text", "in | out | unknown"],
+  ["device_id", "uuid NULL → att.devices", "provenance"],
+  ["device_user_code", "text NULL", "badge code as received"],
+  ["ingest_batch_id", "uuid NULL → att.ingest_batches", "which push/import produced it"],
+  ["dedup_key", "text UNIQUE", "SHA-256(source, device, code, employee, second)"],
+  ["geo / ip / user_agent", "various", "self/manual provenance"],
+  ["note", "text", "mandatory for manual"],
+  ["created_at / created_by", "audit", "received timestamp — never updated"],
+];
+
+const deviceCols = [
+  ["code (UNIQUE)", "tenant-unique device code, e.g. BIO-MUM-01"],
+  ["branch_id → core.branches", "physical location; drives data scope"],
+  ["protocol", "push_api | pull_poll | file_import"],
+  ["timezone_mode / device_timezone", "utc | device_local (+ IANA tz)"],
+  ["token_hash (UNIQUE)", "SHA-256 of device bearer token"],
+  ["credential_ref", "future pull_poll secret reference"],
+  ["last_seen_at", "updated on each successful push"],
+  ["is_active", "kill switch"],
+];
+
+const mapCols = [
+  ["device_id → att.devices", "which device"],
+  ["device_user_code", "enrolled badge/fingerprint ID on the device"],
+  ["employee_id → core.employees", "RESTRICT delete"],
+  ["effective_from / effective_to", "date window; supports badge re-issue"],
+];
+
+const batchCols = [
+  ["source", "device | import | self | manual"],
+  ["idempotency_key (UNIQUE)", "device retry dedup / import dedup"],
+  ["received / accepted / duplicate / rejected", "tallies"],
+  ["status", "processing | completed | failed"],
+  ["error_summary", "first-N reject reasons (JSON)"],
+  ["file_id → files", "CSV payload via FileService"],
+];
+
+const voidCols = [
+  ["punch_id (UNIQUE) → att.punches", "one void per punch"],
+  ["reason", "mandatory"],
+  ["voided_by / voided_at", "audit"],
+];
+
+const samplePunches = [
+  ["p-1001", "EMP-001 Priya", "2026-11-20 03:32 UTC", "2026-11-20 09:02:14", "device", "in", "BIO-MUM-01", "102", "b-77"],
+  ["p-1002", "EMP-001 Priya", "2026-11-20 12:31 UTC", "2026-11-20 18:01:44", "device", "out", "BIO-MUM-01", "102", "b-78"],
+  ["p-1003", "EMP-002 Arjun", "2026-11-20 14:35 UTC", "2026-11-20 20:05:02", "device", "in", "BIO-PUN-01", "77", "b-81"],
+  ["p-1004", "EMP-002 Arjun", "2026-11-20 23:40 UTC", "2026-11-21 05:10:19", "device", "out", "BIO-PUN-01", "77", "b-81"],
+  ["p-1005", "NULL", "2026-11-20 03:40 UTC", "2026-11-20 09:10:00", "device", "in", "BIO-MUM-01", "999", "b-77"],
+];
+
+const riskRows = [
+  ["M1/M2 functionality", "No changes — additive att schema only, core tables untouched"],
+  ["Existing tenant DBs", "One new migration, approval-gated per tenant (backup → apply → verify); devtest 1009 first"],
+  ["Storage growth", "~1–2 KB/punch; ~500 employees × 4 punches/day ≈ 0.6 M rows/day ≈ 1 GB/yr/tenant — append-only + BRIN keeps it cheap"],
+  ["Performance", "BRIN on punched_at, indexes on employee/device/batch; dedup_key UNIQUE is the hot-path check"],
+  ["Isolation", "Device token bound to tenant host; scope enforcement on every viewer/manual API; cross-tenant token = 401"],
+  ["Timezone / overnight", "punched_at is UTC instant; local_wall_time preserved verbatim; overnight grouping is M3.3's problem"],
+  ["Retention / backup", "Punches ride existing per-tenant pg_dump backups; retention/archive policy deferred to M3.x capacity work"],
+  ["Audit", "Device create/rotate/map, manual punch, void, import batch → audit-sealed; pushes audited at batch level (volume)"],
+];
+
+const milestoneRows = [
+  ["M3.1", "Masters & configuration", "Shifts, policies, calendars, assignments, rosters, resolver", "Merged (PR #3)"],
+  ["M3.2", "Punch ingestion & raw records", "Devices, mapping, 4 ingestion sources, dedup, append-only store, viewer", "This plan"],
+  ["M3.3", "Processing engine", "attendance_days: pairing, late/early/OT/absent, payable days, calendar/shift application", "Future"],
+  ["M3.4", "Regularization & approval", "Missed-punch fixes, requests, approval workflows", "Future"],
+  ["M3.5", "Reports, locking, payroll", "Period lock, registers, payable days → payroll inputs", "Future"],
+];
+
+const deviceSplit = [
+  ["Device token auth (push endpoint)", "M3.2"],
+  ["Token rotation", "M3.2"],
+  ["Branch/company linkage (branch_id)", "M3.2"],
+  ["Employee-code mapping + back-fill", "M3.2"],
+  ["Offline sync via CSV import", "M3.2"],
+  ["Offline sweep notification (device silent)", "M3.2"],
+  ["Generic HTTP push contract doc", "M3.2"],
+  ["pull_poll scheduled polling", "Future (schema seam kept)"],
+  ["Vendor-native SDKs (ZKTeco/eSSL/Suprema)", "Future — gateway translates to push contract"],
+  ["Live device health dashboard", "Future"],
+];
+
+function Section({ n, title, children }) {
+  return (
+    <div className="mt-10">
+      <div className="text-lg font-semibold text-primary mb-3">{n}. {title}</div>
+      {children}
+    </div>
+  );
+}
+
+function P({ children }) {
+  return <p className="text-sm text-secondary leading-6 mb-3 max-w-[860px]">{children}</p>;
+}
+
+function SmallTable({ headers, rows, widths }) {
+  return (
+    <CardContent className="mb-4">
+      <Table>
+        <TableHeader>
+          <TableRow>{headers.map((h, i) => <TableHead key={i}>{h}</TableHead>)}</TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((r, i) => (
+            <TableRow key={i}>
+              {r.map((c, j) => <TableCell key={j} className="text-xs align-top">{c}</TableCell>)}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </CardContent>
+  );
+}
+
+function Report() {
+  return (
+    <PageLayout
+      title="M3.2 — Punch Ingestion & Raw Attendance Records"
+      subtitle="Design walkthrough: business workflow first, technical detail second. Planning only — nothing implemented or merged."
+      themeToggle
+    >
+      <BannerCard className="mb-6">
+        <Text size={13}>
+          In one sentence: M3.2 captures and safely stores every punch from every source —
+          nothing is calculated yet. The M3.1 configuration already decides <em>what should
+          happen</em>; M3.2 only records <em>what actually happened</em>, immutably, so the
+          future engine (M3.3) can compare the two.
+        </Text>
+      </BannerCard>
+
+      <Section n="1" title="Proposed architecture">
+        <P>
+          Three zones. Left: everything M3.1 already owns — the org tree, versioned masters,
+          assignments and the config resolver; M3.2 only <em>reads</em> these. Middle: the new
+          ingestion layer — devices, badge-code mapping, four punch sources funneling into one
+          ingest service and the append-only punch store. Right: the future engine that will
+          join raw punches to effective configuration.
+        </P>
+        <CardContent className="mb-4">
+          <Diagram nodes={archNodes} edges={archEdges} groups={archGroups} direction="TB" />
+        </CardContent>
+        <P>
+          Why this shape: configuration is versioned and already resolves "who works which
+          shift on which date." Raw punches are deliberately dumb events — no shift, no day, no
+          verdict — so ingestion never blocks on configuration and can never corrupt it.
+        </P>
+      </Section>
+
+      <Section n="2" title="Real-world workflow — two branches, two shifts">
+        <P>
+          Acme India has <b>Mumbai HQ</b> and <b>Pune</b>. Mumbai runs General 09:00–18:00,
+          Pune runs Night 20:00–05:00. Priya (EMP-001, Mumbai) works General; Arjun (EMP-002,
+          Pune) works Night. Devices: BIO-MUM-01 at Mumbai, BIO-PUN-01 at Pune.
+        </P>
+
+        <div className="text-sm font-semibold text-primary mt-5 mb-2">Step 1 — Shift assignment (already done in M3.1)</div>
+        <P>
+          HR publishes Shift GEN v1 (09:00–18:00) and NGT v1 (20:00–05:00+1d), then creates
+          shift assignments: Priya → GEN via employee assignment, Arjun → NGT via Pune
+          department default. The resolver can now answer "Priya on 2026-11-20: GEN 09:00–18:00."
+          M3.2 does not use this answer — it is ready for M3.3.
+        </P>
+
+        <div className="text-sm font-semibold text-primary mt-5 mb-2">Step 2 — Device identifies the employee</div>
+        <P>
+          Priya's fingerprint is enrolled on BIO-MUM-01 as badge <b>"102"</b>. HR records this
+          once in the mapping screen: device BIO-MUM-01, badge 102 → employee EMP-001,
+          effective 2026-11-01 onward. The device itself never knows employee IDs — mapping is
+          HRMS-side, so a badge re-issue is a new mapping row, not a data fix.
+        </P>
+        <SmallTable headers={["device", "device_user_code", "employee", "effective_from"]} rows={[
+          ["BIO-MUM-01", "102", "EMP-001 Priya", "2026-11-01"],
+          ["BIO-PUN-01", "77", "EMP-002 Arjun", "2026-11-01"],
+        ]} />
+
+        <div className="text-sm font-semibold text-primary mt-5 mb-2">Step 3 — Device sends punch data</div>
+        <P>
+          Priya taps at 09:02:14. The device (or its on-prem gateway) POSTs to
+          /attendance/devices/BIO-MUM-01/punches with header Authorization: Device &lt;token&gt;
+          and Idempotency-Key: mum01-20261120-0007, body: one line per punch.
+        </P>
+        <CodeBlock code={'POST /api/v1/attendance/devices/BIO-MUM-01/punches\nHost: acme.hrms.example.com\nAuthorization: Device dev_tok_9f3...\nIdempotency-Key: mum01-20261120-0007\n\n[\n  { "device_user_code": "102", "timestamp": "2026-11-20 09:02:14", "direction": "in" },\n  { "device_user_code": "999", "timestamp": "2026-11-20 09:10:00", "direction": "in" }\n]'} />
+        <P>
+          The tenant is resolved from the host (existing middleware). The token is looked up as
+          its SHA-256 in that tenant's att.devices — so a valid Mumbai token replayed against
+          another tenant's URL is simply unknown → 401.
+        </P>
+        <CodeBlock code={'200 OK\n{ "batch_id": "b-77", "received": 2, "accepted": 2, "duplicate": 0, "rejected": 0, "rejections": [] }'} />
+
+        <div className="text-sm font-semibold text-primary mt-5 mb-2">Step 4 — Where raw punches live</div>
+        <P>
+          Each line becomes one att.punches row. Badge 102 resolves to EMP-001 via the map;
+          badge 999 has no mapping → stored with employee_id NULL, code preserved. Wall-clock
+          is kept verbatim and normalized to UTC using the device's timezone_mode.
+        </P>
+        <SmallTable headers={["id", "employee", "punched_at (UTC)", "local_wall_time", "source", "dir", "device", "badge", "batch"]} rows={samplePunches} />
+
+        <div className="text-sm font-semibold text-primary mt-5 mb-2">Step 5 — Duplicates</div>
+        <P>
+          Two independent nets. (a) Batch retry: the device loses the response and re-POSTs
+          with the same Idempotency-Key → server returns the stored batch result, zero new
+          rows. (b) Content dedup: the same punch arriving via a different path (re-imported
+          CSV) hits dedup_key UNIQUE → counted as duplicate, original kept.
+        </P>
+        <CodeBlock code={'// Same key, same payload → replay of stored result\n{ "batch_id": "b-77", "received": 2, "accepted": 0, "duplicate": 2, "rejected": 0 }\n\n// Same key, DIFFERENT payload → hard reject\n409 { "code": "ingest.idempotency_mismatch" }'} />
+
+        <div className="text-sm font-semibold text-primary mt-5 mb-2">Step 6 — Unmapped employee</div>
+        <P>
+          Badge 999's punch is stored, counted, and visible in the viewer under "unmapped" —
+          nothing is dropped. When HR later enrolls badge 999 → EMP-009, the
+          attendance.device.map job back-fills employee_id on every NULL punch for that
+          device+code inside the mapping's effectivity. This is the only UPDATE the
+          append-only trigger allows.
+        </P>
+
+        <div className="text-sm font-semibold text-primary mt-5 mb-2">Step 7 — Overnight shifts</div>
+        <P>
+          Arjun punches IN at 20:05 and OUT at 05:10 next morning. M3.2 stores exactly two
+          events with correct UTC instants — no attempt to decide which "day" they belong to.
+          Pairing them to a work day is deliberately M3.3 logic, because it needs the resolved
+          shift + policy rules.
+        </P>
+
+        <div className="text-sm font-semibold text-primary mt-5 mb-2">Step 8 — Which config applies</div>
+        <P>
+          At ingestion time: almost none — only the device's timezone_mode (to normalize
+          timestamps) and the user map (to attach an employee). Self-punches additionally
+          consult the resolver for geofence/policy checks. Everything else waits for M3.3:
+          the engine will call the same resolver per employee+date and compare planned
+          instants to actual punches.
+        </P>
+
+        <div className="text-sm font-semibold text-primary mt-5 mb-2">Step 9 — What the future engine does with it</div>
+        <P>
+          For Priya on 2026-11-20: resolver → GEN 09:00–18:00, grace 5m; raw store → in 09:02,
+          out 18:01 → engine writes one attendance_days row: present, worked 8h59m, no late.
+          For Arjun: NGT 20:00–05:00+1d → the 05:10 OUT pairs back to the night shift →
+          present, worked 9h05m. Every number traces to an immutable punch and a versioned
+          config row — audit-ready by construction.
+        </P>
+      </Section>
+
+      <Section n="3" title="Impact on existing M3.1 configuration">
+        <SmallTable headers={["Component", "Exists?", "Changed by M3.2?", "Used by M3.2?", "New config needed", "Notes"]} rows={impactRows} />
+        <P>
+          Net effect on employees and historical data: none. M3.2 adds five new tables in the
+          existing att schema; no existing row is read as anything but a lookup, and no
+          existing table gains or loses a column.
+        </P>
+      </Section>
+
+      <Section n="4" title="Proposed database changes">
+        <CardContent className="mb-4">
+          <Diagram nodes={erNodes} edges={erEdges} direction="LR" />
+        </CardContent>
+
+        <div className="text-sm font-semibold text-primary mt-5 mb-2">att.devices — one row per terminal</div>
+        <SmallTable headers={["Column", "Purpose"]} rows={deviceCols} />
+        <P>Mutable: name/branch/tz fields, is_active, token_hash (on rotate). One row per device — 10 branches × 3 devices is just 30 rows; code+token are tenant-unique so multi-branch/multi-device scales trivially.</P>
+
+        <div className="text-sm font-semibold text-primary mt-5 mb-2">att.device_user_map — badge → employee, with effectivity</div>
+        <SmallTable headers={["Column", "Purpose"]} rows={mapCols} />
+        <P>Exclusion constraint blocks overlapping windows for the same badge; past windows stay for history. Effectivity answers "who was badge 102 on that date?" — safe badge re-issue.</P>
+
+        <div className="text-sm font-semibold text-primary mt-5 mb-2">att.punches — append-only raw store (the core table)</div>
+        <SmallTable headers={["Column", "Type", "Purpose"]} rows={punchCols} />
+        <P>
+          Modifiability: nothing, ever, except a one-time employee_id NULL→value back-fill by
+          the map job — enforced by trigger, not convention. Deletes are physically rejected.
+          Corrections happen via punch_voids, preserving the original event.
+        </P>
+
+        <div className="text-sm font-semibold text-primary mt-5 mb-2">att.punch_voids — corrections without erasure</div>
+        <SmallTable headers={["Column", "Purpose"]} rows={voidCols} />
+        <P>Example: admin manually punches Priya at 09:00, then realizes she was on leave → void it with reason; row stays, viewers/engine skip voided rows. Re-void → 409.</P>
+
+        <div className="text-sm font-semibold text-primary mt-5 mb-2">att.ingest_batches — every ingestion attempt, auditable</div>
+        <SmallTable headers={["Column", "Purpose"]} rows={batchCols} />
+        <P>This is the retry/failure tracking backbone: counts per outcome, error_summary holds per-line reject reasons for imports, idempotency_key makes retries safe.</P>
+
+        <div className="text-sm font-semibold text-primary mt-5 mb-2">Append-only + dedup + idempotency in one example</div>
+        <CodeBlock code={'Device sends batch K: [A:102@09:02, B:999@09:10] → stored, accepted=2\nDevice retries batch K (same key)      → stored result replayed, accepted=0, duplicate=2\nCSV re-imports punch A next day        → dedup_key hit → duplicate=1, A untouched\nHR voids punch A (reason: device test) → punch_voids row; A stays in DB, excluded downstream\nAdmin tries UPDATE punches SET ...     → trigger rejects; audit trail intact'} />
+      </Section>
+
+      <Section n="5" title="Device integration">
+        <P>
+          Devices (or a thin on-prem gateway) talk plain HTTPS + bearer token — no vendor SDK
+          required on our side. Auth is per-device, per-tenant, and independently killable.
+        </P>
+        <SmallTable headers={["Capability", "Status"]} rows={deviceSplit} />
+        <P>
+          Token lifecycle: created once per device, shown plaintext exactly once in the UI,
+          stored as SHA-256. Rotate → new token, old hash rejected immediately. Offline sync:
+          the device exports its log as CSV → Punch Import binds it to device_id → same dedup
+          path, so a device that later comes online can re-push without double-recording.
+          Retries: network failure → device resends with the same Idempotency-Key; server
+          replays the stored batch result.
+        </P>
+      </Section>
+
+      <Section n="6" title="User interface — wireframes">
+        <P>All screens live under the existing Attendance area. HR Admin sees all tabs; HR Executive sees the punch viewer + import (scope-filtered); employees see My Punches.</P>
+        <div className="grid grid-cols-2 gap-4 max-w-[960px]">
+          <div>
+            <div className="text-xs font-semibold text-secondary mb-1">Device Master</div>
+            <CodeBlock code={'Attendance › Devices          [+ Add device]\n──────────────────────────────────────────\n Code        Branch   Protocol  Last seen   ●\n BIO-MUM-01  Mumbai   push_api  2 min ago   🟢\n BIO-PUN-01  Pune     push_api  4 h ago     🟡\n GATE-OLD-1  Mumbai   file_imp  9 d ago     ⚪\n──────────────────────────────────────────\n row → details · Rotate token · User map ·\n       Deactivate'} />
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-secondary mb-1">Device employee mapping</div>
+            <CodeBlock code={'BIO-MUM-01 › User map        [+ Add mapping]\n──────────────────────────────────────────\n Badge   Employee        Effective      \n 102     EMP-001 Priya   2026-11-01 → ∞ \n 999     — unassigned —  punches pending\n──────────────────────────────────────────\n warn chip: N unmapped punches awaiting\n map → runs back-fill job'} />
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-secondary mb-1">Raw punch viewer</div>
+            <CodeBlock code={'Attendance › Punches\n Filters: [range] [employee] [device] [source]\n          [direction] ☑unmapped ☐voided   [Apply]\n──────────────────────────────────────────\n Time (local)   Employee  Dir  Src   Device\n 09:02 20 Nov   Priya     IN   dev   MUM-01\n 18:01 20 Nov   Priya     OUT  dev   MUM-01\n 09:10 20 Nov   (999)     IN   dev   MUM-01 ⚠\n──────────────────────────────────────────\n row → drawer: UTC, wall clock, batch, geo,\n dedup key, void action (scoped)'} />
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-secondary mb-1">Punch import</div>
+            <CodeBlock code={'Attendance › Import\n 1. [Choose CSV]  device-export-1120.csv ✓\n 2. Bind device: [BIO-MUM-01 ▾]\n 3. Map columns: badge→col A, ts→col B,\n    dir→col C   tz: [device_local ▾]\n 4. [Import]  → batch b-92 queued\n──────────────────────────────────────────\n Result banner links to batch detail'} />
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-secondary mb-1">Import batch history</div>
+            <CodeBlock code={'Attendance › Imports\n──────────────────────────────────────────\n Batch  Source  Recv Acc Dup Rej  Status\n b-92   import   500 480  15  5   completed ⚠\n b-81   device    48  48   0  0   completed\n b-77   device    12  12   0  0   completed\n──────────────────────────────────────────\n ⚠ row → error_summary: per-line reasons\n   + re-import action (dedup-safe)'} />
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-secondary mb-1">Failed / unmapped punches</div>
+            <CodeBlock code={'Attendance › Punches (unmapped filter)\n──────────────────────────────────────────\n Badge  Device     Punches  Since\n 999    BIO-MUM-01   17     20 Nov\n──────────────────────────────────────────\n bulk action: [Map to employee…] → adds\n user-map row → job back-fills rows →\n count badge clears'} />
+          </div>
+        </div>
+      </Section>
+
+      <Section n="7" title="How the milestones fit together">
+        <SmallTable headers={["Milestone", "Name", "What it owns", "Status"]} rows={milestoneRows} />
+        <P>
+          End-to-end in one line each: a fingerprint tap becomes a punch row (M3.2) → paired
+          with Priya's resolved shift into an attendance_days row (M3.3) → exceptions fixed via
+          approved regularization (M3.4) → period locked, payable days feed payroll (M3.5).
+          The immutable raw store is the foundation: every later number can be re-derived and
+          audited back to an unchangeable event.
+        </P>
+      </Section>
+
+      <Section n="8" title="Risks and impact">
+        <SmallTable headers={["Area", "Assessment"]} rows={riskRows} />
+      </Section>
+
+      <Section n="9" title="Open design decisions for your approval">
+        <div className="space-y-2 max-w-[860px]">
+          {[
+            "CSV-only import (recommended for M3.2) vs adding an .xlsx parser dependency.",
+            "pull_poll: schema seam kept, poller not built (recommended) vs build now for a specific vendor.",
+            "Self-punch geofence: enforce at ingestion via resolver (recommended) vs always record and flag for M3.3.",
+            "Device push endpoint exposed publicly vs allowlist/VPN-only deployment note.",
+            "Idempotency-Key format: free-text (recommended) vs mandated device-seq scheme.",
+          ].map((d, i) => (
+            <CardContent key={i}>
+              <CardBody className="py-2.5">
+                <Text size={13}><b>D{i + 1}.</b> {d}</Text>
+              </CardBody>
+            </CardContent>
+          ))}
+        </div>
+      </Section>
+
+      <Footnote>
+        Sources: docs/milestones/M3-attendance-design.md (Rev 3) §2.2/E.2/E.4/E.5/E.9 and
+        committed M3.1 code at m3-attendance@1faf7c9. Design walkthrough only — no code,
+        migration, branch, or database change performed.
+      </Footnote>
+    </PageLayout>
+  );
+}
+render(<Report />);
+</script>

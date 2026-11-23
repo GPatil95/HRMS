@@ -217,6 +217,8 @@ public static class DependencyInjection
         s.AddScoped<SalaryService>();
         s.AddScoped<Hrms.Application.Attendance.AttendanceMasterService>();
         s.AddScoped<Hrms.Application.Attendance.AttendanceConfigResolver>();
+        s.AddScoped<Hrms.Application.Attendance.DeviceService>();
+        s.AddScoped<Hrms.Application.Attendance.PunchIngestService>();
         s.AddScoped<TenantAuditQueryService>();
         s.AddScoped<PlatformAuditQueryService>();
         s.AddHostedService<RecurringSweepWorker>();
