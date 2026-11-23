@@ -93,10 +93,11 @@ The editor shows the step grid. The **Scope** column is enabled only for
 ### 5.2 Stalled requests tab (`/workflow/definitions?tab=stalled`)
 
 Lists requests waiting for an administrator, with the stage that has no
-approver. **Resume** opens a dialog:
+approver. Only requests inside your `workflow.instances.manage` data scope
+appear. **Resume** opens a dialog:
 
 * **Assign to (optional)** — searchable list of active users who can act on
-  approvals. Leave it empty if you have fixed the cause (role assignment,
+  approvals (you can pick yourself). Leave it empty if you have fixed the cause (role assignment,
   reporting line, reactivated user); the engine re-resolves approvers.
 * **Comment** — recorded in the request history.
 
