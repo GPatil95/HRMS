@@ -61,6 +61,12 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
         var tz = ResolveZone(device.DeviceTimezone);
         if (!DateTime.TryParse(text, null, System.Globalization.DateTimeStyles.None, out var local))
             return Error.Validation("punch.timestamp", $"Unparseable timestamp '{text}'.");
+        if (local.Kind != DateTimeKind.Unspecified)
+        {
+            // Offset/Z-suffixed input: keep the absolute instant, project wall time into the device zone.
+            var shifted = TimeZoneInfo.ConvertTime(local, tz);
+            return (new DateTimeOffset(shifted, tz.GetUtcOffset(shifted)), DateTime.SpecifyKind(shifted, DateTimeKind.Unspecified));
+        }
         if (tz.IsAmbiguousTime(local))
         {
             var offsets = tz.GetAmbiguousTimeOffsets(local);

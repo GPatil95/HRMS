@@ -1,10 +1,10 @@
 # Attendance — Punch Ingestion & Raw Punch Records (M3.2)
 
-Version: 1.0 · Last updated: 2026-11-23 · Applies to: milestone M3.2 (PR #4, pending merge)
+Version: 1.1 · Last updated: 2026-11-23 · Applies to: milestone M3.2 (PR #4, pending merge)
 
-> Screenshots: **Status: PENDING** — live captures require the additive
-> `AttendanceRawPunches` migration on a demo tenant (approval requested). All
-> procedures below were verified against the running build and API tests.
+> Screenshots are real captures from the running application on demo tenant
+> `docsdemo` (seeded dummy data only). All procedures below were verified
+> against the running build and API tests.
 
 ## 1. Introduction
 
@@ -60,6 +60,13 @@ tenant-wide scope to view or void.
 
 ### 5.1 Devices (`/attendance/devices`)
 
+![Registered device list](images/m3.2-devices.png)
+
+*Captured: `docsdemo` — device `BIO-HQ-01` registered, `push_api` protocol,
+device-local timezone `Asia/Kolkata`, `active` status, last-seen updated by
+pushes. `+ Register device` (top right) starts registration; the two row icons
+open the user map and rotate the token.*
+
 | Field / control | Meaning |
 |---|---|
 | Code | Stable device identifier used in the push URL (`POST …/devices/{code}/punches`). Not editable after creation. |
@@ -77,6 +84,13 @@ a generated token shown once in a green banner.
 Tenant-wide punch ledger. Filters: employee, source (`device`, `import`,
 `manual`, `self`), device, mapped/unmapped, voided/active, date range.
 
+![Raw punch ledger](images/m3.2-punches-list.png)
+
+*Captured: `docsdemo` — 12 stored punches. Note `EMP001 — Priya Nair` rows from
+both `device` and `import` sources, the `manual` row for `EMP003 — Meera Iyer`,
+and the `unmapped: 77` row (badge code with no employee map). `Void` acts per
+row.*
+
 | Column | Meaning |
 |---|---|
 | Punched at (UTC) | Normalized instant — device wall time converted through the device timezone. |
@@ -93,7 +107,20 @@ Actions: **Manual punch** (top-right) and **Void** (per row, `attendance.punches
 Employee self-service: own punch list + **Punch in/out** button
 (`attendance.my.punch`) recording a self punch with the current time.
 
+![My punches — empty state](images/m3.2-my-punches-empty.png)
+
+*Captured: `docsdemo` admin account, which is not linked to an employee record —
+the page correctly shows the empty state with `Punch in` / `Punch out` buttons.
+An account without an employee link gets `422 punch.no_employee` on submit.*
+
 ### 5.4 Import Punches (`/attendance/import`)
+
+![CSV import form](images/m3.2-import-form.png)
+
+*Captured: `docsdemo` — ① `Choose CSV` uploads the file, ② `Device (optional)`
+assigns rows to a device so they deduplicate against its pushes, ③ the column
+pickers map CSV columns to badge / timestamp / direction / employee code, ④
+`Skip header row`, ⑤ `Idempotency key (optional)`, ⑥ `Import` commits the batch.*
 
 CSV import, two steps:
 
@@ -106,6 +133,13 @@ CSV import, two steps:
 accepted / duplicate / rejected rows.
 
 ### 5.5 Import History (`/attendance/imports`)
+
+![Import history](images/m3.2-import-history.png)
+
+*Captured: `docsdemo` — batch 1 (`device`, 7 received / 7 accepted) is the live
+device push; batch 2 (`import`, 5 received / 4 accepted / 1 duplicate) is the
+CSV import where one row deduplicated against a push from earlier (cross-channel
+dedup at work).*
 
 Every batch: source, file, counts (received / accepted / duplicates /
 rejected), status (`processing`, `completed`, `failed`) and per-row error

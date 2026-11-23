@@ -63,6 +63,24 @@ public sealed class PunchIngestTests
     }
 
     [Fact]
+    public void DeviceLocalHonoursExplicitOffsetAndProjectsWallTime()
+    {
+        // A device that sends an offset-qualified stamp keeps its absolute instant;
+        // the wall time is projected into the device timezone, not rejected.
+        var r = PunchIngestService.NormalizeTimestamp("2026-11-20T09:30:00+05:30",
+            Device(DeviceTimezoneModes.DeviceLocal, "Asia/Kolkata"));
+        r.IsSuccess.ShouldBeTrue();
+        r.Value.Instant.UtcDateTime.ShouldBe(new DateTime(2026, 11, 20, 4, 0, 0));
+        r.Value.WallTime.ShouldBe(new DateTime(2026, 11, 20, 9, 30, 0));
+        // An offset that disagrees with the device zone still yields the same instant.
+        var r2 = PunchIngestService.NormalizeTimestamp("2026-11-20T05:00:00+01:00",
+            Device(DeviceTimezoneModes.DeviceLocal, "Asia/Kolkata"));
+        r2.IsSuccess.ShouldBeTrue();
+        r2.Value.Instant.UtcDateTime.ShouldBe(new DateTime(2026, 11, 20, 4, 0, 0));
+        r2.Value.WallTime.ShouldBe(new DateTime(2026, 11, 20, 9, 30, 0));
+    }
+
+    [Fact]
     public void BadAndMissingTimestampsAreRejected()
     {
         PunchIngestService.NormalizeTimestamp(null, Device(DeviceTimezoneModes.Utc)).IsSuccess.ShouldBeFalse();
