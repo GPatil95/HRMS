@@ -51,7 +51,8 @@ public sealed class WorkflowEngine(
     IDataScopeService scopes,
     IEntitlementService entitlements,
     WorkflowDocumentTypeRegistry registry,
-    IWorkItemPublisher workItems) : IWorkflowEngine
+    IWorkItemPublisher workItems,
+    IPermissionService permissions) : IWorkflowEngine
 {
     private readonly List<NotifyCommand> pendingNotifications = [];
     private bool outboxWritten;
@@ -320,6 +321,10 @@ public sealed class WorkflowEngine(
         var canManage = action.Action == WorkflowActions.Escalate
                         && await access.CheckAsync(WorkflowModule.ModuleCode, WorkflowPermissions.InstancesManage, ct) is null;
 
+        // Resolved before the transaction: the permission cache runs its factory outside the execution strategy.
+        var targetCanAct = action.Action == WorkflowActions.Delegate && action.TargetUserId is { } delegateTo
+                           && await permissions.HasAsync(delegateTo, WorkflowPermissions.WorkItemsAct, ct);
+
         Guid instanceId = Guid.Empty;
         var result = await RunAsync(async () =>
         {
@@ -341,7 +346,8 @@ public sealed class WorkflowEngine(
             switch (action.Action)
             {
                 case WorkflowActions.Claim:
-                    var group = tasks.Where(t => t.DefinitionStepId == task.DefinitionStepId && t.StepOrder == task.StepOrder && t.Status == WorkflowTaskStatuses.Pending).ToList();
+                    var group = task.ApprovalMode == "all" ? [task]
+                        : tasks.Where(t => t.DefinitionStepId == task.DefinitionStepId && t.StepOrder == task.StepOrder && t.Status == WorkflowTaskStatuses.Pending).ToList();
                     foreach (var g in group) g.ClaimedByUserId = me;
                     Log(instance, task.Id, WorkflowActions.Claim, me, null, action.Comment, action.IdempotencyKey);
                     Audit(instance, WorkflowActions.Claim, new { taskId });
@@ -361,7 +367,7 @@ public sealed class WorkflowEngine(
                             Close(sib, WorkflowTaskStatuses.Superseded, null, null);
                             await workItems.CloseAsync(WorkItemTypes.Approval, sib.Id.ToString(), true, ct);
                         }
-                    if (StageComplete(tasks, task.StepOrder))
+                    if (StageComplete(tasks, task))
                     {
                         var steps = await LoadStepsAsync(instance.DefinitionId, ct);
                         if (!await ActivateStageAsync(instance, steps, tasks, task.StepOrder + 1, ct))
@@ -406,6 +412,8 @@ public sealed class WorkflowEngine(
                     if (target == instance.RequesterUserId)
                         return Error.Rule("workflow.self_approval", "A request cannot be delegated to its requester.");
                     if (!await IsActiveUserAsync(target, ct)) return Error.Validation("workflow.delegate_target", "Delegate must be an active user.");
+                    if (!targetCanAct)
+                        return Error.Validation("workflow.delegate_target", "Delegate cannot act on approvals.");
                     if (tasks.Any(t => t.Status == WorkflowTaskStatuses.Pending && t.AssigneeUserId == target && t.DefinitionStepId == task.DefinitionStepId && t.StepOrder == task.StepOrder))
                         return Error.Conflict("workflow.delegate_duplicate", "That user already holds this step.");
                     await ReassignAsync(instance, task, target, ct);
@@ -416,9 +424,9 @@ public sealed class WorkflowEngine(
                     var escalateTo = await ResolveEscalationTargetAsync(defStep, task, instance.RequesterUserId, ct);
                     if (escalateTo is null) return Error.Rule("workflow.no_escalation_target", "No escalation target could be resolved.");
                     var fromUser = task.AssigneeUserId;
+                    task.DueAt = defStep.SlaHours is { } h ? Now.AddHours(h) : null;
                     await ReassignAsync(instance, task, escalateTo.Value, ct);
                     task.EscalationLevel++;
-                    task.DueAt = defStep.SlaHours is { } h ? Now.AddHours(h) : null;
                     task.ReminderSentAt = null;
                     Log(instance, task.Id, WorkflowActions.Escalate, me, escalateTo, action.Comment, action.IdempotencyKey);
                     Audit(instance, WorkflowActions.Escalate, new { taskId, from = fromUser, to = escalateTo, auto = false });
@@ -500,9 +508,9 @@ public sealed class WorkflowEngine(
                 if (target is { } to)
                 {
                     var from = task.AssigneeUserId;
+                    task.DueAt = defStep.SlaHours is { } h ? Now.AddHours(h) : null;
                     await ReassignAsync(instance, task, to, ct);
                     task.EscalationLevel++;
-                    task.DueAt = defStep.SlaHours is { } h ? Now.AddHours(h) : null;
                     task.ReminderSentAt = null;
                     Log(instance, task.Id, WorkflowActions.Escalate, null, to, "Auto-escalated after SLA breach.", null);
                     Audit(instance, WorkflowActions.Escalate, new { taskId, from, to, auto = true });
@@ -560,7 +568,8 @@ public sealed class WorkflowEngine(
         else
         {
             var scope = await scopes.ResolveAsync(WorkflowPermissions.InstancesView, ct);
-            q = q.Where(i => i.SubjectEmployeeId == null).Concat(scopes.ApplyEmployeeScope(q.Where(i => i.SubjectEmployeeId != null), i => i.SubjectEmployeeId, scope));
+            var scoped = scopes.ApplyEmployeeScope(q.Where(i => i.SubjectEmployeeId != null), i => i.SubjectEmployeeId, scope);
+            q = scope.All ? q : scoped;
         }
         if (!string.IsNullOrWhiteSpace(query.Status)) q = q.Where(i => i.Status == query.Status);
         if (!string.IsNullOrWhiteSpace(query.DocumentType)) q = q.Where(i => i.DocumentType == query.DocumentType);
@@ -581,7 +590,9 @@ public sealed class WorkflowEngine(
         if (await db.WorkflowInstanceSteps.AsNoTracking().AnyAsync(t => t.InstanceId == instanceId && (t.AssigneeUserId == me || t.DelegatedFromUserId == me), ct))
             return true;
         if (await access.CheckAsync(WorkflowModule.ModuleCode, WorkflowPermissions.InstancesView, ct) is not null) return false;
-        return inst.SubjectEmployeeId is not { } emp || await scopes.CanAccessEmployeeAsync(WorkflowPermissions.InstancesView, emp, ct);
+        return inst.SubjectEmployeeId is { } emp
+            ? await scopes.CanAccessEmployeeAsync(WorkflowPermissions.InstancesView, emp, ct)
+            : (await scopes.ResolveAsync(WorkflowPermissions.InstancesView, ct)).All;
     }
 
     private async Task<Result<WorkflowInstanceDto>> LoadDtoAsync(Guid instanceId, CancellationToken ct)
@@ -612,9 +623,11 @@ public sealed class WorkflowEngine(
     private async Task<List<WorkflowDefinitionStep>> LoadStepsAsync(Guid definitionId, CancellationToken ct) =>
         await db.WorkflowDefinitionSteps.AsNoTracking().Where(s => s.DefinitionId == definitionId).OrderBy(s => s.StepOrder).ToListAsync(ct);
 
-    private static bool StageComplete(List<WorkflowInstanceStep> tasks, int order)
+    /// <summary>Tasks of one stage activation share <c>CreatedAt</c> (single SaveChanges), so earlier visits of a
+    /// reopened stage are ignored.</summary>
+    private static bool StageComplete(List<WorkflowInstanceStep> tasks, WorkflowInstanceStep current)
     {
-        var stage = tasks.Where(t => t.StepOrder == order && t.Status is not (WorkflowTaskStatuses.Cancelled or WorkflowTaskStatuses.SentBack)).ToList();
+        var stage = tasks.Where(t => t.StepOrder == current.StepOrder && t.CreatedAt == current.CreatedAt && t.Status is not (WorkflowTaskStatuses.Cancelled or WorkflowTaskStatuses.SentBack)).ToList();
         if (stage.Any(t => t.Status == WorkflowTaskStatuses.Pending && t.ApprovalMode == "all")) return false;
         return stage.GroupBy(t => t.DefinitionStepId).All(g =>
             g.First().ApprovalMode == "all"

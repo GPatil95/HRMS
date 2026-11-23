@@ -1,4 +1,6 @@
 using Hrms.Application.Abstractions;
+using Hrms.Application.Authorization;
+using Hrms.Application.Modules;
 using Hrms.Domain.Tenant;
 using Hrms.Shared.Primitives;
 using Hrms.Shared.Results;
@@ -29,7 +31,7 @@ public sealed record WorkflowDelegationInput(Guid DelegateUserId, DateOnly Valid
 public sealed record WorkflowDelegationDto(Guid Id, Guid DelegatorUserId, Guid DelegateUserId, string? DelegateName, DateOnly ValidFrom, DateOnly ValidTo, string? Reason, bool IsActive);
 
 /// <summary>Definition admin (draft → publish → immutable) and personal out-of-office delegations.</summary>
-public sealed class WorkflowDefinitionService(ITenantDbContext db, IClock clock, ICurrentUser user, WorkflowDocumentTypeRegistry registry)
+public sealed class WorkflowDefinitionService(ITenantDbContext db, IClock clock, ICurrentUser user, WorkflowDocumentTypeRegistry registry, IPermissionService permissions)
 {
     private DateOnly Today => DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
 
@@ -81,6 +83,7 @@ public sealed class WorkflowDefinitionService(ITenantDbContext db, IClock clock,
         db.WorkflowDefinitionSteps.RemoveRange(def.Steps);
         def.Steps = [];
         Apply(def, input);
+        db.WorkflowDefinitionSteps.AddRange(def.Steps);
         try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateConcurrencyException) { return Error.Conflict("workflow_definition.stale", "The definition was modified by someone else."); }
         return ToDto(def);
@@ -170,6 +173,8 @@ public sealed class WorkflowDefinitionService(ITenantDbContext db, IClock clock,
             return Error.Validation("workflow_delegation.window", "Choose a valid, non-past delegation window.");
         var target = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == input.DelegateUserId && u.Status == Domain.Common.UserStatus.Active, ct);
         if (target is null) return Error.Validation("workflow_delegation.target", "Delegate must be an active user.");
+        if (!await permissions.HasAsync(input.DelegateUserId, WorkflowPermissions.WorkItemsAct, ct))
+            return Error.Validation("workflow_delegation.target", "Delegate cannot act on approvals.");
         if (await db.WorkflowDelegations.AnyAsync(d => d.DelegatorUserId == me && d.IsActive && d.ValidFrom <= input.ValidTo && d.ValidTo >= input.ValidFrom, ct))
             return Error.Conflict("workflow_delegation.overlap", "You already have an active delegation in that window.");
         var d = new WorkflowDelegation { DelegatorUserId = me, DelegateUserId = input.DelegateUserId, ValidFrom = input.ValidFrom, ValidTo = input.ValidTo, Reason = input.Reason };

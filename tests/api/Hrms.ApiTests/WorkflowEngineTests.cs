@@ -361,6 +361,9 @@ public sealed class WorkflowEngineTests(HrmsFixture f)
 
         var v2 = await (await admin.Http.PostAsJsonAsync("/api/v1/workflow/definitions", Body("v2"))).Content.ReadFromJsonAsync<JsonElement>();
         v2.GetProperty("version").GetInt32().ShouldBe(2);
+        var edited = await admin.Http.PutAsJsonAsync($"/api/v1/workflow/definitions/{Id(v2)}", Body("v2-edit"));
+        edited.StatusCode.ShouldBe(HttpStatusCode.OK, await edited.Content.ReadAsStringAsync());
+        (await edited.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("name").GetString().ShouldBe("v2-edit");
         var tomorrow = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)).ToString("yyyy-MM-dd");
         (await admin.Http.PostAsJsonAsync($"/api/v1/workflow/definitions/{Id(v2)}/publish", new { effectiveFrom = tomorrow })).StatusCode.ShouldBe(HttpStatusCode.OK);
         var v1After = await admin.GetJsonAsync($"/api/v1/workflow/definitions/{Id(v1)}");
@@ -402,6 +405,12 @@ public sealed class WorkflowEngineTests(HrmsFixture f)
         {
             var inst = await StartAsync(w);
             var taskId = inst.GetProperty("tasks")[0].GetProperty("id").GetGuid();
+            // Delegates must be able to act on approvals.
+            (await w.Manager.Client.Http.PostAsJsonAsync($"/api/v1/workflow/tasks/{taskId}/actions", new { action = "delegate", targetUserId = noPerms.UserId }))
+                .StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+            // Module document types can only be started by their owning module.
+            (await w.Admin.Http.PostAsJsonAsync("/api/v1/workflow/instances", new { documentType = "leave.request", documentId = Guid.NewGuid().ToString(), title = "t" }))
+                .StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
             // A user with inbox-act but not the assignee cannot act on or view the instance.
             (await w.Other.Client.Http.PostAsJsonAsync($"/api/v1/workflow/tasks/{taskId}/actions", new { action = "approve" }))
                 .StatusCode.ShouldBe(HttpStatusCode.NotFound);

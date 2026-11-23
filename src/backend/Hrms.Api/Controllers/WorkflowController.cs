@@ -4,6 +4,7 @@ using Hrms.Api.Security;
 using Hrms.Application.Authorization;
 using Hrms.Application.Modules;
 using Hrms.Application.Workflow;
+using Hrms.Shared.Results;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Hrms.Api.Controllers;
@@ -56,8 +57,13 @@ public sealed class WorkflowController(WorkflowDefinitionService definitions, IW
     /// <summary>Starts a workflow. Modules normally call <see cref="IWorkflowEngine"/> in-process; this endpoint serves
     /// generic requests and integration testing.</summary>
     [HttpPost("instances"), RequirePermission(M, WorkflowPermissions.InstancesStart)]
-    public async Task<IActionResult> Start(StartWorkflowRequest request, CancellationToken ct) =>
-        (await engine.StartAsync(request, ct)).ToActionResult(i => Ok(i));
+    public async Task<IActionResult> Start(StartWorkflowRequest request, CancellationToken ct)
+    {
+        // Module documents must be started by their owning module, which authorizes the submitter.
+        if (definitions.DocumentTypes.FirstOrDefault(d => d.Code == request.DocumentType) is { } type && type.ModuleCode != M)
+            return ((Result<WorkflowInstanceDto>)Error.Rule("workflow.module_document", "This document type is started by its owning module.")).ToActionResult(i => Ok(i));
+        return (await engine.StartAsync(request, ct)).ToActionResult(i => Ok(i));
+    }
 
     /// <summary>Own requests for everyone with inbox access; all in-scope instances with workflow.instances.view.</summary>
     [HttpGet("instances"), RequirePermission(WorkItemsModule.ModuleCode, WorkflowPermissions.WorkItemsView)]
