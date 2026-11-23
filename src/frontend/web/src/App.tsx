@@ -25,6 +25,7 @@ import { OrgMastersPage } from './pages/tenant/OrgMastersPage'
 import { SalaryMastersPage } from './pages/tenant/SalaryMastersPage'
 import { HrDocsPage } from './pages/tenant/HrDocsPage'
 import { AttendanceAdminPage } from './pages/tenant/AttendanceAdminPage'
+import { DevicesPage, ImportPunchesPage, ImportsPage, MyPunchesPage, PunchesPage } from './pages/tenant/AttendanceIngestPages'
 import { BranchesPage, CompaniesPage, DepartmentsPage } from './pages/tenant/OrgPages'
 import { ReportsPage } from './pages/tenant/ReportsPage'
 import { RolesPage } from './pages/tenant/RolesPage'
@@ -76,6 +77,11 @@ export default function App() {
             <Route path="/salary" element={<SalaryMastersPage />} />
             <Route path="/hr-docs" element={<HrDocsPage />} />
             <Route path="/attendance/admin" element={<AttendanceAdminPage />} />
+            <Route path="/attendance/my" element={<MyPunchesPage />} />
+            <Route path="/attendance/punches" element={<PunchesPage />} />
+            <Route path="/attendance/import" element={<ImportPunchesPage />} />
+            <Route path="/attendance/imports" element={<ImportsPage />} />
+            <Route path="/attendance/devices" element={<DevicesPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/admin/users" element={<UsersPage />} />

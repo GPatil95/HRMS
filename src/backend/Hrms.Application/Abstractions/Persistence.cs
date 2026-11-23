@@ -110,6 +110,11 @@ public interface ITenantDbContext
     DbSet<ShiftAssignment> ShiftAssignments { get; }
     DbSet<PolicyAssignment> PolicyAssignments { get; }
     DbSet<AttendanceRoster> AttendanceRosters { get; }
+    DbSet<AttendanceDevice> AttendanceDevices { get; }
+    DbSet<DeviceUserMap> DeviceUserMaps { get; }
+    DbSet<Punch> Punches { get; }
+    DbSet<PunchVoid> PunchVoids { get; }
+    DbSet<IngestBatch> IngestBatches { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     /// <summary>Raw relational access (atomic counters, bulk ops). Use sparingly.</summary>
     Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade Database { get; }

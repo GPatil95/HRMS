@@ -3,6 +3,14 @@
 Status: **FINAL BASELINE — pending approval of the decisions listed in [12 §21.3](architecture/12-roadmap-and-risks.md#213-decisions-still-requiring-approval).** Start with the review summary: [architecture/26-review-findings.md](architecture/26-review-findings.md).
 Scope: the architecture covers the platform foundation and every module at the architecture level. No business module is implemented in this phase.
 
+## User documentation
+
+User manuals, role guides, the implementation/setup guide, troubleshooting,
+and the video-training plan live alongside the architecture docs — see
+[manuals-shared/index.md](manuals-shared/index.md) for the master index and
+[manuals-shared/standards.md](manuals-shared/standards.md) for how every
+milestone's documentation is produced and reviewed.
+
 ## Reading order
 
 | # | Deliverable (brief §24) | Document |
