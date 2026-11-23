@@ -8,6 +8,13 @@ namespace Hrms.Application.Workflow;
 /// the retrying workflow transaction where <c>IPermissionService</c> (HybridCache) cannot run.</summary>
 internal static class WorkflowEligibility
 {
+    /// <summary>Users who can both open My Work and act on approvals.</summary>
+    public static IQueryable<Guid> UsersWhoCanAct(ITenantDbContext db, DateOnly today)
+    {
+        var viewers = UsersWithPermission(db, Modules.WorkflowPermissions.WorkItemsView, today);
+        return UsersWithPermission(db, Modules.WorkflowPermissions.WorkItemsAct, today).Where(u => viewers.Contains(u));
+    }
+
     public static IQueryable<Guid> UsersWithPermission(ITenantDbContext db, string permissionCode, DateOnly today, bool tenantWideOnly = false)
     {
         var overrides = db.PermissionOverrides.AsNoTracking()

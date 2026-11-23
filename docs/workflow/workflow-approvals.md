@@ -125,7 +125,7 @@ module, search text and *Overdue only*. Row actions:
 ![Manager inbox](images/core-workflow-inbox-list-1.png)
 
 **Delegate dialog.** Type part of a name or email. The list shows only active
-users who hold `workitems.inbox.act` (never yourself), 20 matches at a time
+users who hold `workitems.inbox.view` and `workitems.inbox.act` (never yourself), 20 matches at a time
 with a "more matches" hint. There is no user-ID box. The server re-checks
 eligibility when you confirm.
 

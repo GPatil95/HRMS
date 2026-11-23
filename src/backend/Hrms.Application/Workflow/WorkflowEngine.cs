@@ -255,7 +255,7 @@ public sealed class WorkflowEngine(
 
     // Direct role query: IPermissionService may hit HybridCache, which cannot run inside the retrying transaction.
     private Task<bool> HoldsActPermissionAsync(Guid userId, DateOnly today, CancellationToken ct) =>
-        WorkflowEligibility.UsersWithPermission(db, WorkflowPermissions.WorkItemsAct, today).AnyAsync(u => u == userId, ct);
+        WorkflowEligibility.UsersWhoCanAct(db, today).AnyAsync(u => u == userId, ct);
 
     // ---------------- Approver resolution ----------------
     private async Task<List<Guid>> ResolveApproversAsync(WorkflowDefinitionStep s, WorkflowInstance instance, CancellationToken ct)
@@ -413,7 +413,8 @@ public sealed class WorkflowEngine(
 
         // Resolved before the transaction: the permission cache runs its factory outside the execution strategy.
         var targetCanAct = action.Action == WorkflowActions.Delegate && action.TargetUserId is { } delegateTo
-                           && await permissions.HasAsync(delegateTo, WorkflowPermissions.WorkItemsAct, ct);
+                           && await permissions.HasAsync(delegateTo, WorkflowPermissions.WorkItemsAct, ct)
+                           && await permissions.HasAsync(delegateTo, WorkflowPermissions.WorkItemsView, ct);
 
         Guid instanceId = Guid.Empty;
         var result = await RunAsync(async () =>
@@ -587,7 +588,8 @@ public sealed class WorkflowEngine(
         if (subject is null || !await InManageScopeAsync(subject.SubjectEmployeeId, ct))
             return Error.NotFound("workflow.instance_not_found", "Workflow instance not found.");
         // Resolved before the transaction: the permission cache runs its factory outside the execution strategy.
-        if (assigneeUserId is { } candidate && !await permissions.HasAsync(candidate, WorkflowPermissions.WorkItemsAct, ct))
+        if (assigneeUserId is { } candidate && (!await permissions.HasAsync(candidate, WorkflowPermissions.WorkItemsAct, ct)
+                                                || !await permissions.HasAsync(candidate, WorkflowPermissions.WorkItemsView, ct)))
             return Error.Validation("workflow.assignee", "The assignee cannot act on approvals.");
 
         var result = await RunAsync(async () =>

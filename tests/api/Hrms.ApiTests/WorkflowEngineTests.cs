@@ -405,6 +405,8 @@ public sealed class WorkflowEngineTests(HrmsFixture f)
         Ids(await Lookup(w.Other.Email)).ShouldBe([w.Other.UserId]);
         Ids(await Lookup(w.Other.Email.ToUpperInvariant())).ShouldBe([w.Other.UserId]);
         Ids(await Lookup(noPerms.Email)).ShouldBeEmpty();      // no workitems.inbox.act
+        var actOnly = await UserAsync(w.Admin, await RoleAsync(w.Admin, TestData.Unique("WFAO"), P.WorkItemsAct));
+        Ids(await Lookup(actOnly.Email)).ShouldBeEmpty();      // cannot open My Work
         Ids(await Lookup(w.Manager.Email)).ShouldBeEmpty();    // never the caller
 
         var p1 = await Lookup("@acme.test", 1, 1);

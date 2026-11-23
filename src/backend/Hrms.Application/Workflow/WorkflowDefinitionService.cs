@@ -177,7 +177,8 @@ public sealed class WorkflowDefinitionService(ITenantDbContext db, IClock clock,
             return Error.Validation("workflow_delegation.window", "Choose a valid, non-past delegation window.");
         var target = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == input.DelegateUserId && u.Status == Domain.Common.UserStatus.Active, ct);
         if (target is null) return Error.Validation("workflow_delegation.target", "Delegate must be an active user.");
-        if (!await permissions.HasAsync(input.DelegateUserId, WorkflowPermissions.WorkItemsAct, ct))
+        if (!await permissions.HasAsync(input.DelegateUserId, WorkflowPermissions.WorkItemsAct, ct)
+            || !await permissions.HasAsync(input.DelegateUserId, WorkflowPermissions.WorkItemsView, ct))
             return Error.Validation("workflow_delegation.target", "Delegate cannot act on approvals.");
         if (await db.WorkflowDelegations.AnyAsync(d => d.DelegatorUserId == me && d.IsActive && d.ValidFrom <= input.ValidTo && d.ValidTo >= input.ValidFrom, ct))
             return Error.Conflict("workflow_delegation.overlap", "You already have an active delegation in that window.");

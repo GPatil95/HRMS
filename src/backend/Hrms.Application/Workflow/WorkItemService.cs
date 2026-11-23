@@ -44,8 +44,7 @@ public sealed class WorkItemPublisher(ITenantDbContext db, IClock clock) : IWork
 }
 
 public sealed class WorkItemService(
-    ITenantDbContext db, ICurrentUser user, IClock clock, ITenantContextAccessor tenant, IEntitlementService entitlements, IWorkflowEngine engine,
-    IDataScopeService scopes)
+    ITenantDbContext db, ICurrentUser user, IClock clock, ITenantContextAccessor tenant, IEntitlementService entitlements, IWorkflowEngine engine)
     : IWorkItemService
 {
     private static readonly string[] CompleteActions = [WorkflowActions.Approve, WorkflowActions.Reject, WorkflowActions.SendBack];
@@ -109,19 +108,13 @@ public sealed class WorkItemService(
         var today = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 50);
-        var eligible = WorkflowEligibility.UsersWithPermission(db, WorkflowPermissions.WorkItemsAct, today);
+        var eligible = WorkflowEligibility.UsersWhoCanAct(db, today);
         var q = db.Users.AsNoTracking().Where(u => u.Status == UserStatus.Active && eligible.Contains(u.Id));
         if (forInstanceId is { } instanceId)
         {
             var requester = await db.WorkflowInstances.AsNoTracking().Where(i => i.Id == instanceId).Select(i => (Guid?)i.RequesterUserId).FirstOrDefaultAsync(ct);
             if (requester is null) return new PagedResult<WorkflowUserDto>([], page, pageSize, 0);
             q = q.Where(u => u.Id != requester);
-            var scope = await scopes.ResolveAsync(WorkflowPermissions.InstancesManage, ct);
-            if (!scope.All)
-            {
-                var inScope = scopes.ApplyEmployeeScope(db.Employees.AsNoTracking(), e => (Guid?)e.Id, scope).Select(e => (Guid?)e.Id);
-                q = q.Where(u => u.EmployeeId != null && inScope.Contains(u.EmployeeId));
-            }
         }
         else
         {
