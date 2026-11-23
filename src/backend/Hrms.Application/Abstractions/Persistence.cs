@@ -115,6 +115,14 @@ public interface ITenantDbContext
     DbSet<Punch> Punches { get; }
     DbSet<PunchVoid> PunchVoids { get; }
     DbSet<IngestBatch> IngestBatches { get; }
+    DbSet<WorkflowDefinition> WorkflowDefinitions { get; }
+    DbSet<WorkflowDefinitionStep> WorkflowDefinitionSteps { get; }
+    DbSet<WorkflowInstance> WorkflowInstances { get; }
+    DbSet<WorkflowInstanceStep> WorkflowInstanceSteps { get; }
+    DbSet<WorkflowAction> WorkflowActions { get; }
+    DbSet<WorkflowDelegation> WorkflowDelegations { get; }
+    DbSet<WorkflowOutboxEvent> WorkflowOutboxEvents { get; }
+    DbSet<WorkItem> WorkItems { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     /// <summary>Raw relational access (atomic counters, bulk ops). Use sparingly.</summary>
     Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade Database { get; }

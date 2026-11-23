@@ -83,6 +83,14 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
     public DbSet<Punch> Punches => Set<Punch>();
     public DbSet<PunchVoid> PunchVoids => Set<PunchVoid>();
     public DbSet<IngestBatch> IngestBatches => Set<IngestBatch>();
+    public DbSet<WorkflowDefinition> WorkflowDefinitions => Set<WorkflowDefinition>();
+    public DbSet<WorkflowDefinitionStep> WorkflowDefinitionSteps => Set<WorkflowDefinitionStep>();
+    public DbSet<WorkflowInstance> WorkflowInstances => Set<WorkflowInstance>();
+    public DbSet<WorkflowInstanceStep> WorkflowInstanceSteps => Set<WorkflowInstanceStep>();
+    public DbSet<WorkflowAction> WorkflowActions => Set<WorkflowAction>();
+    public DbSet<WorkflowDelegation> WorkflowDelegations => Set<WorkflowDelegation>();
+    public DbSet<WorkflowOutboxEvent> WorkflowOutboxEvents => Set<WorkflowOutboxEvent>();
+    public DbSet<WorkItem> WorkItems => Set<WorkItem>();
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -890,6 +898,7 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
             e.HasOne<FileObject>().WithMany().HasForeignKey(x => x.FileId).OnDelete(DeleteBehavior.SetNull);
         });
 
+        WorkflowModel.Configure(b);
         CommonModel.ConfigureShared(b);
         CommonModel.ApplyConventions(b);
     }

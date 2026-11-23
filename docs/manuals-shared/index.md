@@ -13,6 +13,7 @@ Status legend: ✅ current · 📝 partial · ⏳ pending (module not yet implem
 | Employee management | [employee-management/employee-management.md](../employee-management/employee-management.md) | ✅ | M2 |
 | Attendance — masters (shifts, calendars, policies, assignments) | [attendance/masters-config.md](../attendance/masters-config.md) | 📝 | M3.1 |
 | Attendance — punch ingestion & raw records | [attendance/punch-ingestion.md](../attendance/punch-ingestion.md) | ✅ | M3.2 (pending merge) |
+| Workflow & My Work (shared approvals engine) | [workflow/workflow-approvals.md](../workflow/workflow-approvals.md) | ✅ | Workstream B (PR #5, pending merge) |
 | Field workforce | [field-workforce/](../field-workforce/) | ⏳ | — |
 | Leave | [leave/](../leave/) | ⏳ | — |
 | Payroll | [payroll/](../payroll/) | ⏳ | — |

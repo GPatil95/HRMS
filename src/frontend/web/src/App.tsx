@@ -21,6 +21,8 @@ import { EmployeeDetailPage, EmployeesPage } from './pages/tenant/EmployeesPage'
 import { AuditPage as TenantAuditPage } from './pages/tenant/AuditPage'
 import { SecurityEventsPage, TemplatesPage } from './pages/tenant/NotAvailablePage'
 import { NotificationsPage } from './pages/tenant/NotificationsPage'
+import { MyWorkPage } from './pages/tenant/MyWorkPage'
+import { WorkflowDefinitionsPage } from './pages/tenant/WorkflowDefinitionsPage'
 import { OrgMastersPage } from './pages/tenant/OrgMastersPage'
 import { SalaryMastersPage } from './pages/tenant/SalaryMastersPage'
 import { HrDocsPage } from './pages/tenant/HrDocsPage'
@@ -84,6 +86,8 @@ export default function App() {
             <Route path="/attendance/devices" element={<DevicesPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/my-work" element={<MyWorkPage />} />
+            <Route path="/workflow/definitions" element={<WorkflowDefinitionsPage />} />
             <Route path="/admin/users" element={<UsersPage />} />
             <Route path="/users" element={<Navigate to="/admin/users" replace />} />
             <Route path="/admin/roles" element={<RolesPage />} />
