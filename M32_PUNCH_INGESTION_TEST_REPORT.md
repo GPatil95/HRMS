@@ -88,3 +88,10 @@ Additional fixes found during verification:
 - `651e131` — entitlement gate ran after the device-token DB query; unentitled/unmigrated tenants got 500 → now 403 `module-not-enabled`.
 
 Test totals: unit 46/46 (punch-ingest 9/9 incl. DST regression) · API 150/150.
+
+## Employee role seed update — commit 966957a
+
+- `EMPLOYEE` system role now seeds `attendance.my.view` + `attendance.my.punch` (new tenants); `SyncRoleGrantsAsync` grants them additively on existing tenants (nothing removed — customized roles preserved).
+- Own-record isolation is structural: `punches/my` filters to the caller's linked employee; `punches/self` resolves the caller's employee only. Raw list / manual / void / import remain admin-only.
+- New API test `EmployeeRoleGrantsOwnAttendanceAndDeniesOtherRecordsAndAdminOps` — own punch+read OK; list, other-employee rows, manual, void all 403. API suite: **151/151**.
+- Devin Review on `4af4a30`: 1 security finding (entitlement oracle) → resolved `4af4a30`. Round on `966957a`: 1 finding (additive top-up resurrects admin-revoked grants) → **escalated** (needs tombstone semantics in the authz sync; see PR).
