@@ -63,9 +63,11 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
             return Error.Validation("punch.timestamp", $"Unparseable timestamp '{text}'.");
         if (local.Kind != DateTimeKind.Unspecified)
         {
-            // Offset/Z-suffixed input: keep the absolute instant, project wall time into the device zone.
-            var shifted = TimeZoneInfo.ConvertTime(local, tz);
-            return (new DateTimeOffset(shifted, tz.GetUtcOffset(shifted)), DateTime.SpecifyKind(shifted, DateTimeKind.Unspecified));
+            // Offset/Z-suffixed input: keep the reported instant verbatim — the wall time may
+            // be ambiguous (DST fall-back), so the instant must not be re-derived from it.
+            var instant = new DateTimeOffset(local);
+            var shifted = TimeZoneInfo.ConvertTime(instant, tz);
+            return (instant, DateTime.SpecifyKind(shifted.DateTime, DateTimeKind.Unspecified));
         }
         if (tz.IsAmbiguousTime(local))
         {

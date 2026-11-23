@@ -81,6 +81,24 @@ public sealed class PunchIngestTests
     }
 
     [Fact]
+    public void OffsetInputDuringDstFallbackKeepsReportedInstant()
+    {
+        // 2026-11-01 01:30 in America/New_York exists twice (EDT -4, then EST -5).
+        // Both occurrences must keep their own instant — collapsing them to one
+        // would merge two distinct punches as duplicates.
+        var daylight = PunchIngestService.NormalizeTimestamp("2026-11-01T01:30:00-04:00",
+            Device(DeviceTimezoneModes.DeviceLocal, "America/New_York"));
+        var standard = PunchIngestService.NormalizeTimestamp("2026-11-01T01:30:00-05:00",
+            Device(DeviceTimezoneModes.DeviceLocal, "America/New_York"));
+        daylight.IsSuccess.ShouldBeTrue();
+        standard.IsSuccess.ShouldBeTrue();
+        daylight.Value.Instant.UtcDateTime.ShouldBe(new DateTime(2026, 11, 1, 5, 30, 0));
+        standard.Value.Instant.UtcDateTime.ShouldBe(new DateTime(2026, 11, 1, 6, 30, 0));
+        daylight.Value.WallTime.ShouldBe(new DateTime(2026, 11, 1, 1, 30, 0));
+        standard.Value.WallTime.ShouldBe(new DateTime(2026, 11, 1, 1, 30, 0));
+    }
+
+    [Fact]
     public void BadAndMissingTimestampsAreRejected()
     {
         PunchIngestService.NormalizeTimestamp(null, Device(DeviceTimezoneModes.Utc)).IsSuccess.ShouldBeFalse();
