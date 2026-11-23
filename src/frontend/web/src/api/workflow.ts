@@ -31,7 +31,9 @@ export interface WorkflowStep {
   id?: string; stepOrder: number; name: string; approverType: string; approverParam?: string | null; approvalMode: string
   minAmount?: number | null; maxAmount?: number | null; fallbackUserId?: string | null; slaHours?: number | null
   escalationType: string; escalationParam?: string | null; allowSendBack: boolean; allowDelegate: boolean
+  approverScope?: string
 }
+export interface WorkflowUser { id: string; displayName: string; email: string }
 export interface WorkflowDefinition {
   id: string; code: string; version: number; name: string; documentType: string; moduleCode: string
   description?: string | null; status: string; effectiveFrom?: string | null; effectiveTo?: string | null; priority: number
@@ -55,6 +57,11 @@ export const workflowApi = {
     withKey<WorkflowInstance>(`/api/v1/workitems/${id}/delegate`, { toUserId, comment }),
   instance: (id: string) => api<WorkflowInstance>(`/api/v1/workflow/instances/${id}`),
   history: (id: string) => api<WorkflowHistoryEntry[]>(`/api/v1/workflow/instances/${id}/history`),
+  eligibleDelegates: (search: string, page = 1, pageSize = 20) =>
+    api<PagedResult<WorkflowUser>>(`/api/v1/workitems/eligible-delegates?${qs({ search, page, pageSize })}`),
+  stalled: () => api<PagedResult<WorkflowInstance>>('/api/v1/workflow/instances?status=stalled&pageSize=100'),
+  resume: (id: string, assigneeUserId?: string, comment?: string) =>
+    withKey<WorkflowInstance>(`/api/v1/workflow/instances/${id}/resume`, { assigneeUserId: assigneeUserId ?? null, comment }),
   myRequests: () => api<PagedResult<WorkflowInstance>>('/api/v1/workflow/instances?mine=true&pageSize=100'),
   cancel: (id: string, comment?: string) => withKey<WorkflowInstance>(`/api/v1/workflow/instances/${id}/cancel`, { comment }),
   resubmit: (id: string, comment?: string) => withKey<WorkflowInstance>(`/api/v1/workflow/instances/${id}/resubmit`, { comment }),

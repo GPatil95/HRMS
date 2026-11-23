@@ -5,8 +5,8 @@ import {
 } from '@mui/material'
 import { Check, Close, History, PanTool, Reply, Send } from '@mui/icons-material'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { workflowApi, type WorkItem, type WorkItemFilter, type WorkflowInstance } from '../../api/workflow'
-import { tenantApi } from '../../api/tenant'
+import { workflowApi, type WorkItem, type WorkItemFilter, type WorkflowInstance, type WorkflowUser } from '../../api/workflow'
+import { EligibleUserPicker } from './WorkflowUserPicker'
 import { EmptyState, ErrorAlert, PageHeader, SectionCard, StatusChip, TableSkeleton } from '../../components/ui'
 import { useToast } from '../../components/toast'
 
@@ -65,12 +65,11 @@ function ActionDialog({ item, kind, onClose }: { item: WorkItem; kind: ActionKin
   const toast = useToast(); const qc = useQueryClient()
   const [comment, setComment] = useState('')
   const [sendBackTo, setSendBackTo] = useState('requester')
-  const [toUserId, setToUserId] = useState('')
-  const users = useQuery({ queryKey: ['users'], queryFn: tenantApi.users, enabled: kind === 'delegate', retry: false })
+  const [delegate, setDelegate] = useState<WorkflowUser | null>(null)
   const needsComment = kind === 'reject' || kind === 'send_back'
   const run = useMutation({
     mutationFn: () => kind === 'delegate'
-      ? workflowApi.delegate(item.id, toUserId, comment || undefined)
+      ? workflowApi.delegate(item.id, delegate!.id, comment || undefined)
       : workflowApi.complete(item.id, kind, comment || undefined, kind === 'send_back' ? sendBackTo : undefined),
     onSuccess: (r: WorkflowInstance) => {
       toast(`Done — request is now ${r.status.replace('_', ' ')}`)
@@ -83,13 +82,7 @@ function ActionDialog({ item, kind, onClose }: { item: WorkItem; kind: ActionKin
     <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{title}: {item.title}</DialogTitle>
       <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
-        {kind === 'delegate' && (users.data ? (
-          <TextField select size="small" label="Delegate to" value={toUserId} onChange={e => setToUserId(e.target.value)}>
-            {users.data.filter(u => u.status === 'Active').map(u => <MenuItem key={u.id} value={u.id}>{u.displayName} ({u.email})</MenuItem>)}
-          </TextField>
-        ) : (
-          <TextField size="small" label="Delegate user ID" value={toUserId} onChange={e => setToUserId(e.target.value)} />
-        ))}
+        {kind === 'delegate' && <EligibleUserPicker label="Delegate to" value={delegate} onChange={setDelegate} />}
         {kind === 'send_back' && (
           <TextField select size="small" label="Send back to" value={sendBackTo} onChange={e => setSendBackTo(e.target.value)}>
             <MenuItem value="requester">Requester</MenuItem>
@@ -100,7 +93,7 @@ function ActionDialog({ item, kind, onClose }: { item: WorkItem; kind: ActionKin
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="contained" color={kind === 'reject' ? 'error' : 'primary'} disabled={run.isPending || (needsComment && !comment.trim()) || (kind === 'delegate' && !toUserId)}
+        <Button variant="contained" color={kind === 'reject' ? 'error' : 'primary'} disabled={run.isPending || (needsComment && !comment.trim()) || (kind === 'delegate' && !delegate)}
           onClick={() => run.mutate()}>{title}</Button>
       </DialogActions>
     </Dialog>
@@ -195,7 +188,8 @@ function MyRequestsTab() {
                 <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                   <Button size="small" startIcon={<History />} onClick={() => setHistory(r.id)}>History</Button>
                   {r.status === 'sent_back' && <Button size="small" onClick={() => act.mutate({ id: r.id, kind: 'resubmit' })}>Resubmit</Button>}
-                  {(r.status === 'in_progress' || r.status === 'sent_back') && <Button size="small" color="error" onClick={() => act.mutate({ id: r.id, kind: 'cancel' })}>Withdraw</Button>}
+                  {r.status === 'stalled' && <Chip size="small" color="warning" label="Waiting for an administrator" sx={{ mr: 1 }} />}
+                  {(r.status === 'in_progress' || r.status === 'sent_back' || r.status === 'stalled') && <Button size="small" color="error" onClick={() => act.mutate({ id: r.id, kind: 'cancel' })}>Withdraw</Button>}
                 </TableCell>
               </TableRow>
             ))}

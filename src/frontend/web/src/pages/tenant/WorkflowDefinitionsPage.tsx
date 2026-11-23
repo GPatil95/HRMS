@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import {
   Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, MenuItem,
-  Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography,
+  Stack, Tab, Table, TableBody, TableCell, TableHead, TableRow, Tabs, TextField, Typography,
 } from '@mui/material'
-import { Add, Delete, Edit, Publish, Archive } from '@mui/icons-material'
+import { useSearchParams } from 'react-router-dom'
+import { Add, Delete, Edit, Publish, Archive, PlayArrow } from '@mui/icons-material'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { workflowApi, type WorkflowDefinition, type WorkflowDefinitionInput, type WorkflowStep } from '../../api/workflow'
+import { workflowApi, type WorkflowDefinition, type WorkflowDefinitionInput, type WorkflowInstance, type WorkflowStep, type WorkflowUser } from '../../api/workflow'
+import { EligibleUserPicker } from './WorkflowUserPicker'
 import { EmptyState, ErrorAlert, PageHeader, SectionCard, StatusChip, TableSkeleton } from '../../components/ui'
 import { useToast } from '../../components/toast'
 import { usePermissions } from './OrgShared'
@@ -14,13 +16,14 @@ const approverTypes = [
   ['reporting_manager', 'Reporting manager'], ['department_head', 'Department head'],
   ['department_field', 'Department approver field'], ['role', 'Role'], ['user', 'Specific user'],
 ] as const
+const approverScopes = [['tenant', 'Whole tenant'], ['company', 'Same company'], ['branch', 'Same branch'], ['department', 'Same department'], ['reporting', 'Reporting line']] as const
 const escalationTypes = [['none', 'None'], ['assignee_manager', "Assignee's manager"], ['role', 'Role'], ['user', 'User']] as const
 const paramHint: Record<string, string> = {
   department_field: 'Department field (e.g. hr_partner_user_id)', role: 'Role code', user: 'User ID',
 }
 
 const blankStep = (order: number): WorkflowStep => ({
-  stepOrder: order, name: `Stage ${order}`, approverType: 'reporting_manager', approverParam: null, approvalMode: 'any',
+  stepOrder: order, name: `Stage ${order}`, approverType: 'reporting_manager', approverParam: null, approverScope: 'tenant', approvalMode: 'any',
   minAmount: null, maxAmount: null, fallbackUserId: null, slaHours: null, escalationType: 'none', escalationParam: null,
   allowSendBack: true, allowDelegate: true,
 })
@@ -63,7 +66,7 @@ function DefinitionDialog({ initial, onClose }: { initial: WorkflowDefinition | 
         <Box sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead><TableRow>
-              <TableCell>Stage</TableCell><TableCell>Name</TableCell><TableCell>Approver</TableCell><TableCell>Parameter</TableCell>
+              <TableCell>Stage</TableCell><TableCell>Name</TableCell><TableCell>Approver</TableCell><TableCell>Parameter</TableCell><TableCell>Scope</TableCell>
               <TableCell>Mode</TableCell><TableCell>Amount range</TableCell><TableCell>SLA h</TableCell><TableCell>Escalation</TableCell>
               <TableCell>Options</TableCell><TableCell />
             </TableRow></TableHead>
@@ -73,11 +76,16 @@ function DefinitionDialog({ initial, onClose }: { initial: WorkflowDefinition | 
                   <TableCell><TextField size="small" type="number" value={s.stepOrder} onChange={e => setStep(i, { stepOrder: Number(e.target.value) })} sx={{ width: 70 }} /></TableCell>
                   <TableCell><TextField size="small" value={s.name} onChange={e => setStep(i, { name: e.target.value })} /></TableCell>
                   <TableCell>
-                    <TextField select size="small" value={s.approverType} onChange={e => setStep(i, { approverType: e.target.value })} sx={{ minWidth: 170 }}>
+                    <TextField select size="small" value={s.approverType} onChange={e => setStep(i, { approverType: e.target.value, approverScope: e.target.value === 'role' ? s.approverScope : 'tenant' })} sx={{ minWidth: 170 }}>
                       {approverTypes.map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
                     </TextField>
                   </TableCell>
                   <TableCell><TextField size="small" placeholder={paramHint[s.approverType] ?? '—'} disabled={!paramHint[s.approverType]} value={s.approverParam ?? ''} onChange={e => setStep(i, { approverParam: e.target.value || null })} /></TableCell>
+                  <TableCell>
+                    <TextField select size="small" value={s.approverScope ?? 'tenant'} disabled={s.approverType !== 'role'} onChange={e => setStep(i, { approverScope: e.target.value })} sx={{ minWidth: 150 }}>
+                      {approverScopes.map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
+                    </TextField>
+                  </TableCell>
                   <TableCell>
                     <TextField select size="small" value={s.approvalMode} onChange={e => setStep(i, { approvalMode: e.target.value })}>
                       <MenuItem value="any">Any one</MenuItem><MenuItem value="all">All</MenuItem>
@@ -121,7 +129,70 @@ function DefinitionDialog({ initial, onClose }: { initial: WorkflowDefinition | 
   )
 }
 
+function ResumeDialog({ instance, onClose }: { instance: WorkflowInstance; onClose: () => void }) {
+  const toast = useToast(); const qc = useQueryClient()
+  const [assignee, setAssignee] = useState<WorkflowUser | null>(null)
+  const [comment, setComment] = useState('')
+  const run = useMutation({
+    mutationFn: () => workflowApi.resume(instance.id, assignee?.id, comment || undefined),
+    onSuccess: () => { toast('Request resumed'); void qc.invalidateQueries({ queryKey: ['wf-stalled'] }); onClose() },
+    onError: (e: unknown) => toast(e instanceof Error ? e.message : 'Failed', 'error'),
+  })
+  return (
+    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Resume: {instance.title}</DialogTitle>
+      <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
+        <Typography variant="body2" color="text.secondary">
+          Approvers for stage {instance.currentStepOrder} are resolved again. Choose an assignee for any step that still has no approver,
+          or leave it empty after fixing the role assignment or reporting line.
+        </Typography>
+        <EligibleUserPicker label="Assign to (optional)" value={assignee} onChange={setAssignee} />
+        <TextField size="small" multiline minRows={2} label="Comment" value={comment} onChange={e => setComment(e.target.value)} />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button variant="contained" disabled={run.isPending} onClick={() => run.mutate()}>Resume</Button>
+      </DialogActions>
+    </Dialog>
+  )
+}
+
+function StalledRequests() {
+  const canResume = usePermissions().has('workflow.instances.manage')
+  const [resume, setResume] = useState<WorkflowInstance | null>(null)
+  const q = useQuery({ queryKey: ['wf-stalled'], queryFn: workflowApi.stalled })
+  return (
+    <SectionCard title="Stalled requests" subtitle="Requests with a required step that resolved no approver. Nothing is skipped until an administrator resumes them.">
+      {q.isLoading ? <TableSkeleton columns={6} /> : q.error ? <ErrorAlert error={q.error} onRetry={() => void q.refetch()} /> :
+        !q.data?.items.length ? <EmptyState title="No stalled requests" hint="Requests appear here when no approver can be resolved." /> : (
+          <Box sx={{ overflowX: 'auto' }}>
+            <Table size="small">
+              <TableHead><TableRow>
+                <TableCell>Request</TableCell><TableCell>Document type</TableCell><TableCell>Requester</TableCell><TableCell>Stage</TableCell>
+                <TableCell>Status</TableCell><TableCell align="right">Actions</TableCell>
+              </TableRow></TableHead>
+              <TableBody>
+                {q.data.items.map(r => (
+                  <TableRow key={r.id} hover>
+                    <TableCell>{r.title}</TableCell><TableCell>{r.documentType}</TableCell><TableCell>{r.requesterName ?? '—'}</TableCell>
+                    <TableCell>{r.currentStepOrder}</TableCell><TableCell><StatusChip value={r.status} /></TableCell>
+                    <TableCell align="right">
+                      {canResume && <Button size="small" startIcon={<PlayArrow />} onClick={() => setResume(r)}>Resume</Button>}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Box>
+        )}
+      {resume && <ResumeDialog instance={resume} onClose={() => setResume(null)} />}
+    </SectionCard>
+  )
+}
+
 export function WorkflowDefinitionsPage() {
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') === 'stalled' ? 1 : 0
   const toast = useToast(); const qc = useQueryClient()
   const canManage = usePermissions().has('workflow.definitions.manage')
   const [editing, setEditing] = useState<WorkflowDefinition | null | undefined>(undefined)
@@ -137,7 +208,10 @@ export function WorkflowDefinitionsPage() {
     <Box>
       <PageHeader title="Workflow definitions" subtitle="Versioned approval chains shared by all modules. Published versions are immutable."
         actions={canManage && <Button variant="contained" startIcon={<Add />} onClick={() => setEditing(null)}>New definition</Button>} />
-      <SectionCard title="Definitions">
+      <Tabs value={tab} onChange={(_, v: number) => setParams(v === 1 ? { tab: 'stalled' } : {})} sx={{ mb: 2 }}>
+        <Tab label="Definitions" /><Tab label="Stalled requests" />
+      </Tabs>
+      {tab === 1 ? <StalledRequests /> : <SectionCard title="Definitions">
         {q.isLoading ? <TableSkeleton columns={7} /> : q.error ? <ErrorAlert error={q.error} onRetry={() => void q.refetch()} /> :
           !q.data?.length ? <EmptyState title="No workflow definitions" hint="Create a draft, add steps and publish it." /> : (
             <Box sx={{ overflowX: 'auto' }}>
@@ -168,7 +242,7 @@ export function WorkflowDefinitionsPage() {
               </Table>
             </Box>
           )}
-      </SectionCard>
+      </SectionCard>}
       {editing !== undefined && <DefinitionDialog initial={editing} onClose={() => setEditing(undefined)} />}
     </Box>
   )
