@@ -117,7 +117,7 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
         // Scope the caller-supplied key to its channel: different devices may legitimately reuse
         // the same external key — only same-channel repeats count as retries. (Imports key on the
         // file's content hash at the call site, so re-uploading the same file replays.)
-        var channel = deviceId is { } d ? $"device:{d:N}" : source;
+        var channel = $"{source}:{deviceId?.ToString("N") ?? "-"}";
         var scopedKey = $"{channel}:" + (idempotencyKey.Length > 128 - channel.Length - 1
             ? Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(idempotencyKey))).ToLowerInvariant()
             : idempotencyKey);
@@ -167,6 +167,7 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
         var existing = await db.Punches.AsNoTracking().Where(p => dedupKeys.Contains(p.DedupKey))
             .Select(p => new { p.DedupKey, p.IngestBatchId }).ToListAsync(ct);
         var taken = existing.ToDictionary(x => x.DedupKey, x => x.IngestBatchId);
+        var claimed = new HashSet<string>(); // keys claimed by this batch's own rows
 
         // Scoped importers can only write punches for employees inside their import scope.
         HashSet<Guid>? importScope = null;
@@ -227,9 +228,13 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
                 DedupKey = key,
                 IpAddress = request.IpAddress, UserAgent = request.UserAgent,
             };
+            if (!claimed.Add(key)) // claim the key only once the row has passed every check
+            {
+                duplicates++; // identical row earlier in the same batch
+                continue;
+            }
             db.Punches.Add(punch);
             pending.Add(punch);
-            taken[key] = batch.Id; // claim the key only once the row has passed every check
             accepted++;
         }
 
@@ -467,7 +472,8 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
 
         // Default key derives from the file's content hash, not its row id: re-uploading the same
         // CSV produces a new file row but the same hash, so the retry replays the original batch.
-        var idemKey = input.IdempotencyKey is { Length: > 0 } k ? k.Trim() : $"csv:{file.Sha256}";
+        var idemKey = input.IdempotencyKey is { Length: > 0 } k ? k.Trim()
+            : $"csv:{file.Sha256}:{JsonSerializer.Serialize(map)}:{input.SkipHeader}:{input.DeviceId}";
         var (rows, rejects) = await ParseCsvAsync(file, map, device, input.SkipHeader, ct);
         var opened = await OpenBatchAsync(PunchSources.Import, device?.Id, fileId, idemKey, file.Sha256, rows, ct);
         if (!opened.IsSuccess) return opened.Error!;
