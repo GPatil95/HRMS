@@ -8,7 +8,7 @@ Status legend: ✅ current · 📝 partial · ⏳ pending (module not yet implem
 
 | Module | Manual | Status | Applies to |
 |---|---|---|---|
-| Platform administration | [platform-admin/](platform-admin/) | ⏳ | — |
+| Platform administration | [platform-admin/platform-admin-guide.md](platform-admin/platform-admin-guide.md) | 📝 (live screens documented; Features/Users/Clusters screens pending) | M1 |
 | Tenant administration | [tenant-admin/tenant-admin-guide.md](tenant-admin/tenant-admin-guide.md) | 📝 (live screens documented; attendance screens pending migration approval) | M1+M2 |
 | Employee management | [employee-management/employee-management.md](employee-management/employee-management.md) | ✅ | M2 |
 | Attendance — masters (shifts, calendars, policies, assignments) | [attendance/](attendance/) | ⏳ | M3.1 |
