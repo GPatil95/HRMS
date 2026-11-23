@@ -44,7 +44,8 @@ public sealed class TenantSeedService(IModuleCatalog catalog)
             permissions.Where(p => p.Code is FoundationPermissions.DashboardView or FoundationPermissions.EmployeeView)
                 .Select(p => (p, p.SupportsScope ? ScopeLevel.DirectReports : ScopeLevel.Tenant)), ct);
         await EnsureRoleAsync(db, SystemRoles.Employee, "Employee",
-            permissions.Where(p => p.Code is FoundationPermissions.DashboardView or FoundationPermissions.EmployeeView)
+            permissions.Where(p => p.Code is FoundationPermissions.DashboardView or FoundationPermissions.EmployeeView
+                or AttendancePermissions.MyView or AttendancePermissions.MyPunch)
                 .Select(p => (p, p.SupportsScope ? ScopeLevel.Own : ScopeLevel.Tenant)), ct);
 
         foreach (var (code, subject, body) in SystemTemplates.All)
@@ -142,7 +143,8 @@ public sealed class TenantSeedService(IModuleCatalog catalog)
         await GrantMissingAsync(SystemRoles.Manager, ScopeLevel.DirectReports,
             FoundationPermissions.MasterView, FoundationPermissions.EmployeeView, FoundationPermissions.DashboardView);
         await GrantMissingAsync(SystemRoles.Employee, ScopeLevel.Own,
-            FoundationPermissions.MasterView, FoundationPermissions.EmployeeView, FoundationPermissions.DashboardView);
+            FoundationPermissions.MasterView, FoundationPermissions.EmployeeView, FoundationPermissions.DashboardView,
+            AttendancePermissions.MyView, AttendancePermissions.MyPunch);
 
         var state = await db.AuthorizationState.FirstOrDefaultAsync(ct);
         if (state is not null)

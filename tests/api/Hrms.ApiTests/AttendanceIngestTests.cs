@@ -286,6 +286,46 @@ public sealed class AttendanceIngestTests(HrmsFixture f)
         }
     }
 
+    /// <summary>The seeded EMPLOYEE role carries attendance.my.* so every employee can punch and
+    /// read their own records — while the raw-punch list, manual entry, voiding and import all
+    /// stay behind admin permissions (cross-employee access is impossible by design: /punches/my
+    /// is hard-filtered to the caller's linked employee).</summary>
+    [Fact]
+    public async Task EmployeeRoleGrantsOwnAttendanceAndDeniesOtherRecordsAndAdminOps()
+    {
+        await EnableAsync(f.AcmeId);
+        using var admin = await f.AcmeAdminAsync();
+        var ownEmp = await TestData.CreateEmployeeAsync(admin);
+        var otherEmp = await TestData.CreateEmployeeAsync(admin);
+        await admin.Http.PostAsJsonAsync("/api/v1/attendance/punches/manual",
+            new { employeeId = otherEmp, punchedAt = "2026-11-20T09:00:00Z", direction = "in", note = "t" });
+
+        var employeeRoleId = (await admin.GetJsonAsync("/api/v1/roles")).EnumerateArray()
+            .First(r => r.GetProperty("code").GetString() == "EMPLOYEE").GetProperty("id").GetGuid();
+        var (userId, user) = await f.CreateTenantUserAsync(admin, "acme", $"u-{Guid.NewGuid():N}@acme.test", employeeRoleId);
+        using (user)
+        {
+            (await admin.Http.PutAsJsonAsync($"/api/v1/employees/{ownEmp}/user", new { userId }))
+                .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+            // Own records: punch + read succeed with the seeded role alone.
+            (await user.Http.PostAsJsonAsync("/api/v1/attendance/punches/self", new { direction = "in" }))
+                .StatusCode.ShouldBe(HttpStatusCode.OK);
+            var mine = await user.GetJsonAsync("/api/v1/attendance/punches/my");
+            mine.GetProperty("totalCount").GetInt32().ShouldBe(1);
+            mine.GetProperty("items").EnumerateArray().First().GetProperty("employeeId").GetGuid().ShouldBe(ownEmp);
+
+            // Other employees' records and admin operations stay denied.
+            (await user.Http.GetAsync("/api/v1/attendance/punches")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+            (await user.Http.GetAsync($"/api/v1/attendance/punches?employeeId={otherEmp}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+            (await user.Http.PostAsJsonAsync("/api/v1/attendance/punches/manual",
+                new { employeeId = otherEmp, punchedAt = "2026-11-20T10:00:00Z", direction = "in", note = "x" }))
+                .StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+            (await user.Http.PostAsJsonAsync($"/api/v1/attendance/punches/{Guid.NewGuid()}/void", new { reason = "x" }))
+                .StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        }
+    }
+
     // ---------- Viewer scope ----------
 
     [Fact]
