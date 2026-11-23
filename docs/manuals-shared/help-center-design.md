@@ -5,7 +5,7 @@ Module candidate: `core.help` (ships with the Help Center milestone)
 
 ## Purpose
 
-An in-app knowledge base inside SWIFTHRM so users find answers without
+An in-app knowledge base inside the HRMS application so users find answers without
 leaving the product. Same source of truth as the versioned docs in this
 repository — articles are authored in `docs/`, published into the Help Center.
 
