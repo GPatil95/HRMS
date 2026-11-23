@@ -11,6 +11,7 @@ using Hrms.Domain.Tenant;
 using Hrms.Shared.Paging;
 using Hrms.Shared.Primitives;
 using Hrms.Shared.Results;
+using Hrms.Shared.Security;
 using Microsoft.EntityFrameworkCore;
 
 namespace Hrms.Application.Workflow;
@@ -228,12 +229,19 @@ public sealed class WorkflowEngine(
     private async Task<List<Guid>> WorkflowAdministratorsAsync(CancellationToken ct)
     {
         var today = Today;
-        return await db.RoleAssignments.AsNoTracking()
+        var overrides = db.PermissionOverrides.AsNoTracking()
+            .Where(o => o.ValidFrom <= today && (o.ValidTo == null || o.ValidTo >= today)
+                        && o.Permission!.Code == WorkflowPermissions.InstancesManage && o.Permission.IsActive);
+        var denied = overrides.Where(o => o.Effect == PermissionEffect.Deny).Select(o => o.UserId);
+        var viaRoles = db.RoleAssignments.AsNoTracking()
             .Where(a => a.ValidFrom <= today && (a.ValidTo == null || a.ValidTo >= today)
                         && (a.Role!.Code == SystemRoles.TenantAdmin
                             || a.Role.Permissions.Any(p => p.Permission!.Code == WorkflowPermissions.InstancesManage && p.Permission.IsActive)))
-            .Join(db.Users.AsNoTracking().Where(u => u.Status == UserStatus.Active), a => a.UserId, u => u.Id, (a, u) => u.Id)
-            .Distinct().ToListAsync(ct);
+            .Select(a => a.UserId);
+        var granted = overrides.Where(o => o.Effect == PermissionEffect.Grant).Select(o => o.UserId);
+        return await db.Users.AsNoTracking()
+            .Where(u => u.Status == UserStatus.Active && (viaRoles.Contains(u.Id) || granted.Contains(u.Id)) && !denied.Contains(u.Id))
+            .Select(u => u.Id).ToListAsync(ct);
     }
 
     private async Task<(Guid Assignee, Guid? From, Guid? DelegationId)> ApplyStandingDelegationAsync(Guid approver, Guid requester, CancellationToken ct)
@@ -585,6 +593,10 @@ public sealed class WorkflowEngine(
         if (user.UserId is not { } me) return Error.Unauthorized("workflow.unauthenticated", "Sign in required.");
         if (await access.CheckAsync(WorkflowModule.ModuleCode, WorkflowPermissions.InstancesManage, ct) is not null)
             return Error.Forbidden("workflow.forbidden", "Only workflow administrators can resume stalled requests.");
+        var subject = await db.WorkflowInstances.AsNoTracking().Where(i => i.Id == instanceId)
+            .Select(i => new { i.SubjectEmployeeId }).FirstOrDefaultAsync(ct);
+        if (subject is null || !await InManageScopeAsync(subject.SubjectEmployeeId, ct))
+            return Error.NotFound("workflow.instance_not_found", "Workflow instance not found.");
         // Resolved before the transaction: the permission cache runs its factory outside the execution strategy.
         if (assigneeUserId is { } candidate && !await permissions.HasAsync(candidate, WorkflowPermissions.WorkItemsAct, ct))
             return Error.Validation("workflow.assignee", "The assignee cannot act on approvals.");
@@ -638,7 +650,7 @@ public sealed class WorkflowEngine(
                 task.AssigneeUserId = original;
                 task.DelegatedFromUserId = null;
                 task.DelegationId = null;
-                task.ClaimedByUserId = null;
+                if (task.ClaimedByUserId == from) task.ClaimedByUserId = null;
                 await PublishTaskItemAsync(instance, task, ct);
                 Log(instance, task.Id, WorkflowActions.Assigned, null, original, "Returned to the original approver: delegation ended.", null);
                 Audit(instance, "delegation_ended", new { taskId, from, to = original });
@@ -745,6 +757,25 @@ public sealed class WorkflowEngine(
         foreach (var id in ids) items.Add((await LoadDtoAsync(id, ct)).Value!);
         return new PagedResult<WorkflowInstanceDto>(items, page, size, total);
     }
+
+    public async Task<PagedResult<WorkflowInstanceDto>> ListStalledAsync(int page, int pageSize, CancellationToken ct)
+    {
+        page = Math.Max(1, page);
+        var size = Math.Clamp(pageSize, 1, PageRequest.MaxPageSize);
+        var q = db.WorkflowInstances.AsNoTracking().Where(i => i.Status == WorkflowInstanceStatuses.Stalled);
+        var scope = await scopes.ResolveAsync(WorkflowPermissions.InstancesManage, ct);
+        if (!scope.All) q = scopes.ApplyEmployeeScope(q.Where(i => i.SubjectEmployeeId != null), i => i.SubjectEmployeeId, scope);
+        var total = await q.CountAsync(ct);
+        var ids = await q.OrderBy(i => i.LastActionAt).Skip((page - 1) * size).Take(size).Select(i => i.Id).ToListAsync(ct);
+        var items = new List<WorkflowInstanceDto>();
+        foreach (var id in ids) items.Add((await LoadDtoAsync(id, ct)).Value!);
+        return new PagedResult<WorkflowInstanceDto>(items, page, size, total);
+    }
+
+    private async Task<bool> InManageScopeAsync(Guid? subjectEmployeeId, CancellationToken ct) =>
+        subjectEmployeeId is { } emp
+            ? await scopes.CanAccessEmployeeAsync(WorkflowPermissions.InstancesManage, emp, ct)
+            : (await scopes.ResolveAsync(WorkflowPermissions.InstancesManage, ct)).All;
 
     private async Task<bool> CanViewAsync(Guid instanceId, CancellationToken ct)
     {

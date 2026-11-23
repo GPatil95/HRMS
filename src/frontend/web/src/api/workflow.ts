@@ -59,7 +59,9 @@ export const workflowApi = {
   history: (id: string) => api<WorkflowHistoryEntry[]>(`/api/v1/workflow/instances/${id}/history`),
   eligibleDelegates: (search: string, page = 1, pageSize = 20) =>
     api<PagedResult<WorkflowUser>>(`/api/v1/workitems/eligible-delegates?${qs({ search, page, pageSize })}`),
-  stalled: () => api<PagedResult<WorkflowInstance>>('/api/v1/workflow/instances?status=stalled&pageSize=100'),
+  eligibleAssignees: (search: string, page = 1, pageSize = 20) =>
+    api<PagedResult<WorkflowUser>>(`/api/v1/workflow/eligible-assignees?${qs({ search, page, pageSize })}`),
+  stalled: () => api<PagedResult<WorkflowInstance>>('/api/v1/workflow/instances/stalled?pageSize=100'),
   resume: (id: string, assigneeUserId?: string, comment?: string) =>
     withKey<WorkflowInstance>(`/api/v1/workflow/instances/${id}/resume`, { assigneeUserId: assigneeUserId ?? null, comment }),
   myRequests: () => api<PagedResult<WorkflowInstance>>('/api/v1/workflow/instances?mine=true&pageSize=100'),

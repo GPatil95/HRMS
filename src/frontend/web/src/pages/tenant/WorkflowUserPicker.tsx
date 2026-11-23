@@ -3,9 +3,10 @@ import { Autocomplete, TextField } from '@mui/material'
 import { useQuery } from '@tanstack/react-query'
 import { workflowApi, type WorkflowUser } from '../../api/workflow'
 
-/** Searchable picker over users eligible to act on approvals (server-side search, first 20 matches). */
-export function EligibleUserPicker({ value, onChange, label }: {
-  value: WorkflowUser | null; onChange: (u: WorkflowUser | null) => void; label: string
+/** Searchable picker over users eligible to act on approvals (server-side search, first 20 matches).
+ * `delegates` excludes the caller; `assignees` (workflow administrators resuming a stalled request) includes them. */
+export function EligibleUserPicker({ value, onChange, label, source = 'delegates' }: {
+  value: WorkflowUser | null; onChange: (u: WorkflowUser | null) => void; label: string; source?: 'delegates' | 'assignees'
 }) {
   const [input, setInput] = useState('')
   const [term, setTerm] = useState('')
@@ -13,7 +14,10 @@ export function EligibleUserPicker({ value, onChange, label }: {
     const t = setTimeout(() => setTerm(input.trim()), 250)
     return () => clearTimeout(t)
   }, [input])
-  const q = useQuery({ queryKey: ['wf-eligible', term], queryFn: () => workflowApi.eligibleDelegates(term, 1, 20) })
+  const q = useQuery({
+    queryKey: ['wf-eligible', source, term],
+    queryFn: () => source === 'assignees' ? workflowApi.eligibleAssignees(term, 1, 20) : workflowApi.eligibleDelegates(term, 1, 20),
+  })
   const more = (q.data?.totalCount ?? 0) - (q.data?.items.length ?? 0)
   return (
     <Autocomplete

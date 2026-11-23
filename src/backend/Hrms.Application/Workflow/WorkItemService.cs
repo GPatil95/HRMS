@@ -103,9 +103,9 @@ public sealed class WorkItemService(
             : task.Error!;
     }
 
-    public async Task<PagedResult<WorkflowUserDto>> EligibleDelegatesAsync(string? search, int page, int pageSize, CancellationToken ct)
+    public async Task<PagedResult<WorkflowUserDto>> EligibleDelegatesAsync(string? search, int page, int pageSize, bool excludeCaller, CancellationToken ct)
     {
-        var me = user.UserId ?? Guid.Empty;
+        var me = excludeCaller ? user.UserId ?? Guid.Empty : Guid.Empty;
         var today = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 50);

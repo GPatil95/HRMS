@@ -139,6 +139,9 @@ public interface IWorkflowEngine
     /// <summary>Lists instances: own requests (<c>Mine</c>) or, with <c>workflow.instances.view</c>, all in scope.</summary>
     Task<PagedResult<WorkflowInstanceDto>> ListAsync(WorkflowInstanceQuery query, bool canViewAll, CancellationToken ct);
 
+    /// <summary>Stalled instances within the caller's <c>workflow.instances.manage</c> data scope, oldest first.</summary>
+    Task<PagedResult<WorkflowInstanceDto>> ListStalledAsync(int page, int pageSize, CancellationToken ct);
+
     /// <summary>SLA sweep: reminds or escalates overdue pending tasks per step policy (invoked by a Hangfire job).</summary>
     Task<int> ProcessOverdueAsync(CancellationToken ct);
 
@@ -190,9 +193,9 @@ public interface IWorkItemService
     /// <summary>Completes a workflow item with approve, reject or send_back.</summary>
     Task<Result<WorkflowInstanceDto>> CompleteAsync(Guid workItemId, WorkflowTaskAction action, CancellationToken ct);
     Task<Result<WorkflowInstanceDto>> DelegateAsync(Guid workItemId, Guid toUserId, string? comment, string? idempotencyKey, CancellationToken ct);
-    /// <summary>Active users (other than the caller) who hold <c>workitems.inbox.act</c>, searchable by name or email.
-    /// Used for delegation and stalled-request reassignment; the engine re-validates the chosen user.</summary>
-    Task<PagedResult<WorkflowUserDto>> EligibleDelegatesAsync(string? search, int page, int pageSize, CancellationToken ct);
+    /// <summary>Active users who hold <c>workitems.inbox.act</c>, searchable by name or email. Delegation excludes the caller;
+    /// stalled-request reassignment includes them. The engine re-validates the chosen user.</summary>
+    Task<PagedResult<WorkflowUserDto>> EligibleDelegatesAsync(string? search, int page, int pageSize, bool excludeCaller, CancellationToken ct);
 }
 
 public sealed record WorkflowUserDto(Guid Id, string DisplayName, string Email);

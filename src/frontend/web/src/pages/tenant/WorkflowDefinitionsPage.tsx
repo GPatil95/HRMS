@@ -146,7 +146,7 @@ function ResumeDialog({ instance, onClose }: { instance: WorkflowInstance; onClo
           Approvers for stage {instance.currentStepOrder} are resolved again. Choose an assignee for any step that still has no approver,
           or leave it empty after fixing the role assignment or reporting line.
         </Typography>
-        <EligibleUserPicker label="Assign to (optional)" value={assignee} onChange={setAssignee} />
+        <EligibleUserPicker label="Assign to (optional)" source="assignees" value={assignee} onChange={setAssignee} />
         <TextField size="small" multiline minRows={2} label="Comment" value={comment} onChange={e => setComment(e.target.value)} />
       </DialogContent>
       <DialogActions>
