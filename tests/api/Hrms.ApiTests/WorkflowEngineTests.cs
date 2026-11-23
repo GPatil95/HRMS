@@ -387,6 +387,14 @@ public sealed class WorkflowEngineTests(HrmsFixture f)
     {
         var w = await WorldAsync();
         var noPerms = await UserAsync(w.Admin);
+        // Seeded Manager/Employee system roles get inbox access on fresh provisioning.
+        var roles = (await w.Admin.GetJsonAsync("/api/v1/roles")).EnumerateArray().ToList();
+        foreach (var sys in new[] { "MANAGER", "EMPLOYEE" })
+        {
+            var roleId = roles.First(r => r.GetProperty("code").GetString() == sys).GetProperty("id").GetGuid();
+            var seeded = await UserAsync(w.Admin, roleId);
+            (await seeded.Client.Http.GetAsync("/api/v1/workitems/mine")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        }
         (await noPerms.Client.Http.GetAsync("/api/v1/workitems/mine")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         (await noPerms.Client.Http.GetAsync("/api/v1/workflow/definitions")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         (await w.Requester.Client.Http.GetAsync("/api/v1/workflow/definitions")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);

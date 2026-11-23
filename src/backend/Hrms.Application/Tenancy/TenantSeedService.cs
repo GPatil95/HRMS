@@ -67,6 +67,7 @@ public sealed class TenantSeedService(IModuleCatalog catalog)
         }
 
         await db.SaveChangesAsync(ct);
+        await SyncRoleGrantsAsync(db, ct);
     }
 
     public async Task SyncPermissionsAsync(ITenantDbContext db, CancellationToken ct)
@@ -115,8 +116,6 @@ public sealed class TenantSeedService(IModuleCatalog catalog)
 
             await db.SaveChangesAsync(ct);
         }
-
-        await SyncRoleGrantsAsync(db, ct);
     }
 
     /// <summary>Additively tops up the built-in manager/employee system roles with permissions they were
