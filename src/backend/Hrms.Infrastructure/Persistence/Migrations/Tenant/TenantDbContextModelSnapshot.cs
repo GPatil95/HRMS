@@ -446,6 +446,116 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         });
                 });
 
+            modelBuilder.Entity("Hrms.Domain.Tenant.AttendanceDevice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("CredentialRef")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("credential_ref");
+
+                    b.Property<string>("DeviceTimezone")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("device_timezone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<DateTimeOffset?>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Protocol")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("protocol");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("TimezoneMode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("timezone_mode");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("token_hash");
+
+                    b.Property<string>("Vendor")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("vendor");
+
+                    b.HasKey("Id")
+                        .HasName("pk_devices");
+
+                    b.HasIndex("BranchId")
+                        .HasDatabaseName("ix_devices_branch_id");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_devices_code");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_devices_token_hash");
+
+                    b.ToTable("devices", "att", t =>
+                        {
+                            t.HasCheckConstraint("ck_devices_protocol", "protocol IN ('push_api','pull_poll','file_import')");
+
+                            t.HasCheckConstraint("ck_devices_tz_mode", "timezone_mode IN ('utc','device_local')");
+
+                            t.HasCheckConstraint("ck_devices_tz_required", "timezone_mode <> 'device_local' OR device_timezone IS NOT NULL");
+                        });
+                });
+
             modelBuilder.Entity("Hrms.Domain.Tenant.AttendancePolicy", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1860,6 +1970,64 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasDatabaseName("ix_designations_code");
 
                     b.ToTable("designations", "org");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.DeviceUserMap", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("device_id");
+
+                    b.Property<string>("DeviceUserCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("device_user_code");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_from");
+
+                    b.Property<DateOnly?>("EffectiveTo")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_to");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_device_user_map");
+
+                    b.HasIndex("EmployeeId")
+                        .HasDatabaseName("ix_device_user_map_employee_id");
+
+                    b.HasIndex("DeviceId", "DeviceUserCode", "EffectiveFrom")
+                        .IsUnique()
+                        .HasDatabaseName("ix_device_user_map_device_id_device_user_code_effective_from");
+
+                    b.ToTable("device_user_map", "att");
                 });
 
             modelBuilder.Entity("Hrms.Domain.Tenant.DocumentCategory", b =>
@@ -3350,6 +3518,105 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                     b.ToTable("grades", "org");
                 });
 
+            modelBuilder.Entity("Hrms.Domain.Tenant.IngestBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AcceptedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("accepted_count");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid?>("DeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("device_id");
+
+                    b.Property<int>("DuplicateCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("duplicate_count");
+
+                    b.Property<string>("ErrorSummary")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("error_summary");
+
+                    b.Property<Guid?>("FileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("file_id");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("PayloadHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("payload_hash");
+
+                    b.Property<int>("ReceivedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("received_count");
+
+                    b.Property<int>("RejectedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("rejected_count");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_ingest_batches");
+
+                    b.HasIndex("DeviceId")
+                        .HasDatabaseName("ix_ingest_batches_device_id");
+
+                    b.HasIndex("FileId")
+                        .HasDatabaseName("ix_ingest_batches_file_id");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_ingest_batches_idempotency_key");
+
+                    b.ToTable("ingest_batches", "att", t =>
+                        {
+                            t.HasCheckConstraint("ck_ingest_batches_source", "source IN ('device','self','manual','import')");
+
+                            t.HasCheckConstraint("ck_ingest_batches_status", "status IN ('processing','completed','failed')");
+                        });
+                });
+
             modelBuilder.Entity("Hrms.Domain.Tenant.LetterCounter", b =>
                 {
                     b.Property<string>("ScopeKey")
@@ -4334,6 +4601,173 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         {
                             t.HasCheckConstraint("ck_policy_versions_status", "status IN ('draft','published','retired')");
                         });
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.Punch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("DedupKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("dedup_key");
+
+                    b.Property<Guid?>("DeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("device_id");
+
+                    b.Property<string>("DeviceUserCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("device_user_code");
+
+                    b.Property<string>("Direction")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("direction");
+
+                    b.Property<Guid?>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<int?>("GeoAccuracyM")
+                        .HasColumnType("integer")
+                        .HasColumnName("geo_accuracy_m");
+
+                    b.Property<double?>("GeoLat")
+                        .HasColumnType("double precision")
+                        .HasColumnName("geo_lat");
+
+                    b.Property<double?>("GeoLng")
+                        .HasColumnType("double precision")
+                        .HasColumnName("geo_lng");
+
+                    b.Property<Guid?>("IngestBatchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ingest_batch_id");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("ip_address");
+
+                    b.Property<DateTime>("LocalWallTime")
+                        .HasColumnType("timestamp")
+                        .HasColumnName("local_wall_time");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("note");
+
+                    b.Property<DateTimeOffset>("PunchedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("punched_at");
+
+                    b.Property<string>("RefRequestId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("ref_request_id");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("source");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("user_agent");
+
+                    b.HasKey("Id")
+                        .HasName("pk_punches");
+
+                    b.HasIndex("DedupKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_punches_dedup_key");
+
+                    b.HasIndex("IngestBatchId")
+                        .HasDatabaseName("ix_punches_ingest_batch_id");
+
+                    b.HasIndex("DeviceId", "DeviceUserCode")
+                        .HasDatabaseName("ix_punches_device_id_device_user_code");
+
+                    b.HasIndex("EmployeeId", "PunchedAt")
+                        .HasDatabaseName("ix_punches_employee_id_punched_at");
+
+                    b.ToTable("punches", "att", t =>
+                        {
+                            t.HasCheckConstraint("ck_punches_direction", "direction IN ('in','out','unknown')");
+
+                            t.HasCheckConstraint("ck_punches_manual_note", "source <> 'manual' OR note IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_punches_source", "source IN ('device','self','manual','import','regularization')");
+                        });
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.PunchVoid", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<Guid>("PunchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("punch_id");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("reason");
+
+                    b.HasKey("Id")
+                        .HasName("pk_punch_voids");
+
+                    b.HasIndex("PunchId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_punch_voids_punch_id");
+
+                    b.ToTable("punch_voids", "att");
                 });
 
             modelBuilder.Entity("Hrms.Domain.Tenant.ReportingClosure", b =>
@@ -6215,6 +6649,15 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasConstraintName("fk_assignment_scope_targets_user_role_assignments_assignment_id");
                 });
 
+            modelBuilder.Entity("Hrms.Domain.Tenant.AttendanceDevice", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.Branch", null)
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_devices_branches_branch_id");
+                });
+
             modelBuilder.Entity("Hrms.Domain.Tenant.AttendanceRoster", b =>
                 {
                     b.HasOne("Hrms.Domain.Tenant.Employee", null)
@@ -6420,6 +6863,23 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasForeignKey("EmployeeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_department_hod_history_employees_employee_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.DeviceUserMap", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.AttendanceDevice", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_device_user_map_devices_device_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_device_user_map_employees_employee_id");
                 });
 
             modelBuilder.Entity("Hrms.Domain.Tenant.Employee", b =>
@@ -6698,6 +7158,21 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasConstraintName("fk_file_access_log_files_file_id");
                 });
 
+            modelBuilder.Entity("Hrms.Domain.Tenant.IngestBatch", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.AttendanceDevice", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_ingest_batches_devices_device_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.FileObject", null)
+                        .WithMany()
+                        .HasForeignKey("FileId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_ingest_batches_files_file_id");
+                });
+
             modelBuilder.Entity("Hrms.Domain.Tenant.LetterSignatory", b =>
                 {
                     b.HasOne("Hrms.Domain.Tenant.Employee", null)
@@ -6889,6 +7364,37 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_policy_versions_attendance_policies_policy_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.Punch", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.AttendanceDevice", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_punches_devices_device_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_punches_employees_employee_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.IngestBatch", null)
+                        .WithMany()
+                        .HasForeignKey("IngestBatchId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_punches_ingest_batches_ingest_batch_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.PunchVoid", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.Punch", null)
+                        .WithMany()
+                        .HasForeignKey("PunchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_punch_voids_punches_punch_id");
                 });
 
             modelBuilder.Entity("Hrms.Domain.Tenant.ReportingClosure", b =>

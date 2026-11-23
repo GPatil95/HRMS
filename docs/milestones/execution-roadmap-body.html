@@ -1,0 +1,175 @@
+<div id="root"></div>
+<script type="text/jsx">
+
+function St({ k, children }) {
+  const map = { CP: ["Critical path", "bg-tint-red"], P: ["Parallel", "bg-tint-blue"], G: ["Gate", "bg-tint-purple"], DONE: ["Done", "bg-tint-green"], WAIT: ["Approval", "bg-tint-orange"] };
+  const [label, color] = map[k];
+  return <span className={"inline-block rounded px-1.5 py-0.5 text-[11px] font-medium text-primary whitespace-nowrap " + color}>{children || label}</span>;
+}
+
+function H({ n, children }) { return <div className="text-lg font-semibold text-primary mt-10 mb-3">{n}. {children}</div>; }
+function P({ children }) { return <p className="text-sm text-secondary leading-6 mb-3 max-w-[900px]">{children}</p>; }
+function T({ headers, rows }) {
+  return (
+    <CardContent className="mb-4"><Table>
+      <TableHeader><TableRow>{headers.map((h, i) => <TableHead key={i}>{h}</TableHead>)}</TableRow></TableHeader>
+      <TableBody>{rows.map((r, i) => <TableRow key={i}>{r.map((c, j) => <TableCell key={j} className="text-xs align-top">{c}</TableCell>)}</TableRow>)}</TableBody>
+    </Table></CardContent>
+  );
+}
+
+// ---------- Critical path diagram ----------
+const cpNodes = [
+  { id: "m31", title: "M3.1 merge (PR #3)", sub: "GATE — explicit approval", group: "g0" },
+  { id: "m32", title: "M3.2 Punch ingest", sub: "2–3 sd", group: "g1" },
+  { id: "m33", title: "M3.3 Engine (days)", sub: "3–4 sd", group: "g1" },
+  { id: "wf", title: "core.workflow + inbox", sub: "3–4 sd — feeds ALL approvals", group: "g2" },
+  { id: "m34", title: "M3.4 Regularization", sub: "2 sd — needs workflow", group: "g1" },
+  { id: "lev", title: "Leave", sub: "3–4 sd — needs workflow", group: "g1" },
+  { id: "pay", title: "Payroll + Tax", sub: "9–12 sd — biggest module", group: "g1" },
+  { id: "ln", title: "Loans + Expense", sub: "4–5 sd", group: "g1" },
+  { id: "fnf", title: "Exit / FNF", sub: "4–5 sd — consumes all providers", group: "g1" },
+  { id: "bill", title: "SaaS billing MVP", sub: "3–4 sd", group: "g3" },
+  { id: "hard", title: "Hardening + cutover", sub: "2–3 sd — production-ready", group: "g3" },
+];
+const cpEdges = [
+  { from: "m31", to: "m32" }, { from: "m32", to: "m33" }, { from: "m33", to: "m34" },
+  { from: "m31", to: "wf" }, { from: "wf", to: "m34" }, { from: "wf", to: "lev" },
+  { from: "lev", to: "pay" }, { from: "m33", to: "pay", label: "paid days (O)" },
+  { from: "pay", to: "ln" }, { from: "pay", to: "fnf" }, { from: "ln", to: "fnf" }, { from: "m34", to: "fnf", dim: true },
+  { from: "fnf", to: "hard" }, { from: "bill", to: "hard" },
+];
+const cpGroups = [
+  { id: "g0", label: "Approval gate" },
+  { id: "g1", label: "Time & Pay spine — the critical path" },
+  { id: "g2", label: "Shared engine (WS-B, unlocks spine)" },
+  { id: "g3", label: "Production gate" },
+];
+
+// ---------- Workstreams ----------
+const wsRows = [
+  ["WS-A · Time&Pay spine (CP)", "M3.2 → M3.3 → M3.4 → Leave → Payroll+Tax → Loans/Expense → Exit/FNF", "1 owner (main session)", "Sequential — every step feeds the next via contracts/snapshots", "26–33 sd"],
+  ["WS-B · Shared engines", "core.workflow+workitems → io engine → compliance/retention → ESS shell", "1 owner", "Must land before Leave/regularization; then io/compliance parallel to WS-A", "5–7 sd (wf 3–4 first)"],
+  ["WS-C · Talent & workplace", "Assets → Recruitment → PMS → (later) Projects/MyWork/Calendar/Rooms/Workplace/Visitors/Mailroom", "1 owner", "Start after workflow engine (approvals); Assets can start earlier (mostly CRUD)", "8–10 sd for the three"],
+  ["WS-D · Commercial & insight", "SaaS billing MVP → dashboards/report content → client billing (later)", "1 owner", "Independent of spine; before first paying tenant", "5–7 sd"],
+  ["WS-E · Platform hardening", "Load tests, backup/restore drill, observability, retention, pen-test readiness", "1 owner", "Final gate; prep work parallel", "2–3 sd"],
+];
+
+// ---------- Milestones: effort + acceptance ----------
+const msRows = [
+  ["M3.1 merge + verify", "0.5", "GATE", "PR #3 squash-merged on explicit approval; merge commit verified; main builds clean; milestone branches kept"],
+  ["M3.2 Punch ingest & raw store", "2–3", "CP", "5 att tables + trigger; push/self/manual/CSV ingest; dedup+idempotency; device auth; 5 UI screens; isolation+append-only tests; report; demo on devtest"],
+  ["M3.3 Engine → attendance_days", "3–4", "CP", "punch pairing incl. overnight; late/early/OT/absent; shift_based+rotation tests (deferred obligation); ledger; recompute; golden cases"],
+  ["core.workflow + workitems", "3–4", "CP-feeder", "definitions/steps/instances/workitems; leave+expense+payroll+exit definitions run on one engine; lifecycle+salary flows migrated; inbox UI"],
+  ["M3.4 Regularization + approvals", "2", "CP", "requests via workflow engine; approved→day recompute; scope+audit"],
+  ["Leave", "3–4", "CP", "types/policies/ledger/accrual jobs/applications on workflow engine; comp-off hook; LOP+encash provider contract; scope+isolation tests"],
+  ["Payroll", "6–8", "CP", "components+formula engine, structures, runs (draft→…→lock), snapshots, payslips, statutory rule-pack seam, reopen=revision, chunked worker, golden cases"],
+  ["Payroll.tax (TDS)", "3–4", "CP (with payroll)", "regime, projection, declarations+proofs, rule packs, monthly TDS, Form16 data"],
+  ["Loans + Expense", "4–5", "CP", "types/eligibility/EMI/ILoanRecoveryProvider; claims+receipts+finance queue+IReimbursementPayoutProvider"],
+  ["Exit / FNF", "4–5", "CP", "separations+notice+clearance (workflow) + FNF settlements/revisions/snapshots + access revocation job + exit docs"],
+  ["SaaS billing MVP", "3–4", "parallel", "usage_records → invoices → GST config → payment adapter → dunning; maker-checker refunds; before first paying tenant"],
+  ["Assets / Recruitment / PMS", "8–10", "parallel", "each: masters+core flow+provider contracts (assets→FNF, recruitment→employee handoff, PMS cycles); workflow-based approvals"],
+  ["Dashboards + report content", "2–3", "parallel", "module widget packs + first real reports (attendance register, payroll register, headcount) + scheduled exports"],
+  ["ESS bundle", "2–3", "parallel", "self punch/leave apply/payslips/approvals/letters downloads on *.my.* perms"],
+  ["Hardening + production gate", "2–3", "final", "load test 500-tenant cluster + 50k-emp tenant; backup/restore drill; retention+legal hold; security pass; cutover runbook"],
+];
+
+// ---------- Agent allocation ----------
+const agentRows = [
+  ["Main session", "WS-A spine + integration reviews", "attendance/*, leave/*, payroll/*, tax/*, loans/*, expense/*, exit/* + contracts", "Owns the critical path end-to-end; merges nothing without approval"],
+  ["Agent-B", "WS-B shared engines", "workflow/*, workitems/*, io/*, compliance/*", "Single owner of approvals, audit, notify, files, scope — the 'no-conflict' components"],
+  ["Agent-C", "WS-C talent modules", "assets/*, recruitment/*, pms/*", "Starts after wf engine; zero overlap with spine schemas"],
+  ["Agent-D", "WS-D commercial", "billing (platform) + dashboards/reports content", "Touches platform DB only + read-only tenant reporting — no tenant-schema conflicts"],
+];
+
+const conflictRows = [
+  ["TenantDbContext + module catalog registration", "One file each — convention-based discovery (module defs + EF configs auto-load); new modules add files, not edits. Any shared-file edits go through WS-A owner", "serialize via integration branch"],
+  ["Tenant migrations", "Additive-only, one per milestone, owner = module workstream. Applied to devtest only on explicit approval; never two migrations in one PR", "migration order = merge order"],
+  ["Contracts (.Contracts) between modules", "Defined FIRST by the provider workstream, frozen; consumers code against the interface + manual fallback", "contract-first rule"],
+  ["Shared services (audit, notify, files, scope, jobs)", "WS-B owner only — other workstreams consume via existing APIs, never edit", "single-owner rule"],
+  ["Menu/permission seeds", "Each module declares its own PermissionDefinition + MenuItemDefinition (existing pattern) — additive files", "no shared-file edits"],
+];
+
+const assumRows = [
+  ["Effort unit", "1 sd = one focused Devin session-day (≈5 human dev-days at prior milestone pace). Ranges are estimates, not commitments"],
+  ["Parallel limit", "Max 3–4 concurrent agents — beyond that, merge/integration friction exceeds the parallelism gain"],
+  ["Gate cost", "Each milestone ends in demo + sign-off + review round; review findings add 0.5–1 sd on average (M3.1 history)"],
+  ["Scope hold", "No AI assistant, no workplace suite, no client billing, no mobile app in the fast path — sequenced after core HR"],
+  ["Statutory", "Payroll GA needs domain-expert sign-off on rule packs — external dependency, not Devin effort"],
+  ["Dates", "No calendar dates given — wall-clock depends on approval turnaround (gates) and review cycles, which the effort estimates can't control"],
+];
+
+const fastRows = [
+  ["Fastest core-HR release", "Spine only: M3.2→M3.3→wf→M3.4/Leave→Payroll+Tax→Loans/Expense→Exit ≈ 30–40 sd sequential; with WS-B running workflow in parallel during M3.2–3.3 → ~25–32 sd wall-clock"],
+  ["Full product", "Core + talent + workplace + billing + AI ≈ 60–75 sd total with 3–4 agents ≈ 18–25 sd wall-clock if approvals don't stall"],
+  ["Single biggest lever", "Workflow engine landing early — it sits on the critical path of 6 modules"],
+  ["Biggest risk to speed", "Approval gates stalling the spine; mitigate by batching demo+sign-off evidence into each milestone's report"],
+];
+
+function Report() {
+  return (
+    <PageLayout
+      title="HRMS Fast-Track Execution Roadmap"
+      subtitle="Consolidated remaining scope, critical path, parallel workstreams, agent allocation, effort estimates and acceptance criteria. sd = Devin session-day. No dates — estimates with stated assumptions."
+      themeToggle
+    >
+      <BannerCard className="mb-6">
+        <Text size={13}>
+          <b>The plan in one line:</b> one spine (attendance→leave→payroll→exit) is the critical path;
+          a shared-engines agent builds the workflow engine in parallel so approvals never block;
+          talent, billing and hardening run on separate agents with zero schema conflicts. Every
+          milestone ends in a demo + sign-off report; every merge needs explicit approval.
+        </Text>
+      </BannerCard>
+
+      <H n="1">Critical path</H>
+      <P>Every arrow is a real dependency (schema, contract, or workflow-engine prerequisite). Payroll is the largest single milestone; the workflow engine is the most valuable parallel item.</P>
+      <CardContent className="mb-4"><Diagram nodes={cpNodes} edges={cpEdges} groups={cpGroups} direction="TB" /></CardContent>
+
+      <H n="2">Parallel workstreams</H>
+      <T headers={["Workstream", "Contents", "Owner", "Parallelization logic", "Effort (sd)"]} rows={wsRows} />
+
+      <H n="3">Milestones — effort & acceptance criteria</H>
+      <T headers={["Milestone", "Est. (sd)", "Type", "Measurable acceptance criteria"]} rows={msRows} />
+      <P>Total: ~58–72 sd across all workstreams. Shared acceptance gate (every milestone): all suites green incl. new tests; CI green; Devin Review findings triaged to zero; migration additive + applied to devtest 1009 only on explicit approval; demo script + sign-off report file attached.</P>
+
+      <H n="4">Agent allocation proposal</H>
+      <T headers={["Agent", "Scope", "Files/schemas owned", "Coordination rule"]} rows={agentRows} />
+      <div className="text-sm font-semibold text-primary mt-4 mb-2">Shared-component ownership & conflict rules</div>
+      <T headers={["Shared surface", "Rule", "Mechanism"]} rows={conflictRows} />
+
+      <H n="5">Integration sequence — Time & Pay</H>
+      <P>Provider contracts are defined by the provider workstream FIRST and frozen; consumers build against the interface with manual-input fallback (the doc-14 model) — this is what makes Loans/Expense safe to land right after Payroll and lets FNF consume six providers without coupling.</P>
+      <T headers={["Step", "Producer → Contract → Consumers"]} rows={[
+        ["1", "Attendance engine → IAttendanceSummaryProvider (paid days, OT, LWD) → Payroll, FNF, ClientBilling"],
+        ["2", "Leave → ILeaveLedgerProvider (LOP, encashable, in-range) → Payroll, FNF, Attendance, Expense"],
+        ["3", "Loans → ILoanRecoveryProvider (due instalments, outstanding) → Payroll, FNF"],
+        ["4", "Expense → IReimbursementPayoutProvider (approved-for-payroll) → Payroll, FNF, Tax"],
+        ["5", "Payroll → IPayrollCalculator (final settlement, CTC, variables) → FNF, Letters, ClientBilling"],
+        ["6", "Tax → ITdsCalculator (annual/monthly/final TDS) → Payroll, FNF"],
+        ["7", "Assets → IAssetClearanceProvider (allocations, recovery) → FNF"],
+      ]} />
+
+      <H n="6">Fastest safe path + assumptions</H>
+      <T headers={["Question", "Answer"]} rows={fastRows} />
+      <div className="text-sm font-semibold text-primary mt-4 mb-2">Assumptions & honest caveats</div>
+      <T headers={["Item", "Statement"]} rows={assumRows} />
+
+      <H n="7">Immediate next actions (on your approvals)</H>
+      <T headers={["#", "Action", "Needs"]} rows={[
+        ["1", "Squash-merge PR #3 → verify merge commit + main builds", "your explicit merge approval (A1)"],
+        ["2", "Start M3.2 on fresh branch off main", "A1 done + plan approval (A2)"],
+        ["3", "Spin up WS-B agent: core.workflow + workitems", "A3 approval"],
+        ["4", "Devtest migrations for M3.2 when ready", "per-tenant apply approval (standing rule)"],
+      ]} />
+
+      <Footnote>
+        Based on HRMS Master Blueprint v2 + docs 14/20/21 + milestone designs. Estimates use prior-milestone
+        velocity (M2/M3.1) as calibration — one sd ≈ one focused session-day ≈ ~5 human dev-days. No merges,
+        branches, commits, migrations or database changes made for this document.
+      </Footnote>
+    </PageLayout>
+  );
+}
+render(<Report />);
+</script>

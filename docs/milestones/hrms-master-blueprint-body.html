@@ -1,0 +1,311 @@
+<div id="root"></div>
+<script type="text/jsx">
+
+const S = { LIVE: "bg-tint-green", REVIEW: "bg-tint-blue", PART: "bg-tint-orange", PLAN: "bg-tint-purple", NODES: "bg-wash" };
+function St({ k, children }) {
+  const label = { CODE: "Code implemented", BT: "Build + tests pass", WF: "Workflow verified", PROD: "Production-ready",
+    LIVE: "Implemented", REVIEW: "Pending sign-off", PART: "Partial", PLAN: "Designed, not built", NODES: "Not designed" }[k];
+  const color = { CODE: "bg-tint-orange", BT: "bg-tint-blue", WF: "bg-tint-purple", PROD: "bg-tint-green" }[k] || S[k];
+  return <span className={"inline-block rounded px-1.5 py-0.5 text-[11px] font-medium text-primary whitespace-nowrap " + color}>{children || label}</span>;
+}
+
+// ---------- Platform DB tables ----------
+const platTables = [
+  ["tenancy.tenants", "id", "—", "one row per customer tenant"],
+  ["tenancy.tenant_domains", "id", "tenant_id → tenants N:1", "verified hostnames for tenant resolution"],
+  ["tenancy.db_clusters", "id", "—", "Postgres cluster registry"],
+  ["tenancy.tenant_databases", "id", "tenant_id → tenants, cluster_id → db_clusters", "DB name + connection role map"],
+  ["tenancy.provisioning_operations", "id", "tenant_id → tenants", "provision/migrate runs, status"],
+  ["tenancy.provisioning_step_records", "id", "operation_id → provisioning_operations", "step audit + idempotent retry"],
+  ["tenancy.platform_settings", "key", "—", "platform config"],
+  ["tenancy.secret_entries", "id", "—", "secret manager references (no plaintext)"],
+  ["identity platform users/sessions", "id", "—", "platform realm principals (separate audience)"],
+  ["catalog.catalog_modules", "id", "—", "module registry (code, kind, menu)"],
+  ["catalog.module_dependencies", "id", "module_id, depends_on → catalog_modules", "H/O/I dependency graph"],
+  ["catalog.catalog_features", "id", "module_id → catalog_modules", "feature flags per module"],
+  ["catalog.subscription_plans", "id", "—", "versioned plans"],
+  ["catalog.plan_modules / plan_features", "id", "plan_id → plans, module/feature refs", "what a plan includes"],
+  ["catalog.tenant_subscriptions", "id", "tenant_id, plan_id", "trial/active/suspended lifecycle"],
+  ["catalog.tenant_module_entitlements", "id", "subscription → module", "effective module grants"],
+  ["catalog.tenant_feature_entitlements", "id", "subscription → feature", "feature-level grants"],
+  ["ops.* (health, jobs, usage)", "id", "—", "platform observability; usage_records DESIGNED not built"],
+];
+
+// ---------- Tenant DB tables (implemented) ----------
+const tenantTables = [
+  ["identity.users", "id", "employee_id → hr.employees 1:0..1", "login; status lifecycle, lockout"],
+  ["identity.sessions / user_tokens", "id", "user_id → users N:1", "refresh sessions, reset/MFA tokens (hash only)"],
+  ["identity.roles / permissions", "id", "—", "permission catalogue seeded from module defs"],
+  ["identity.role_permissions", "id", "role_id, permission_id", "role bundles"],
+  ["identity.user_role_assignments", "id", "user_id, role_id", "role grants (+ scope target link)"],
+  ["identity.assignment_scope_targets", "id", "assignment_id → user_role_assignments", "data-scope target (branch/dept/…)"],
+  ["identity.user_permission_overrides", "id", "user_id, permission_id", "grant/deny overrides, grant-ceiling capped"],
+  ["identity.preferences", "id", "user_id", "notification prefs"],
+  ["org.companies", "id", "parent_company_id → companies (self), logo_file_id → files", "group company tree"],
+  ["org.company_addresses / contacts / bank_accounts", "id", "company_id → companies N:1", "registered office, signatory banks"],
+  ["org.branches", "id", "company_id, hr_employee_id, manager_employee_id → employees", "incl. geofence lat/lng/radius, wfh_allowed"],
+  ["org.departments", "id", "branch_id, parent_department_id (self), hod + 6 approver FKs → employees", "approver routing columns pre-provisioned"],
+  ["org.department_hod_history", "id", "department_id, employee_id", "effective-dated HOD"],
+  ["org.designations / grades / cost_centres / work_locations", "id", "cost_centres/location → company/branch", "masters, code-unique"],
+  ["org.org_registrations", "id", "company_id, branch_id, document_file_id → files", "GST/PF/ESIC/PT/shop licences etc."],
+  ["hr.employees", "id", "company, branch, department, designation, grade, cost_centre, work_location FKs; manager_id → employees; user_id → users; photo_file_id → files", "the anchor entity; status lifecycle (no hard delete)"],
+  ["hr.employee_personal / contacts / bank_accounts / statutory", "id", "employee_id → employees N:1", "personal, contacts (ux primary-emergency), one active primary bank, PF/ESI/UAN/PAN"],
+  ["hr.employment_history", "id", "employee_id, lifecycle_event_id", "effective-dated assignment history (transfer/promo…)"],
+  ["hr.reporting_closure", "(ancestor, descendant)", "→ employees self", "transitive reporting tree (scope/managers)"],
+  ["hr.lifecycle_events", "id", "employee_id, requested_by/approved_by → users", "request→approve→applied event stream"],
+  ["hr.employee_numbering_config", "id", "company_id", "auto code series"],
+  ["hr.document_categories / employee_documents", "id", "employee_id, category_id, file_id → files, verified_by → users, replaced_by_id (self)", "doc mgmt w/ verification + expiry"],
+  ["hr.salary_components / salary_structures / structure_lines", "id", "lines → structure + component", "earnings/deduction masters"],
+  ["hr.employee_salary_assignments / lines", "id", "employee_id, structure_id, lifecycle_event_id, requested/approved_by → users", "effective-dated CTC breakup; ux one-active"],
+  ["hr.letter_types / families / templates / letterheads / signatories / counters", "id", "templates → type/family/letterhead/company/branch; supersedes_id (self)", "versioned letter infra"],
+  ["hr.employee_letters", "id", "employee_id, template_id, type_id, file_id → files, issued/revoked_by → users, supersedes_id", "issued letters, status machine"],
+  ["att.shifts / shift_versions", "id", "versions → shifts N:1", "code-unique; version status draft/published/retired"],
+  ["att.attendance_policies / policy_versions", "id", "versions → policy", "rules JSON; one active default (unique idx)"],
+  ["att.work_calendars / calendar_days", "id", "days → calendar", "holidays/exceptions; one default (unique idx)"],
+  ["att.shift_assignments / policy_assignments", "id", "employee_id, shift/policy_id", "effective-dated, overlap-exclusion"],
+  ["att.rosters", "id", "employee_id, shift_id, work_date", "explicit per-day shift"],
+  ["att.devices / device_user_map / punches / punch_voids / ingest_batches", "—", "PLANNED M3.2", "raw punch store (see M3.2 plan)"],
+  ["files.files / file_access_log", "id", "owner_entity_type+id (polymorphic), access log → files", "S3-ready blobs, audit"],
+  ["notify.notifications / templates / email_messages", "id", "user_id → users; template by code+channel+locale", "in-app + email queue"],
+  ["audit.audit_entries / audit_seals", "id", "actor_id, entity_type+id", "append-only, hash-chained seals"],
+  ["config.settings / tenant_setting", "key", "—", "tenant config"],
+  ["dashboard.dashboards / widgets / assignments", "id", "widget → dashboard; assignee role/user", "framework"],
+  ["ops.job_executions / security_events", "id", "—", "Hangfire records, security telemetry"],
+];
+
+// ---------- Feature matrix ----------
+// cols: feature | source | migration/tables | api | screen | tests | code | bt | wf | prod
+const featRows = [
+  ["Tenant provisioning + migrator", "Application/Tenancy, migrate-tenants CLI", "platform: tenancy.*", "platform /tenants …", "Tenants/CreateTenant/Ops/Health", "AuditAndProvisioningTests, TenantProvisioningStepTests, TenantMigrationRunnerTests", "✓", "✓", "✓ (2 tenants live)", "✓"],
+  ["Authentication + sessions", "Application/Identity, AuthControllers", "identity.users/sessions/tokens", "api/v1/auth/*, /me/session", "AuthPages", "AuthenticationTests", "✓", "✓", "✓", "✓"],
+  ["RBAC + data scope + overrides", "Application/Authorization", "identity.roles…scope_targets", "/roles, /users/{id}/roles,overrides", "RolesPage, UsersPage", "AuthorizationTests, DataScopeTests", "✓", "✓", "✓", "✓"],
+  ["Module catalogue + entitlements", "Application/Modules, PlatformManifest", "catalog.*", "platform /catalog, /tenants/{id}/entitlements", "CatalogPages, TenantDetail", "EntitlementTests", "✓", "✓", "✓ (attendance grant on 1009)", "✓"],
+  ["Org structure + masters", "Application/Organization/OrgMastersService", "OrgMasters + OrgReferenceMasters; org.*", "/org/* (companies…registrations)", "OrgDetails, OrgMastersPage, OrgShared", "OrgMastersTests, OrgReferenceMastersTests", "✓", "✓", "✓", "✓"],
+  ["Employee core + history + closure", "Application/Employees/*", "HrCoreSchema + EmployeeProfileSections; hr.*", "/employees/*", "EmployeesPage, EmployeeSections", "EmployeeProfileTests, HrCoreSchemaTests, EmployeeLinkTests", "✓", "✓", "✓", "✓"],
+  ["Employee documents", "Employees/EmployeeDocumentService", "EmployeeDocuments; hr.employee_documents", "/employee-docs/*", "HrDocsPage", "EmployeeDocumentTests", "✓", "✓", "✓", "✓"],
+  ["Salary structures + assignments", "Employees/SalaryService", "EmployeeSalary; hr.salary_*", "/salary/*, /employees/{id}/salary-*", "SalaryMastersPage", "EmployeeSalaryTests", "✓", "✓", "✓", "✓"],
+  ["Lifecycle events (req→approve)", "Employees/LifecycleEventService+Jobs", "hr.lifecycle_events", "/employees/{id}/lifecycle-events, approve/reject", "EmployeeSections", "LifecycleEventTests", "✓", "✓", "✓ (bespoke flow)", "✓"],
+  ["Letters (templates→issue→PDF→reissue/revoke)", "Employees/LetterIssuanceService + template svc", "LetterManagementV2; hr.letter_*", "/letter-*, /employees/{id}/letters/*", "HrDocsPage", "LetterV2Tests, GotenbergPdfTests", "✓", "✓", "✓ (reissue/revoke UI pass pending user)", "✓"],
+  ["Files service", "Application/Files/FileService", "files.*", "/files/*", "embedded", "FileIsolationTests", "✓", "✓", "✓", "✓"],
+  ["Notifications + email queue", "Application/Notifications + jobs", "notify.*", "/notifications/*", "NotificationsPage", "suite-covered", "✓", "✓", "✓", "✓"],
+  ["Audit trail (interceptor+seal)", "Application/Auditing", "audit.*", "/audit/entries", "AuditPage", "AuditAndProvisioningTests, AuditQueryTests", "✓", "✓", "✓", "✓"],
+  ["Dashboards", "Application/Dashboards", "dashboard.*", "/dashboard/widgets/{code}", "DashboardPage", "suite-covered", "✓", "✓", "◐ thin widget set", "◐"],
+  ["Reports framework", "Application/Reporting", "(no report_* tables yet)", "/reports/{code}/export", "ReportsPage", "ReportAndArchitectureTests", "✓ shell", "✓", "✗ no content reports", "◐"],
+  ["Attendance masters + resolver (M3.1)", "Application/Attendance/*", "AttendanceMasters + AttendanceDefaultIndexes; att.*", "/attendance/* (33 endpoints)", "AttendanceAdminPage, org effective-config", "AttendanceMastersTests, OrgMastersTests.EffectiveConfig, AttendanceRulesTests (unit) — 139 API + 33 unit", "✓", "✓", "◐ devtest UI pass pending", "✗ PR #3 open"],
+  ["Punch ingestion + raw store (M3.2)", "planned Application/Attendance/PunchIngestService", "planned att.devices/map/punches/voids/batches", "planned /attendance/devices|punches/*", "planned 5 screens", "plan ready (user review)", "✗", "✗", "✗", "✗"],
+  ["Workflow engine + inbox", "doc 19.1–19.2 only", "planned workflow.* + workitems.*", "—", "—", "—", "✗", "✗", "✗", "✗"],
+  ["Leave / Payroll / Tax / Loans / Expense", "doc 17", "planned", "—", "—", "—", "✗", "✗", "✗", "✗"],
+  ["Exit / FNF", "doc 16", "planned exit.* (11 tables)", "—", "—", "—", "✗", "✗", "✗", "✗"],
+  ["SaaS billing (invoice/GST/pay)", "doc 22A", "planned billing_*", "—", "—", "—", "✗", "✗", "✗", "✗"],
+  ["Recruitment/PMS/Assets/Workplace/Projects/ClientBilling/AI", "docs 18,21,22B", "planned", "—", "—", "—", "✗", "✗", "✗", "✗"],
+];
+
+// ---------- Record-level workflow traces ----------
+// Each: record | created by | read by | updated by | example row
+const recRows = [
+  ["org.companies row", "core.org (HR admin)", "all modules", "core.org", "{ code:'ACME', name:'Acme India Pvt Ltd' }"],
+  ["org.branches row", "core.org", "attendance (device branch, scope), payroll (pay group)", "core.org", "{ code:'MUM', company:ACME, geo:19.07,72.87, r:150m }"],
+  ["hr.employees row", "core.employee (direct, import; future: recruitment handoff)", "ALL business modules via FK", "core.employee only", "{ code:'EMP-001', branch:MUM, dept:OPS, mgr:EMP-010 }"],
+  ["hr.employment_history row", "core.employee (lifecycle apply)", "scope + as-of resolution", "append-only new rows", "{ EMP-001, dept OPS→FIN, from 2026-12-01 }"],
+  ["identity.users row", "identity (admin) linked to employee", "auth, scope, notify", "identity", "{ admin@devtest.local → EMP-000 }"],
+  ["att.shift_assignment row", "attendance (HR)", "resolver → (future) engine", "end-dated on change", "{ EMP-001 → GEN, from 2026-11-01 }"],
+  ["att.punches row", "M3.2 ingest (device/self/manual/import)", "viewer → engine M3.3", "employee_id back-fill only", "{ EMP-001, 2026-11-20 09:02, IN, BIO-MUM-01/102 }"],
+  ["attendance_days row", "M3.3 engine", "payroll provider, reports", "recompute job (versioned)", "{ EMP-001, 2026-11-20, PRESENT, 539m, late 0 }"],
+  ["leave.leave_ledger entry", "leave (apply/approve/accrual jobs)", "payroll, FNF, ESS balance", "append-only ledger", "{ EMP-001, CL, availed -1.0, 2026-11-21 }"],
+  ["payroll.payroll_runs + results", "payroll (run job)", "ESS payslip, audit", "immutable after finalize; reopen→revision", "{ run 2026-11, EMP-001, gross 60,000, net 52,140 }"],
+  ["loans.loan + emi_schedule", "loans (request→approve)", "payroll recovery, FNF", "schedule regenerated on restructure", "{ EMP-001, 120,000 @8%, EMI 5,215 ×24 }"],
+  ["expense.claim + lines", "expense (employee→approve→process)", "payroll payout, tax exempt calc", "status transitions", "{ EMP-001, travel 8,400, approved }"],
+  ["exit.separations + fnf_settlements", "exit (resignation→LWD)", "all providers read for inputs", "finalize→lock; revise→new revision", "{ EMP-001, LWD 2027-01-31, net payable 78,300 }"],
+  ["catalog.tenant_subscriptions", "platform admin", "entitlement pipeline, billing", "platform", "{ tenant 1009, plan HR-PRO, active }"],
+];
+
+// ---------- Dependency detail ----------
+const depDeepRows = [
+  ["Employee", "—", "Org (branch/dept/desig/grade FKs)", "EVERYTHING", "Never disabled (core)"],
+  ["Organization", "—", "—", "Employee, Attendance, Leave, Payroll scope, Workplace", "Never disabled (core)"],
+  ["Attendance", "Employee (H), Org (H)", "Leave (O: leave→present), biometric (sub)", "Payroll, FNF, Client billing, Workplace via IAttendanceSummaryProvider", "If off: payroll/leave take manual inputs; no attendance anywhere"],
+  ["Leave", "Employee, Org (calendar/weekly-off)", "Attendance (O: comp-off credit, leave status)", "Payroll (LOP/encash), FNF, Attendance, Expense (LTA)", "If off: payroll uses manual LOP; attendance shows unapproved absence"],
+  ["Payroll", "Employee, Org (pay groups)", "Attendance, Leave, Loans, Expense, Tax-in (O)", "FNF calculator, client billing, letters CTC", "If off: tax module cannot run (H); FNF uses manual salary lines"],
+  ["Payroll.tax", "Payroll (H)", "—", "TDS to payroll, FNF final tax", "If payroll disabled, tax auto-disabled"],
+  ["Loans", "Employee", "Payroll (O: EMI deduction)", "FNF outstanding", "If off: manual repayment tracking"],
+  ["Expense", "Employee, Org", "Payroll (O: payout), Projects (O)", "FNF pending claims, Tax exempt components", "If off: claims handled outside, manual FNF lines"],
+  ["Exit/FNF", "Employee, Org", "ALL of the above (O, snapshot inputs)", "post-exit access job → identity", "If providers off: manual line entry per category"],
+];
+
+// ---------- Workflow engine design ----------
+const wfEngineRows = [
+  ["workflow.definitions", "code (leave.apply, expense.claim, payroll.run, exit.fnf…), version, status", "tenant-owned, seeded defaults per module"],
+  ["workflow.definition_steps", "step order, approver rule (manager/HOD/role/employee-field/amount-threshold branches), parallel vs sequential, send-back target, SLA/escalation", "versioned with definition"],
+  ["workflow.instances", "definition_version_id, subject_type+id (the leave/claim/run being approved), status, initiated_by, context JSON (snapshot of approval-relevant facts)", "append events"],
+  ["workflow.instance_steps", "step, assignee resolution, status (pending/approved/rejected/skipped), acted_by/at, comments", "drives inbox items"],
+  ["core.workitems", "user_id, source_module, source_ref, title, action URL, due, status — a PROJECTION (non-authoritative)", "rebuilt from instance steps via outbox events"],
+];
+
+const wfUseRows = [
+  ["Leave apply", "employee → manager → (opt) HR", "leave.approve perm on step; dept leave_approver FK seeds the rule", "approved → ledger 'availed' posted"],
+  ["Expense claim", "employee → manager → finance queue", "amount-threshold branches (>10k → finance head)", "approved → payout queue/payroll input"],
+  ["Payroll run", "maker: HR → checker: finance head", "finalize step needs payroll.run.finalize + step-up MFA", "finalized → results locked"],
+  ["Exit / FNF", "resignation acceptance → clearance tasks (multi-dept parallel) → FNF finalize", "clearance = instance_steps per department", "finalized → lock + access revocation job"],
+  ["Salary assignment (today's bespoke)", "request → approve", "migrates onto engine when it ships — removes bespoke code", "approved → effective assignment"],
+  ["Regularization (M3.4)", "employee → manager → attendance admin", "attendance.regularize perm", "approved → day recompute"],
+];
+
+// ---------- Billing split ----------
+const billRows = [
+  ["Subscription mgmt", "catalog.tenant_subscriptions + plan_*", "create/change plan, add-ons, trial→active→suspended lifecycle", "LIVE (admin ops) — no pricing engine yet"],
+  ["Entitlement activation", "tenant_module/feature_entitlements + Redis gate", "effective grants per plan/manual override; fail-closed API + menus", "LIVE"],
+  ["Usage metering", "ops.usage_records (daily active-employee counts pushed from tenants)", "billing basis (max active employees / period — D8)", "DESIGNED, not built"],
+  ["Invoicing", "billing_accounts, invoices, invoice_lines (immutable after issue; corrections = credit/debit notes)", "period invoices + proration on plan change", "NOT built"],
+  ["GST", "CGST+SGST vs IGST by place-of-supply, GSTIN validation, SAC, e-invoice IRN/QR hook", "effective-dated tax config", "NOT built"],
+  ["Payments & refunds", "payments, credit_notes, gateway adapter (Razorpay proposed D7), mandates, webhook signature verify, maker-checker refunds", "collection + reconciliation", "NOT built"],
+  ["Dunning / lifecycle", "past_due → grace → read-only suspension → suspend → cancellation → retention → delete", "audited + notified transitions", "partially in tenant.status (manual)"],
+];
+
+// ---------- Risk register ----------
+const riskRows = [
+  ["R1", "Workflow engine + inbox absent — blocks Leave/Expense/Payroll/Exit approval stories", "High", "Build core.workflow + workitems before Leave (milestone 6)"],
+  ["R2", "Payroll statutory correctness (PF/ESI/PT/TDS)", "High", "Versioned rule packs + golden tests + domain-expert sign-off before GA"],
+  ["R3", "SaaS billing entities absent — no revenue path", "High", "Billing MVP before first paying tenant (roadmap gate §7)"],
+  ["R4", "Data-scope enforcement drift as modules multiply", "Med", "Single ApplyScope + authz matrix CI + per-module scope tests (pattern exists)"],
+  ["R5", "DB-per-tenant connection/migration fan-out", "Med-High", "PgBouncer, small pools, wave migrator, load test 500 DBs/cluster"],
+  ["R6", "Punch volume growth (raw store)", "Low-Med", "Append-only + BRIN; partition when a tenant crosses threshold"],
+  ["R7", "Biometric vendor diversity", "Med", "HTTP push contract + gateway adapters; pull_poll seam only"],
+  ["R8", "Optional-provider drift (module disabled mid-flight)", "Low", "Contracts + input snapshots already designed-in"],
+  ["R9", "Retention/legal-hold unimplemented before Exit", "Med", "Bundle ADR-036 compliance into Exit milestone"],
+  ["R10", "Aadhaar/sensitive PII", "Med", "Field encryption + masking (ADR-026, D11) before statutory capture at scale"],
+];
+
+// ---------- Roadmap with dependencies ----------
+const roadRows = [
+  ["M1 Platform foundation", "DONE", "—", "—"],
+  ["M2 HR Core + docs + salary + lifecycle", "DONE", "M1", "—"],
+  ["M2.5–M2.7 Letters", "DONE", "M2", "—"],
+  ["M3.1 Attendance masters", "PENDING SIGN-OFF (PR #3 open)", "M2", "merge approval"],
+  ["M3.2 Punch ingestion & raw store", "PLAN READY", "M3.1 merged", "plan approval"],
+  ["M3.3 Attendance engine (days)", "designed", "M3.2", "—"],
+  ["M3.4 Regularization + approvals", "designed", "M3.3 + core.workflow", "—"],
+  ["core.workflow + workitems", "designed (§6 below)", "foundation", "build BEFORE Leave — unlocks all approval modules"],
+  ["Leave", "designed", "core.workflow + M3.3 (comp-off O)", "—"],
+  ["Payroll + Tax", "designed", "Leave(O) + M3.3(O) + rule packs", "—"],
+  ["Loans + Expense", "designed", "Payroll(O)", "—"],
+  ["Exit / FNF", "designed", "ALL pay modules (O) + workflow + compliance", "—"],
+  ["Biometric connector module", "designed", "M3.2 push contract live", "—"],
+  ["SaaS billing MVP", "designed", "subscriptions (live)", "before first paying tenant"],
+  ["Recruitment, PMS, Assets", "designed", "independent + letters/docs", "—"],
+  ["Workplace suite, Projects, MyWork, ClientBilling, AI", "designed", "per doc 14 matrix", "—"],
+];
+
+const decRows = [
+  ["A1", "Approve merge of PR #3 (M3.1) — all gates green, pending your explicit approval", "Approve; blocks everything downstream"],
+  ["A2", "Approve M3.2 punch-ingestion plan (delivered earlier)", "Approve with D-xlsx decision"],
+  ["A3", "Build core.workflow + workitems as its own milestone before Leave", "Approve — prevents 3rd bespoke flow"],
+  ["A4", "M3.2 import format: CSV-only vs .xlsx parser dependency", "CSV-only"],
+  ["A5", "Migrate today's bespoke approval flows (lifecycle events, salary assignment) onto the engine when it ships", "Yes — keeps one approval model"],
+  ["A6", "SaaS billing: confirm Razorpay (D7) + max-active-employee basis (D8) + GST scope", "Confirm before billing milestone"],
+  ["A7", "Retention/legal-hold + alumni access folded into Exit milestone", "Approve bundling"],
+  ["A8", "16 standing decisions in doc §21.3 (cloud, SSO, retention periods…) reviewed per-milestone vs one batch now", "Per-milestone"],
+];
+
+function H({ n, children }) { return <div className="text-lg font-semibold text-primary mt-10 mb-3">{n}. {children}</div>; }
+function P({ children }) { return <p className="text-sm text-secondary leading-6 mb-3 max-w-[900px]">{children}</p>; }
+function T({ headers, rows }) {
+  return (
+    <CardContent className="mb-4"><Table>
+      <TableHeader><TableRow>{headers.map((h, i) => <TableHead key={i}>{h}</TableHead>)}</TableRow></TableHeader>
+      <TableBody>{rows.map((r, i) => <TableRow key={i}>{r.map((c, j) => <TableCell key={j} className="text-xs align-top">{c}</TableCell>)}</TableRow>)}</TableBody>
+    </Table></CardContent>
+  );
+}
+
+const sysNodes = [
+  { id: "pdb", title: "Platform DB", sub: "tenancy + catalog + (planned) billing", group: "gp" },
+  { id: "portal", title: "Platform admin portal", sub: "9 pages live", group: "gp" },
+  { id: "mig", title: "Migrator/Provisioner", sub: "approval-gated per tenant", group: "gp" },
+  { id: "api", title: "HRMS API", sub: "host→tenant → entitlements → scope", group: "gs" },
+  { id: "core", title: "Core services", sub: "identity·org·employee·files·audit·notify·config·dash", group: "gs" },
+  { id: "biz", title: "Business modules", sub: "attendance (M3.1 pending) · rest planned", group: "gs" },
+  { id: "t1", title: "Tenant DB 1009", sub: "9 schemas live", group: "gt" },
+  { id: "t2", title: "Tenant DB 1008", sub: "isolated", group: "gt" },
+];
+const sysEdges = [
+  { from: "portal", to: "pdb" }, { from: "mig", to: "pdb" },
+  { from: "mig", to: "t1", label: "create+migrate" }, { from: "mig", to: "t2", dim: true },
+  { from: "pdb", to: "api", label: "tenant map+entitlements" },
+  { from: "api", to: "core" }, { from: "api", to: "biz" },
+  { from: "core", to: "t1" }, { from: "biz", to: "t1" },
+];
+const sysGroups = [
+  { id: "gp", label: "Shared platform layer" }, { id: "gs", label: "Application layer" }, { id: "gt", label: "Tenant data layer" },
+];
+
+function Report() {
+  return (
+    <PageLayout
+      title="HRMS Master Blueprint — Architecture, Data Model, Workflows, Status"
+      subtitle="v2 master reference. Every feature traced to code, migration, endpoint, screen and test. M3.1 = pending sign-off (PR #3 open)."
+      themeToggle
+    >
+      <BannerCard className="mb-6">
+        <Text size={13}>
+          <b>One platform DB + one DB per tenant.</b> The platform layer knows tenants, plans and entitlements —
+          never employee data. Each tenant DB holds identity, org, employee and every enabled business module in
+          its own schema. M3.1 attendance masters is <b>implemented and fully green but unmerged</b> — pending
+          sign-off on PR #3. Status levels: <St k="CODE" /> <St k="BT" /> <St k="WF" /> <St k="PROD" />
+        </Text>
+      </BannerCard>
+
+      <H n="1">System architecture</H>
+      <CardContent className="mb-4"><Diagram nodes={sysNodes} edges={sysEdges} groups={sysGroups} direction="TB" /></CardContent>
+
+      <H n="2">Database reference — platform DB</H>
+      <T headers={["Table", "PK", "FK relationships", "Purpose / notes"]} rows={platTables} />
+
+      <H n="3">Database reference — tenant DB (implemented schemas)</H>
+      <P>All PKs are uuidv7; business codes carry separate unique columns (ADR-019). Effective-dated tables use daterange exclusion constraints (ADR-020). FK deletes are RESTRICT where shown; employees are never hard-deleted.</P>
+      <T headers={["Table", "PK", "FK relationships (target, cardinality)", "Purpose / notes"]} rows={tenantTables} />
+
+      <H n="4">Feature-level implementation matrix</H>
+      <P>Legend: ✓ done · ◐ partial · ✗ absent. "Workflow verified" = the full business path exercised, not just unit tests.</P>
+      <T headers={["Feature", "Source", "Migration / tables", "API", "Screen", "Tests", <St k="CODE" />, <St k="BT" />, <St k="WF" />, <St k="PROD" />]} rows={featRows} />
+
+      <H n="5">Record-level workflow traces</H>
+      <P>For each key record: who creates it, who reads it, who may update it, and a real example row. Ownership rule: a row is mutated only by its owning module — consumers read or receive events.</P>
+      <T headers={["Record", "Created by", "Read by", "Updated by", "Example row"]} rows={recRows} />
+
+      <H n="6">Module dependency deep-dive</H>
+      <P>Employee and Organization are the roots every module hangs off. Optional providers (attendance/leave/loans/expense) feed Payroll and FNF via .Contracts interfaces — with manual-input fallback so nothing dead-locks when a module is off.</P>
+      <T headers={["Module", "Hard deps", "Optional deps", "Provides to (via contract)", "If disabled/unavailable"]} rows={depDeepRows} />
+
+      <H n="7">Shared approval engine + work inbox design (planned core.workflow)</H>
+      <P>One tenant-local engine serves every approval: a versioned definition per business action, resolved step-by-step into concrete assignees, projecting pending items into a shared inbox. Same tables for Leave, Expense, Payroll, Exit — only the definition data differs.</P>
+      <T headers={["Table (workflow.*/core.workitems)", "Key columns", "Notes"]} rows={wfEngineRows} />
+      <div className="text-sm font-semibold text-primary mt-4 mb-2">How each module uses it</div>
+      <T headers={["Business action", "Typical chain", "Resolution source", "On final approval"]} rows={wfUseRows} />
+      <P>Engine rules (per doc 19.1): steps resolve via rules — manager (reporting_closure), department approver FKs (leave/OT/regularization/comp-off columns already on org.departments), role-based, amount thresholds; parallel AND/OR steps; send-back preserves history; delegation + escalation on SLA expiry; every transition writes an outbox event → workitems projection rebuild → inbox badge in real time.</P>
+
+      <H n="8">SaaS billing — separated concerns</H>
+      <P>What exists (subscription mgmt + entitlement activation) vs the revenue pipeline that is designed but not built.</P>
+      <T headers={["Concern", "Tables", "What it does", "Status"]} rows={billRows} />
+      <P><b>clientbilling</b> (tenant's own customer invoicing) is a separate domain — tenant module, optional deps on payroll/timesheets; do not confuse with SaaS billing above.</P>
+
+      <H n="9">Consolidated risk & dependency register</H>
+      <T headers={["#", "Risk / dependency", "Severity", "Resolution order / action"]} rows={riskRows} />
+
+      <H n="10">Dependency-based roadmap</H>
+      <P>Not a flat sequence — each row lists what it truly blocks on. Workflow engine is the critical-path item for every approval-bearing module.</P>
+      <T headers={["Milestone", "State", "Depends on", "Blocker / gate"]} rows={roadRows} />
+
+      <H n="11">Decisions requiring your approval</H>
+      <T headers={["#", "Decision", "Recommendation"]} rows={decRows} />
+
+      <Footnote>
+        Sources: repository @ m3-attendance/1faf7c9 (11 tenant + 2 platform migrations, 199 endpoint routes,
+        18 API test files + 4 unit files), docs/architecture 01–26, docs/adr 001–039, milestone designs M2/M3.
+        PR #3 (M3.1) is OPEN and UNMERGED — shown as pending sign-off throughout. No code, branch, commit,
+        migration or database change performed for this document.
+      </Footnote>
+    </PageLayout>
+  );
+}
+render(<Report />);
+</script>

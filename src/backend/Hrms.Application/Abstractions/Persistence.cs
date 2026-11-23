@@ -110,6 +110,11 @@ public interface ITenantDbContext
     DbSet<ShiftAssignment> ShiftAssignments { get; }
     DbSet<PolicyAssignment> PolicyAssignments { get; }
     DbSet<AttendanceRoster> AttendanceRosters { get; }
+    DbSet<AttendanceDevice> AttendanceDevices { get; }
+    DbSet<DeviceUserMap> DeviceUserMaps { get; }
+    DbSet<Punch> Punches { get; }
+    DbSet<PunchVoid> PunchVoids { get; }
+    DbSet<IngestBatch> IngestBatches { get; }
     DbSet<WorkflowDefinition> WorkflowDefinitions { get; }
     DbSet<WorkflowDefinitionStep> WorkflowDefinitionSteps { get; }
     DbSet<WorkflowInstance> WorkflowInstances { get; }

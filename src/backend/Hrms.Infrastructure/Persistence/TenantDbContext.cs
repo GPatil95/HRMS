@@ -78,6 +78,11 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
     public DbSet<ShiftAssignment> ShiftAssignments => Set<ShiftAssignment>();
     public DbSet<PolicyAssignment> PolicyAssignments => Set<PolicyAssignment>();
     public DbSet<AttendanceRoster> AttendanceRosters => Set<AttendanceRoster>();
+    public DbSet<AttendanceDevice> AttendanceDevices => Set<AttendanceDevice>();
+    public DbSet<DeviceUserMap> DeviceUserMaps => Set<DeviceUserMap>();
+    public DbSet<Punch> Punches => Set<Punch>();
+    public DbSet<PunchVoid> PunchVoids => Set<PunchVoid>();
+    public DbSet<IngestBatch> IngestBatches => Set<IngestBatch>();
     public DbSet<WorkflowDefinition> WorkflowDefinitions => Set<WorkflowDefinition>();
     public DbSet<WorkflowDefinitionStep> WorkflowDefinitionSteps => Set<WorkflowDefinitionStep>();
     public DbSet<WorkflowInstance> WorkflowInstances => Set<WorkflowInstance>();
@@ -814,6 +819,83 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
             e.Property(x => x.Reason).HasMaxLength(400);
             e.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<Shift>().WithMany().HasForeignKey(x => x.ShiftId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<AttendanceDevice>(e =>
+        {
+            e.ToTable("devices", "att", t =>
+            {
+                t.HasCheckConstraint("ck_devices_protocol", "protocol IN ('push_api','pull_poll','file_import')");
+                t.HasCheckConstraint("ck_devices_tz_mode", "timezone_mode IN ('utc','device_local')");
+                t.HasCheckConstraint("ck_devices_tz_required", "timezone_mode <> 'device_local' OR device_timezone IS NOT NULL");
+            });
+            e.HasIndex(x => x.Code).IsUnique();
+            e.HasIndex(x => x.TokenHash).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(160);
+            e.Property(x => x.Vendor).HasMaxLength(80);
+            e.Property(x => x.Protocol).HasMaxLength(20);
+            e.Property(x => x.TimezoneMode).HasMaxLength(20);
+            e.Property(x => x.DeviceTimezone).HasMaxLength(64);
+            e.Property(x => x.TokenHash).HasMaxLength(64);
+            e.Property(x => x.CredentialRef).HasMaxLength(256);
+            e.HasOne<Branch>().WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.SetNull);
+        });
+        b.Entity<DeviceUserMap>(e =>
+        {
+            e.ToTable("device_user_map", "att");
+            e.HasIndex(x => new { x.DeviceId, x.DeviceUserCode, x.EffectiveFrom }).IsUnique();
+            e.HasIndex(x => new { x.EmployeeId });
+            e.Property(x => x.DeviceUserCode).HasMaxLength(64);
+            e.HasOne<AttendanceDevice>().WithMany().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<Punch>(e =>
+        {
+            e.ToTable("punches", "att", t =>
+            {
+                t.HasCheckConstraint("ck_punches_source", "source IN ('device','self','manual','import','regularization')");
+                t.HasCheckConstraint("ck_punches_direction", "direction IN ('in','out','unknown')");
+                t.HasCheckConstraint("ck_punches_manual_note", "source <> 'manual' OR note IS NOT NULL");
+            });
+            e.HasIndex(x => x.DedupKey).IsUnique();
+            e.HasIndex(x => new { x.EmployeeId, x.PunchedAt });
+            e.HasIndex(x => new { x.DeviceId, x.DeviceUserCode });
+            e.HasIndex(x => x.IngestBatchId);
+            e.Property(x => x.Source).HasMaxLength(20);
+            e.Property(x => x.Direction).HasMaxLength(10);
+            e.Property(x => x.DeviceUserCode).HasMaxLength(64);
+            e.Property(x => x.DedupKey).HasMaxLength(64);
+            e.Property(x => x.IpAddress).HasMaxLength(64);
+            e.Property(x => x.UserAgent).HasMaxLength(256);
+            e.Property(x => x.RefRequestId).HasMaxLength(128);
+            e.Property(x => x.Note).HasMaxLength(500);
+            e.Property(x => x.LocalWallTime).HasColumnType("timestamp");
+            e.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<AttendanceDevice>().WithMany().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<IngestBatch>().WithMany().HasForeignKey(x => x.IngestBatchId).OnDelete(DeleteBehavior.SetNull);
+        });
+        b.Entity<PunchVoid>(e =>
+        {
+            e.ToTable("punch_voids", "att");
+            e.HasIndex(x => x.PunchId).IsUnique();
+            e.Property(x => x.Reason).HasMaxLength(400);
+            e.HasOne<Punch>().WithMany().HasForeignKey(x => x.PunchId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<IngestBatch>(e =>
+        {
+            e.ToTable("ingest_batches", "att", t =>
+            {
+                t.HasCheckConstraint("ck_ingest_batches_source", "source IN ('device','self','manual','import')");
+                t.HasCheckConstraint("ck_ingest_batches_status", "status IN ('processing','completed','failed')");
+            });
+            e.HasIndex(x => x.IdempotencyKey).IsUnique();
+            e.Property(x => x.Source).HasMaxLength(20);
+            e.Property(x => x.IdempotencyKey).HasMaxLength(128);
+            e.Property(x => x.PayloadHash).HasMaxLength(64);
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.ErrorSummary).HasColumnType("jsonb");
+            e.HasOne<AttendanceDevice>().WithMany().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<FileObject>().WithMany().HasForeignKey(x => x.FileId).OnDelete(DeleteBehavior.SetNull);
         });
 
         WorkflowModel.Configure(b);

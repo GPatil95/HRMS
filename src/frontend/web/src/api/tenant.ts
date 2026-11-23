@@ -288,10 +288,67 @@ export const tenantApi = {
   resolveConfigRange: (employeeId: string, from: string, to: string) =>
     api<ResolvedAttendance[]>(`/api/v1/attendance/config/resolve-range?employeeId=${employeeId}&from=${from}&to=${to}`),
   mastersImpactPreview: (kind: 'shift' | 'policy', versionId: string, effectiveFrom: string) =>
-    post<ImpactPreview>('/api/v1/attendance/masters/impact-preview', { kind, versionId, effectiveFrom }),
+    post<ImpactPreview>('/api/v1/attendance/masters/impact-preview', { kind, versionId, effectiveFrom }),  // ---- Attendance ingestion (M3.2) ----
+  attendanceDevices: (active?: boolean) =>
+    api<AttendanceDevice[]>(`/api/v1/attendance/devices${active === undefined ? '' : `?active=${active}`}`),
+  createAttendanceDevice: (b: DeviceInput) => post<DeviceCreatedDto>('/api/v1/attendance/devices', b),
+  updateAttendanceDevice: (id: string, b: Partial<DeviceInput>) => put<DeviceDto>(`/api/v1/attendance/devices/${id}`, b),
+  rotateDeviceToken: (id: string) => post<DeviceCreatedDto>(`/api/v1/attendance/devices/${id}/rotate-token`, {}),
+  deviceUserMaps: (deviceId: string) => api<DeviceUserMap[]>(`/api/v1/attendance/devices/${deviceId}/user-map`),
+  upsertDeviceUserMap: (deviceId: string, b: DeviceUserMapInput) =>
+    post<DeviceUserMap>(`/api/v1/attendance/devices/${deviceId}/user-map`, b),
+  deleteDeviceUserMap: (deviceId: string, mapId: string) => del(`/api/v1/attendance/devices/${deviceId}/user-map/${mapId}`),
+  selfPunch: (b: { direction?: string; clientTime?: string | null; geoLat?: number | null; geoLng?: number | null; geoAccuracyM?: number | null; note?: string | null }) =>
+    post<AttendancePunch>('/api/v1/attendance/punches/self', b),
+  manualPunch: (b: { employeeId: string; punchedAt: string; direction?: string; note: string; refRequestId?: string | null }) =>
+    post<AttendancePunch>('/api/v1/attendance/punches/manual', b),
+  voidPunch: (id: string, reason: string) => post<undefined>(`/api/v1/attendance/punches/${id}/void`, { reason }),
+  importPunchCsv: (b: { fileId: string; deviceId?: string | null; mapping: CsvColumnMapping; idempotencyKey?: string | null; skipHeader: boolean }) =>
+    post<IngestResult>('/api/v1/attendance/punches/import', b),
+  punches: (q: string) => api<Paged<AttendancePunch>>(`/api/v1/attendance/punches${q}`),
+  myPunches: (q: string) => api<Paged<AttendancePunch>>(`/api/v1/attendance/punches/my${q}`),
+  ingestBatches: (source?: string) =>
+    api<Paged<IngestBatch>>(`/api/v1/attendance/ingest-batches${source ? `?source=${source}` : ''}`).then(itemsOf),
 }
 
-// ---- Attendance types (M3.1) ----
+// ---- Attendance ingestion types (M3.2) ----
+export interface AttendanceDevice {
+  id: string; code: string; name: string; vendor?: string | null
+  branchId?: string | null; branchName?: string | null
+  protocol: string; timezoneMode: string; deviceTimezone?: string | null
+  lastSeenAt?: string | null; isActive: boolean
+}
+export type DeviceDto = AttendanceDevice
+export interface DeviceInput {
+  code?: string; name?: string; vendor?: string | null; branchId?: string | null
+  protocol?: string; timezoneMode?: string; deviceTimezone?: string | null; isActive?: boolean
+}
+export interface DeviceCreatedDto { device: AttendanceDevice; token: string }
+export interface DeviceUserMap {
+  id: string; deviceId: string; deviceUserCode: string; employeeId: string
+  employeeCode: string; employeeName: string; effectiveFrom: string; effectiveTo?: string | null
+}
+export interface DeviceUserMapInput { deviceUserCode?: string; employeeId?: string; effectiveFrom: string; effectiveTo?: string | null }
+export interface AttendancePunch {
+  id: string; employeeId?: string | null; employeeCode?: string | null; employeeName?: string | null
+  punchedAt: string; localWallTime: string; source: string; direction: string
+  deviceId?: string | null; deviceCode?: string | null; deviceUserCode?: string | null
+  ingestBatchId?: string | null; geoLat?: number | null; geoLng?: number | null; geoAccuracyM?: number | null
+  ipAddress?: string | null; userAgent?: string | null; refRequestId?: string | null; note?: string | null
+  createdAt: string; isVoided: boolean; voidReason?: string | null; voidedAt?: string | null
+}
+export interface IngestReject { index: number; reason: string }
+export interface IngestResult {
+  batchId: string; received: number; accepted: number; duplicates: number; rejected: number
+  rejections: IngestReject[]; status: string
+}
+export interface CsvColumnMapping { deviceUserCodeCol: number; timestampCol: number; directionCol: number; employeeCodeCol: number }
+export interface IngestBatch {
+  id: string; source: string; deviceId?: string | null; deviceCode?: string | null; fileId?: string | null
+  received: number; accepted: number; duplicates: number; rejected: number; status: string
+  errorSummary?: string | null; createdAt: string; completedAt?: string | null
+}
+
 export interface AttendanceShift {
   id: string; code: string; name: string; isActive: boolean; versionCount: number
   activeVersion?: number | null; activeFrom?: string | null; activeTo?: string | null
