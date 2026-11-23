@@ -18,7 +18,8 @@ namespace Hrms.Application.Attendance;
 /// starts NULL for unmapped device codes and is back-filled by the attendance.device.map job.
 /// </summary>
 public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataScopeService scopes,
-    ICurrentUser user, IRequestContext request, IFileStorageService storage)
+    ICurrentUser user, IRequestContext request, IFileStorageService storage,
+    ITenantContextAccessor tenant, IEntitlementService entitlements)
 {
     private const int MaxRejectionsStored = 25;
     private static readonly TimeSpan SelfSkewLimit = TimeSpan.FromHours(24);
@@ -28,13 +29,17 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
     public static TimeZoneInfo ResolveZone(string? name) =>
         name is { Length: > 0 } ? TimeZoneInfo.FindSystemTimeZoneById(name) : TimeZoneInfo.Utc;
 
-    /// <summary>Canonical dedup key: source|device|subject|punchedAt-to-second. The subject is the
-    /// device user code (device/import rows) or employee id (self/manual rows) — the physical event
-    /// identity, so a later employee back-fill can never change whether a punch is a duplicate.</summary>
+    /// <summary>Canonical dedup key over the physical event identity: device|subject|punchedAt-to-second
+    /// for device rows (the channel is ignored so CSV offline-sync dedups against push data), or
+    /// source|subject|punchedAt for non-device rows. The subject is the device user code
+    /// (device/import rows) or employee id (self/manual rows), so a later employee back-fill can
+    /// never change whether a punch is a duplicate.</summary>
     public static string BuildDedupKey(string source, Guid? deviceId, string subject, DateTimeOffset punchedAt)
     {
-        var raw = string.Join('|', source, deviceId?.ToString() ?? "-", subject,
-            punchedAt.UtcDateTime.ToString("yyyyMMddHHmmss"));
+        var ts = punchedAt.UtcDateTime.ToString("yyyyMMddHHmmss");
+        var raw = deviceId is { } d
+            ? string.Join('|', "device", d.ToString(), subject, ts)
+            : string.Join('|', source, "-", subject, ts);
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw))).ToLowerInvariant();
     }
 
@@ -109,6 +114,13 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
         string source, Guid? deviceId, Guid? fileId, string idempotencyKey, string? payloadHash,
         List<Row> rows, CancellationToken ct)
     {
+        // Scope the caller-supplied key to its channel: different devices/files may legitimately
+        // reuse the same external key — only same-channel repeats count as retries.
+        var prefix = $"{source}:{deviceId?.ToString("N") ?? fileId?.ToString("N") ?? "-"}:";
+        var scopedKey = prefix + (idempotencyKey.Length > 128 - prefix.Length
+            ? idempotencyKey[..(128 - prefix.Length)]
+            : idempotencyKey);
+
         Result<(IngestBatch, bool)> ReplayResult(IngestBatch existing)
         {
             if (payloadHash is not null && existing.PayloadHash is not null && existing.PayloadHash != payloadHash)
@@ -116,13 +128,13 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
             return (existing, true); // replay: caller gets stored counts, zero new rows
         }
 
-        var existing = await db.IngestBatches.FirstOrDefaultAsync(b => b.IdempotencyKey == idempotencyKey, ct);
+        var existing = await db.IngestBatches.FirstOrDefaultAsync(b => b.IdempotencyKey == scopedKey, ct);
         if (existing is not null)
             return ReplayResult(existing);
 
         var batch = new IngestBatch
         {
-            Source = source, DeviceId = deviceId, FileId = fileId, IdempotencyKey = idempotencyKey,
+            Source = source, DeviceId = deviceId, FileId = fileId, IdempotencyKey = scopedKey,
             PayloadHash = payloadHash, ReceivedCount = rows.Count,
         };
         db.IngestBatches.Add(batch);
@@ -134,8 +146,8 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
         {
             // A concurrent call won the same idempotency key; never touch the tracker again —
             // the replay path performs no further SaveChanges.
-            var raced = await db.IngestBatches.AsNoTracking()
-                .FirstAsync(b => b.IdempotencyKey == idempotencyKey, ct);
+            var raced = await db.IngestBatches
+                .FirstAsync(b => b.IdempotencyKey == scopedKey, ct);
             return ReplayResult(raced);
         }
         return (batch, false);
@@ -146,24 +158,45 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
     private async Task<IngestResultDto> CommitBatchAsync(IngestBatch batch, List<Row> rows,
         List<IngestReject> rejects, CancellationToken ct)
     {
-        var subjectOf = (Row r) => r.DeviceUserCode ?? r.EmployeeCode ?? "-";
+        var subjectOf = (Row r) => !string.IsNullOrWhiteSpace(r.DeviceUserCode) ? r.DeviceUserCode!.Trim()
+            : !string.IsNullOrWhiteSpace(r.EmployeeCode) ? r.EmployeeCode!.Trim() : "-";
         var dedupKeys = rows.Select(r => BuildDedupKey(batch.Source, batch.DeviceId, subjectOf(r), r.Instant)).ToHashSet();
         var existing = await db.Punches.AsNoTracking().Where(p => dedupKeys.Contains(p.DedupKey))
             .Select(p => p.DedupKey).ToHashSetAsync(ct);
 
+        // Scoped importers can only write punches for employees inside their import scope.
+        HashSet<Guid>? importScope = null;
+        if (batch.Source == PunchSources.Import)
+        {
+            var scope = await scopes.ResolveAsync(Modules.AttendancePermissions.PunchesImport, ct);
+            if (!scope.All)
+            {
+                importScope = (await scopes.ApplyScope(db.Employees.AsNoTracking(), scope)
+                    .Select(e => e.Id).ToListAsync(ct)).ToHashSet();
+            }
+        }
+
         var accepted = 0;
         var duplicates = 0;
+        var pending = new List<Punch>();
         foreach (var (row, i) in rows.Select((r, i) => (r, i)))
         {
             var key = BuildDedupKey(batch.Source, batch.DeviceId, subjectOf(row), row.Instant);
-            if (!existing.Add(key))
+            if (existing.Contains(key))
             {
                 duplicates++;
                 continue;
             }
 
+            // The admin-managed device mapping wins over any employee code the payload carries;
+            // a payload code only resolves employees when no mapping exists.
             Guid? employeeId = null;
-            if (row.EmployeeCode is { Length: > 0 } code)
+            if (batch.DeviceId is { } devId && row.DeviceUserCode is { Length: > 0 } devCode)
+            {
+                var punchDate = DateOnly.FromDateTime(row.WallTime);
+                employeeId = await ResolveDeviceEmployeeAsync(devId, devCode, punchDate, ct);
+            }
+            if (employeeId is null && row.EmployeeCode is { Length: > 0 } code)
             {
                 employeeId = await db.Employees.AsNoTracking().Where(e => e.EmployeeCode == code)
                     .Select(e => (Guid?)e.Id).FirstOrDefaultAsync(ct);
@@ -173,14 +206,13 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
                     continue;
                 }
             }
-            else if (batch.DeviceId is { } devId && row.DeviceUserCode is { Length: > 0 } devCode)
+            if (employeeId is { } eid && importScope is not null && !importScope.Contains(eid))
             {
-                var punchDate = DateOnly.FromDateTime(row.WallTime);
-                employeeId = await ResolveDeviceEmployeeAsync(devId, devCode, punchDate, ct);
-                // null employee is fine — stored unmapped, back-filled later
+                rejects.Add(new IngestReject(i, "employee is outside the import scope"));
+                continue;
             }
 
-            db.Punches.Add(new Punch
+            var punch = new Punch
             {
                 // timestamptz requires offset-0 — normalize device-local instants to UTC.
                 EmployeeId = employeeId, PunchedAt = row.Instant.ToUniversalTime(), LocalWallTime = row.WallTime,
@@ -188,7 +220,10 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
                 DeviceUserCode = row.DeviceUserCode, IngestBatchId = batch.Id,
                 DedupKey = key,
                 IpAddress = request.IpAddress, UserAgent = request.UserAgent,
-            });
+            };
+            db.Punches.Add(punch);
+            pending.Add(punch);
+            existing.Add(key); // claim the key only once the row has passed every check
             accepted++;
         }
 
@@ -201,20 +236,32 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
         {
             batch.ErrorSummary = JsonSerializer.Serialize(rejects.Take(MaxRejectionsStored));
         }
-        try
+
+        // Concurrent pushes can win dedup keys between the pre-check and the save: drop only the
+        // punches another batch actually persisted and retry, so new rows here are never lost.
+        for (var attempt = 1; ; attempt++)
         {
-            await db.SaveChangesAsync(ct);
-        }
-        catch (DbUpdateException ex) when (DeviceService.IsOverlapOrUnique(ex))
-        {
-            // Concurrent identical rows raced past the pre-check — the save was atomic, so no
-            // punches persisted; this batch's rows were all duplicates of the winner's. The tracker
-            // still holds the failed inserts, so update the batch counters with raw SQL instead.
-            var summary = rejects.Count > 0 ? JsonSerializer.Serialize(rejects.Take(MaxRejectionsStored)) : null;
-            await db.Database.ExecuteSqlInterpolatedAsync(
-                $"UPDATE att.ingest_batches SET accepted_count = 0, duplicate_count = {rows.Count}, rejected_count = {rejects.Count}, status = {IngestBatchStatuses.Completed}, completed_at = {clock.UtcNow}, error_summary = CAST({summary} AS jsonb) WHERE id = {batch.Id}", ct);
-            return new IngestResultDto(batch.Id, batch.ReceivedCount, 0,
-                rows.Count, rejects.Count, rejects, IngestBatchStatuses.Completed);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                break;
+            }
+            catch (DbUpdateException ex) when (DeviceService.IsOverlapOrUnique(ex) && attempt <= 3)
+            {
+                var keys = pending.Select(p => p.DedupKey).ToList();
+                var won = await db.Punches.AsNoTracking().Where(p => keys.Contains(p.DedupKey))
+                    .Select(p => p.DedupKey).ToListAsync(ct);
+                var losers = pending.Where(p => won.Contains(p.DedupKey)).ToList();
+                foreach (var loser in losers)
+                {
+                    ((DbContext)db).Entry(loser).State = EntityState.Detached;
+                    pending.Remove(loser);
+                }
+                duplicates += losers.Count;
+                accepted -= losers.Count;
+                batch.AcceptedCount = accepted;
+                batch.DuplicateCount = duplicates;
+            }
         }
         return new IngestResultDto(batch.Id, batch.ReceivedCount, accepted, duplicates,
             rejects.Count, rejects, batch.Status);
@@ -231,6 +278,10 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
     public async Task<Result<IngestResultDto>> IngestDevicePushAsync(AttendanceDevice device,
         string idempotencyKey, DevicePushRequest req, string payloadHash, CancellationToken ct)
     {
+        // The endpoint is anonymous, so it cannot rely on RequirePermission's entitlement gate.
+        if (!(await entitlements.GetAsync(tenant.Required.TenantId, ct)).IsModuleEnabled(Modules.AttendanceModule.ModuleCode))
+            return Error.Forbidden("module-not-enabled", "Attendance is not enabled for your organisation.");
+
         if (req.Punches is not { } items || items.Count == 0)
             return Error.Validation("ingest.empty", "Punch list is empty.");
         if (items.Count > 2000)
@@ -261,8 +312,12 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
         var (batch, raced) = opened.Value;
         if (raced)
         {
-            // An identical-key batch already exists (replay, or an in-flight twin): return its
-            // stored state without inserting anything.
+            if (batch.Status == IngestBatchStatuses.Processing)
+            {
+                // An earlier attempt died after opening the batch — finish it with this call's rows.
+                return await CommitBatchAsync(batch, rows, rejects, ct);
+            }
+            // An identical-key batch already exists (replay): return its stored state.
             return new IngestResultDto(batch.Id, batch.ReceivedCount, batch.AcceptedCount,
                 batch.DuplicateCount, batch.RejectedCount, ReadRejects(batch), batch.Status);
         }
@@ -356,9 +411,16 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
         if (punch is null) return Error.NotFound("punch.not_found", "Punch not found.");
         if (await db.PunchVoids.AnyAsync(v => v.PunchId == punchId, ct))
             return Error.Conflict("void.duplicate", "Punch is already voided.");
-        if (punch.EmployeeId is { } empId &&
-            !await scopes.CanAccessEmployeeAsync(Modules.AttendancePermissions.PunchesManual, empId, ct))
-            return Error.Forbidden("scope.denied", "Punch is outside your data scope.");
+        if (punch.EmployeeId is { } empId)
+        {
+            if (!await scopes.CanAccessEmployeeAsync(Modules.AttendancePermissions.PunchesManual, empId, ct))
+                return Error.Forbidden("scope.denied", "Punch is outside your data scope.");
+        }
+        else if (!(await scopes.ResolveAsync(Modules.AttendancePermissions.PunchesManual, ct)).All)
+        {
+            // Unmapped punches have no employee to scope to — require tenant-wide scope.
+            return Error.Forbidden("scope.denied", "Unmapped punches require tenant-wide scope.");
+        }
 
         db.PunchVoids.Add(new PunchVoid { PunchId = punchId, Reason = reason.Trim() });
         try
@@ -379,7 +441,11 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
         if (input.FileId is not { } fileId)
             return Error.Validation("import.file", "file_id is required.");
         var file = await db.Files.AsNoTracking().FirstOrDefaultAsync(f => f.Id == fileId, ct);
-        if (file is null) return Error.NotFound("file.not_found", "Uploaded file not found.");
+        // Only files uploaded under the punch-import purpose may be ingested — mirroring the
+        // file service's authorization checks so an arbitrary file id cannot be read.
+        if (file is null || file.IsDeleted || file.Status != FileStatus.Available ||
+            !string.Equals(file.Purpose, Modules.AttendancePermissions.PunchImportPurpose, StringComparison.Ordinal))
+            return Error.NotFound("file.not_found", "Uploaded file not found.");
         if (input.Mapping is not { } map)
             return Error.Validation("import.mapping", "column mapping is required.");
 
@@ -397,6 +463,11 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
         var (batch, raced) = opened.Value;
         if (raced)
         {
+            if (batch.Status == IngestBatchStatuses.Processing)
+            {
+                batch.ReceivedCount = rows.Count + rejects.Count;
+                return await CommitBatchAsync(batch, rows, rejects, ct);
+            }
             return new IngestResultDto(batch.Id, batch.ReceivedCount, batch.AcceptedCount,
                 batch.DuplicateCount, batch.RejectedCount, ReadRejects(batch), batch.Status);
         }
@@ -503,10 +574,11 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
         var scopedEmployees = scopes.ApplyScope(db.Employees.AsNoTracking(), scope).Select(e => (Guid?)e.Id);
         var scopedBranches = scope.BranchIds.ToList();
 
+        var seeAll = scope.All;
         var punches = from p in db.Punches.AsNoTracking()
                       where (p.EmployeeId != null && scopedEmployees.Contains(p.EmployeeId))
-                         || (p.EmployeeId == null && p.DeviceId != null &&
-                             db.AttendanceDevices.Any(d => d.Id == p.DeviceId && d.BranchId != null && scopedBranches.Contains(d.BranchId.Value)))
+                         || (p.EmployeeId == null && (seeAll || (p.DeviceId != null &&
+                             db.AttendanceDevices.Any(d => d.Id == p.DeviceId && d.BranchId != null && scopedBranches.Contains(d.BranchId.Value)))))
                       select p;
         if (q.EmployeeId is { } emp) punches = punches.Where(p => p.EmployeeId == emp);
         if (q.DeviceId is { } dev) punches = punches.Where(p => p.DeviceId == dev);
@@ -580,12 +652,18 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
         if (source is { Length: > 0 } s) q = q.Where(b => b.Source == s);
         var total = await q.CountAsync(ct);
         var size = Math.Clamp(pageSize, 1, 200);
+        // Error summaries can name employee codes from other branches — redact them for scoped viewers.
+        var scope = await scopes.ResolveAsync(Modules.AttendancePermissions.View, ct);
         var rows = await q.OrderByDescending(b => b.CreatedAt).Skip((Math.Max(page, 1) - 1) * size).Take(size).ToListAsync(ct);
         var devIds = rows.Where(r => r.DeviceId != null).Select(r => r.DeviceId!.Value).ToList();
         var devs = await db.AttendanceDevices.AsNoTracking().Where(d => devIds.Contains(d.Id))
             .ToDictionaryAsync(d => d.Id, d => d.Code, ct);
         return new PagedResult<IngestBatchDto>(
-            rows.Select(b => b.ToDto(b.DeviceId is { } id && devs.TryGetValue(id, out var c) ? c : null)).ToList(),
+            rows.Select(b =>
+            {
+                var dto = b.ToDto(b.DeviceId is { } id && devs.TryGetValue(id, out var c) ? c : null);
+                return scope.All ? dto : dto with { ErrorSummary = null };
+            }).ToList(),
             Math.Max(page, 1), size, total);
     }
 
@@ -594,12 +672,13 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
     public async Task<int> BackfillUnmappedAsync(Guid deviceId, CancellationToken ct)
     {
         var unmapped = await db.Punches.Where(p => p.DeviceId == deviceId && p.EmployeeId == null)
-            .Select(p => new { p.Id, p.DeviceUserCode, p.PunchedAt }).ToListAsync(ct);
+            .Select(p => new { p.Id, p.DeviceUserCode, p.LocalWallTime }).ToListAsync(ct);
         var filled = 0;
         foreach (var p in unmapped)
         {
             if (p.DeviceUserCode is not { Length: > 0 } code) continue;
-            var empId = await ResolveDeviceEmployeeAsync(deviceId, code, DateOnly.FromDateTime(p.PunchedAt.UtcDateTime), ct);
+            // Resolve against the same wall-clock date ingestion used — not the UTC date.
+            var empId = await ResolveDeviceEmployeeAsync(deviceId, code, DateOnly.FromDateTime(p.LocalWallTime), ct);
             if (empId is null) continue;
             await db.Database.ExecuteSqlInterpolatedAsync(
                 $"UPDATE att.punches SET employee_id = {empId.Value} WHERE id = {p.Id} AND employee_id IS NULL", ct);
