@@ -84,6 +84,7 @@ public sealed class WorkflowDefinitionService(ITenantDbContext db, IClock clock,
         def.Steps = [];
         Apply(def, input);
         db.WorkflowDefinitionSteps.AddRange(def.Steps);
+        def.ModifiedAt = clock.UtcNow; // always update the row so RowVersion (xmin) advances on step-only edits
         try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateConcurrencyException) { return Error.Conflict("workflow_definition.stale", "The definition was modified by someone else."); }
         return ToDto(def);
