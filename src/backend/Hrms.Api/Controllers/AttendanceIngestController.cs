@@ -64,18 +64,28 @@ public sealed class AttendanceIngestController(DeviceService devices, PunchInges
 
         // Bound the body before buffering/deserializing — a device credential must not be able to
         // allocate arbitrary memory. 1 MB comfortably holds the 2000-item batch limit (~200 B/row).
-        const long MaxPushBytes = 1_000_000;
+        // The cap is enforced on bytes actually read, not just the declared Content-Length.
+        const int MaxPushBytes = 1_000_000;
         if (Request.ContentLength > MaxPushBytes)
         {
             return ApiResults.Problem(Shared.Results.Error.Validation("ingest.too_large", "Payload exceeds 1 MB; split the batch."));
         }
 
-        Request.EnableBuffering();
         string body;
-        using (var reader = new StreamReader(Request.Body, Encoding.UTF8, leaveOpen: true))
+        using (var reader = new StreamReader(Request.Body, Encoding.UTF8))
         {
-            body = await reader.ReadToEndAsync(ct);
-            Request.Body.Position = 0;
+            var buf = new char[MaxPushBytes + 1];
+            var read = 0;
+            int n;
+            while ((n = await reader.ReadAsync(buf.AsMemory(read, buf.Length - read), ct)) > 0)
+            {
+                read += n;
+            }
+            if (read > MaxPushBytes)
+            {
+                return ApiResults.Problem(Shared.Results.Error.Validation("ingest.too_large", "Payload exceeds 1 MB; split the batch."));
+            }
+            body = new string(buf, 0, read);
         }
         var payloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(body))).ToLowerInvariant();
         var req = System.Text.Json.JsonSerializer.Deserialize<DevicePushRequest>(body,

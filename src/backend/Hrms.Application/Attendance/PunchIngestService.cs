@@ -114,11 +114,12 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
         string source, Guid? deviceId, Guid? fileId, string idempotencyKey, string? payloadHash,
         List<Row> rows, CancellationToken ct)
     {
-        // Scope the caller-supplied key to its channel: different devices/files may legitimately
-        // reuse the same external key — only same-channel repeats count as retries.
-        var prefix = $"{source}:{deviceId?.ToString("N") ?? fileId?.ToString("N") ?? "-"}:";
-        var scopedKey = prefix + (idempotencyKey.Length > 128 - prefix.Length
-            ? idempotencyKey[..(128 - prefix.Length)]
+        // Scope the caller-supplied key to its channel: different devices may legitimately reuse
+        // the same external key — only same-channel repeats count as retries. (Imports key on the
+        // file's content hash at the call site, so re-uploading the same file replays.)
+        var channel = deviceId is { } d ? $"device:{d:N}" : source;
+        var scopedKey = $"{channel}:" + (idempotencyKey.Length > 128 - channel.Length - 1
+            ? Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(idempotencyKey))).ToLowerInvariant()
             : idempotencyKey);
 
         Result<(IngestBatch, bool)> ReplayResult(IngestBatch existing)
@@ -158,11 +159,14 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
     private async Task<IngestResultDto> CommitBatchAsync(IngestBatch batch, List<Row> rows,
         List<IngestReject> rejects, CancellationToken ct)
     {
-        var subjectOf = (Row r) => !string.IsNullOrWhiteSpace(r.DeviceUserCode) ? r.DeviceUserCode!.Trim()
-            : !string.IsNullOrWhiteSpace(r.EmployeeCode) ? r.EmployeeCode!.Trim() : "-";
+        // Badge codes and employee codes are different namespaces — tag the subject kind so a
+        // badge 'E1' can never dedup-collide with employee code 'E1' on the same device+second.
+        var subjectOf = (Row r) => !string.IsNullOrWhiteSpace(r.DeviceUserCode) ? "b:" + r.DeviceUserCode!.Trim()
+            : !string.IsNullOrWhiteSpace(r.EmployeeCode) ? "e:" + r.EmployeeCode!.Trim() : "-";
         var dedupKeys = rows.Select(r => BuildDedupKey(batch.Source, batch.DeviceId, subjectOf(r), r.Instant)).ToHashSet();
         var existing = await db.Punches.AsNoTracking().Where(p => dedupKeys.Contains(p.DedupKey))
-            .Select(p => p.DedupKey).ToHashSetAsync(ct);
+            .Select(p => new { p.DedupKey, p.IngestBatchId }).ToListAsync(ct);
+        var taken = existing.ToDictionary(x => x.DedupKey, x => x.IngestBatchId);
 
         // Scoped importers can only write punches for employees inside their import scope.
         HashSet<Guid>? importScope = null;
@@ -182,9 +186,11 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
         foreach (var (row, i) in rows.Select((r, i) => (r, i)))
         {
             var key = BuildDedupKey(batch.Source, batch.DeviceId, subjectOf(row), row.Instant);
-            if (existing.Contains(key))
+            if (taken.TryGetValue(key, out var ownerBatch))
             {
-                duplicates++;
+                // Persisted by a concurrent commit of THIS batch — counts as accepted, not duplicate.
+                if (ownerBatch == batch.Id) accepted++;
+                else duplicates++;
                 continue;
             }
 
@@ -223,7 +229,7 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
             };
             db.Punches.Add(punch);
             pending.Add(punch);
-            existing.Add(key); // claim the key only once the row has passed every check
+            taken[key] = batch.Id; // claim the key only once the row has passed every check
             accepted++;
         }
 
@@ -250,15 +256,18 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
             {
                 var keys = pending.Select(p => p.DedupKey).ToList();
                 var won = await db.Punches.AsNoTracking().Where(p => keys.Contains(p.DedupKey))
-                    .Select(p => p.DedupKey).ToListAsync(ct);
-                var losers = pending.Where(p => won.Contains(p.DedupKey)).ToList();
+                    .Select(p => new { p.DedupKey, p.IngestBatchId }).ToListAsync(ct);
+                var wonKeys = won.ToDictionary(x => x.DedupKey, x => x.IngestBatchId);
+                var losers = pending.Where(p => wonKeys.ContainsKey(p.DedupKey)).ToList();
                 foreach (var loser in losers)
                 {
                     ((DbContext)db).Entry(loser).State = EntityState.Detached;
                     pending.Remove(loser);
                 }
-                duplicates += losers.Count;
-                accepted -= losers.Count;
+                // Rows a twin commit persisted FOR this batch still count as accepted.
+                var ownLosers = losers.Count(l => wonKeys[l.DedupKey] == batch.Id);
+                duplicates += losers.Count - ownLosers;
+                accepted = pending.Count + ownLosers;
                 batch.AcceptedCount = accepted;
                 batch.DuplicateCount = duplicates;
             }
@@ -456,7 +465,9 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
             if (device is null) return Error.Validation("import.device", "Unknown device.");
         }
 
-        var idemKey = input.IdempotencyKey is { Length: > 0 } k ? k.Trim() : $"csv:{fileId}";
+        // Default key derives from the file's content hash, not its row id: re-uploading the same
+        // CSV produces a new file row but the same hash, so the retry replays the original batch.
+        var idemKey = input.IdempotencyKey is { Length: > 0 } k ? k.Trim() : $"csv:{file.Sha256}";
         var (rows, rejects) = await ParseCsvAsync(file, map, device, input.SkipHeader, ct);
         var opened = await OpenBatchAsync(PunchSources.Import, device?.Id, fileId, idemKey, file.Sha256, rows, ct);
         if (!opened.IsSuccess) return opened.Error!;
