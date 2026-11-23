@@ -74,13 +74,13 @@ function DefinitionDialog({ initial, onClose }: { initial: WorkflowDefinition | 
               {form.steps.map((s, i) => (
                 <TableRow key={i}>
                   <TableCell><TextField size="small" type="number" value={s.stepOrder} onChange={e => setStep(i, { stepOrder: Number(e.target.value) })} sx={{ width: 70 }} /></TableCell>
-                  <TableCell><TextField size="small" value={s.name} onChange={e => setStep(i, { name: e.target.value })} /></TableCell>
+                  <TableCell><TextField size="small" value={s.name} onChange={e => setStep(i, { name: e.target.value })} sx={{ minWidth: 200 }} /></TableCell>
                   <TableCell>
                     <TextField select size="small" value={s.approverType} onChange={e => setStep(i, { approverType: e.target.value, approverScope: e.target.value === 'role' ? s.approverScope : 'tenant' })} sx={{ minWidth: 170 }}>
                       {approverTypes.map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
                     </TextField>
                   </TableCell>
-                  <TableCell><TextField size="small" placeholder={paramHint[s.approverType] ?? '—'} disabled={!paramHint[s.approverType]} value={s.approverParam ?? ''} onChange={e => setStep(i, { approverParam: e.target.value || null })} /></TableCell>
+                  <TableCell><TextField size="small" placeholder={paramHint[s.approverType] ?? '—'} disabled={!paramHint[s.approverType]} value={s.approverParam ?? ''} onChange={e => setStep(i, { approverParam: e.target.value || null })} sx={{ minWidth: 150 }} /></TableCell>
                   <TableCell>
                     <TextField select size="small" value={s.approverScope ?? 'tenant'} disabled={s.approverType !== 'role'} onChange={e => setStep(i, { approverScope: e.target.value })} sx={{ minWidth: 150 }}>
                       {approverScopes.map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}

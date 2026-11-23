@@ -84,3 +84,31 @@ Outputs land in `docs/attendance/images/` (naming: `m3.x-<screen>.png`).
 `docsdemo` is the only tenant these steps touch. Do **not** run
 `migrate-tenants` or any seeding against `permanenttest` or any real tenant.
 Delete `hrms_tenant_<n>` to discard the demo entirely.
+
+## 6. Workflow demo data (Workstream B, PR #5)
+
+Requires a build with the `CoreWorkflow` tenant migration. The workflow
+screenshots were captured on a **fresh local** `docsdemo` provisioned on a
+throwaway Postgres container; no existing tenant was migrated.
+
+1. Org: company `DDC`; branches `HQ` (Headquarters) and `BLR` (Bengaluru);
+   department `ENG`.
+2. Employees: `EMP001 Priya Nair` (HQ), `EMP002 Arjun Shah` (HQ, manager
+   EMP001), `EMP003 Meera Iyer` (HQ), `EMP004 Rohan Das` (BLR),
+   `EMP005 Kavya Rao` (HQ, no manager). Create a user for each
+   (`<first>.<last>@docsdemo.test`) linked to the employee: Priya → Manager,
+   others → Employee. Accept the invitations from Mailpit.
+3. Roles: `HR_APPROVER` (`workitems.inbox.view`, `workitems.inbox.act`):
+   Meera targeted at branch HQ, Rohan at branch BLR. `WF_REQUESTER`
+   (`workflow.instances.start`, scope Own): Arjun, Kavya.
+4. Definitions: publish `ASSET_REQ` (step 1 reporting manager, SLA 24;
+   step 2 role `HR_APPROVER`, scope `branch`, SLA 48). Save `TRAVEL_REQ` as a
+   draft.
+5. Requests (`POST workflow/instances`, `documentType:"workflow.generic_request"`,
+   `subjectEmployeeId` = requester's employee): Arjun "Laptop replacement"
+   (Priya approves → goes to Meera only), Arjun "Second monitor" (waits on
+   Priya), Kavya "Ergonomic chair" (no manager → **stalled**).
+6. Screenshots: `/workflow/definitions` (+ editor of `TRAVEL_REQ`, `?tab=stalled`
+   + Resume dialog), `/my-work` as Priya (inbox, delegate search "ka"), as
+   Meera (inbox + History), My requests as Arjun and Kavya. Output:
+   `docs/workflow/images/core-workflow-<screen>-<step>.png`.

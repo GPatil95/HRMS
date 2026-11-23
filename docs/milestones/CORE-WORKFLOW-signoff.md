@@ -46,11 +46,21 @@ All POST actions accept an `Idempotency-Key` header. Manager and Employee system
 - New: `WorkflowEngineTests` — 8 API tests (sequential + parallel stages, reporting manager / role / user resolution, amount thresholds, self-approval prevention, send-back + resubmit, reject, idempotency, delegation, claim conflicts, manual + SLA escalation, definition versioning/immutability, permissions, tenant isolation, audit/outbox/notification emission).
 - Full suite: 33 unit + 147 API tests pass (includes the 8 new tests). `dotnet build -c Release` has 0 warnings and 0 errors. `pnpm typecheck`, `pnpm lint` (no errors; the 4 warnings were already there) and `pnpm build` all pass.
 
+## Round 2 — review decisions (2026-11-23)
+
+- **Scope-aware role approvers.** `workflow.definition_steps.approver_scope` (`tenant` default, `company`, `branch`, `department`, `reporting`; role steps only, check constraint `ck_definition_steps_scope`). A holder qualifies through matching assignment targets, or through their own employee's org unit when the assignment has no target of that kind. `reporting` = managers of the subject at any level.
+- **Stalled.** New instance status `stalled` (included in the one-active-instance index). Any required step with zero approvers stalls the request at activation, whether on start, approve, send-back to previous or resubmit. Nothing is skipped or auto-approved, and the SLA sweep ignores stalled requests. History gets `stalled`; there is an audit record, outbox event `workflow.instance.stalled`, and notifications to Tenant Admins plus `workflow.instances.manage` holders. `POST workflow/instances/{id}/resume` (`workflow.instances.manage`, optional `assigneeUserId`, which must be active, able to act and not the requester) re-resolves approvers and records `resumed`.
+- **Eligible-delegate lookup.** `GET workitems/eligible-delegates?search&page&pageSize` (`workitems.inbox.act`; active users holding `workitems.inbox.act`, excluding the caller, case-insensitive name/email search, page size ≤ 50). The UI uses a searchable picker; the raw user-ID field is gone. Backend `targetCanAct` validation is unchanged.
+- **Delegation hardening.** `workflow.instance_steps.delegation_id` links tasks routed by a standing delegation. A delegate cannot act once the delegation is revoked or expired (409 `workflow.delegation_ended`). Revocation returns open tasks immediately, and the SLA sweep returns tasks of expired delegations. Standing delegations are ignored when the delegate no longer holds `workitems.inbox.act`.
+- All of the above was folded into the still-unapplied `20261119111229_CoreWorkflow` migration (`has-pending-model-changes`: none). No new migration.
+- Docs: [workflow manual](../workflow/workflow-approvals.md), [training script TA-04](../training/scripts/core-workflow-approvals.md), screenshots `docs/workflow/images/core-workflow-*.png`.
+
 ## Deviations from doc 19 / limitations
 
 - Definitions are stored relationally (`definitions` + `definition_steps`), not as a versioned JSON blob. This gives constraints and indexes and supports the same draft/publish/immutable lifecycle.
 - Conditions are fixed columns (amount, company, branch, department, effective dates). The sandboxed expression evaluator that doc 19 shares with payroll formulas does not exist yet.
 - Parallel approval supports any/all only. N-of-M, user groups, branch head and module custom resolvers are not built yet. The reporting-manager level comes from `approver_param` (via `reporting_closure`).
 - No reminders, auto-approve/auto-reject policies, definition maker-checker, or SignalR count push.
+- Generic requests do not default the subject employee to the requester's employee. Manager steps need `subjectEmployeeId`; without it the request stalls.
 - Engine authorization checks assignee, delegate or claimer. Modules must still re-check document permission and scope in their own APIs, as doc 19.2 requires.
 - `PostgresTenantDatabaseProvisioner.Schemas` gets `workflow` and `workitems` so the tenant app role can use them.

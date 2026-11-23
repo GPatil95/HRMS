@@ -21,6 +21,7 @@ No video is marked recorded until a real screen recording ships.
 | TA-01 | First-login & company/org setup | Companies → branches → departments → masters | pending | Not started |
 | TA-02 | Roles, permissions & data scope | Build roles, scoped access, overrides | pending | Not started |
 | TA-03 | Attendance masters (M3.1) | Shifts, calendars, policies, assignments | pending | Not started |
+| TA-04 | Approval workflows & My Work | Scoped approval chains, inbox actions, delegation, stalled → resume | [workflow script](scripts/core-workflow-approvals.md) | **Script ready** |
 
 ## HR Operations Training
 
