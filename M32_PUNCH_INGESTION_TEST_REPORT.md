@@ -63,3 +63,28 @@ shift + WC26 calendar + STD policy published, device `BIO-HQ-01` + badge map
 manual. Recreation steps: `docs/implementation/docsdemo-recreation.md`.
 
 Tests after fix: API 150/150 · unit 46/46.
+
+## Final verification update — 2026-11-23 (commit 28a1674)
+
+Live end-to-end verification on the `docsdemo` tenant (1007, `hrms_tenant_1007`):
+
+| Check | Result |
+|---|---|
+| Device registration + token auth | PASS — active BIO-HQ-01, bad token → 401 `device.auth` |
+| Device→employee mapping | PASS — badge 77 mapped → `attendance.device.map` back-filled 2 stored punches |
+| Device push ingestion | PASS — 7 naive + 2 offset-qualified pushes accepted, correct IST wall times |
+| CSV bulk import | PASS — 5 rows → 4 accepted + 1 cross-channel duplicate |
+| Manual entry | PASS — 1 manual punch in ledger |
+| Employee self-punch | PASS — 200, `source:self`, employee linked, IP/UA captured |
+| Cross-channel dedup | PASS — CSV row already pushed via device counted duplicate |
+| Batch idempotency | PASS — replay → same batchId; key+new payload → 409 `ingest.key_mismatch`; missing key → 400 |
+| Unmapped storage → later mapping | PASS — stored unmapped, back-filled on mapping |
+| Void | PASS — `isVoided`+reason set; original row+timestamp unchanged; hidden by default, `includeVoided` shows it |
+| Tenant isolation + authz | PASS — docsdemo token on permanenttest → 403 `module-not-enabled` (after entitlement-gate fix `651e131`); unprivileged user → 403 |
+
+Additional fixes found during verification:
+- `043b6fe` — offset-qualified device timestamps crashed normalization (500).
+- `c84eab7` — DST fall-back: ambiguous wall time re-derived the instant with the standard offset (+1h); instant now kept verbatim, wall projected into device zone. Regression test: `OffsetInputDuringDstFallbackKeepsReportedInstant`.
+- `651e131` — entitlement gate ran after the device-token DB query; unentitled/unmigrated tenants got 500 → now 403 `module-not-enabled`.
+
+Test totals: unit 46/46 (punch-ingest 9/9 incl. DST regression) · API 150/150.
