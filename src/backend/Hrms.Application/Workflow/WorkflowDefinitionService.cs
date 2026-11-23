@@ -33,7 +33,8 @@ public sealed record WorkflowDelegationInput(Guid DelegateUserId, DateOnly Valid
 public sealed record WorkflowDelegationDto(Guid Id, Guid DelegatorUserId, Guid DelegateUserId, string? DelegateName, DateOnly ValidFrom, DateOnly ValidTo, string? Reason, bool IsActive);
 
 /// <summary>Definition admin (draft → publish → immutable) and personal out-of-office delegations.</summary>
-public sealed class WorkflowDefinitionService(ITenantDbContext db, IClock clock, ICurrentUser user, WorkflowDocumentTypeRegistry registry, IPermissionService permissions)
+public sealed class WorkflowDefinitionService(ITenantDbContext db, IClock clock, ICurrentUser user, WorkflowDocumentTypeRegistry registry, IPermissionService permissions,
+    IWorkflowEngine engine)
 {
     private DateOnly Today => DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
 
@@ -194,6 +195,7 @@ public sealed class WorkflowDefinitionService(ITenantDbContext db, IClock clock,
         if (d is null) return Error.NotFound("workflow_delegation.not_found", "Delegation not found.");
         d.IsActive = false;
         await db.SaveChangesAsync(ct);
+        await engine.ReturnEndedDelegationsAsync(ct);
         return Result.Success();
     }
 

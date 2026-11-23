@@ -310,6 +310,45 @@ public sealed class WorkflowEngineTests(HrmsFixture f)
         }
         finally { await RetireAsync(w.Admin, tenantDef); }
 
+        // Department scope: only holders targeted at (or employed in) the subject's department; out-of-department holders cannot act.
+        var deptA = await w.Admin.PostForIdAsync("/api/v1/org/departments", new { code = TestData.Unique("D"), name = "DeptA", branchId = reqBranch });
+        var deptB = await w.Admin.PostForIdAsync("/api/v1/org/departments", new { code = TestData.Unique("D"), name = "DeptB", branchId = reqBranch });
+        var deptRole = TestData.Unique("WFDP");
+        var deptRoleId = await RoleAsync(w.Admin, deptRole, P.WorkItemsView, P.WorkItemsAct);
+        var inDept = await UserAsync(w.Admin);
+        var outDept = await UserAsync(w.Admin);
+        await AssignRoleAsync(w.Admin, inDept.UserId, deptRoleId, "Department", deptA);
+        await AssignRoleAsync(w.Admin, outDept.UserId, deptRoleId, "Department", deptB);
+        var deptSubject = await w.Admin.PostForIdAsync("/api/v1/employees", new { employeeCode = TestData.Unique("E"), displayName = "DeptSubject", workEmail = (string?)null, branchId = reqBranch, departmentId = deptA, managerEmployeeId = (Guid?)null });
+        var deptDef = await PublishAsync(w.Admin, Step(1, "Dept HR", "role", deptRole, scope: "department"));
+        try
+        {
+            var r = await w.Requester.Client.Http.PostAsJsonAsync("/api/v1/workflow/instances", new
+            {
+                documentType = DocType, documentId = Guid.NewGuid().ToString(), title = "Dept request", subjectEmployeeId = deptSubject, amount = (decimal?)null,
+            });
+            r.StatusCode.ShouldBe(HttpStatusCode.OK, await r.Content.ReadAsStringAsync());
+            var inst = await r.Content.ReadFromJsonAsync<JsonElement>();
+            Assignees(inst).ShouldBe([inDept.UserId]);
+            var taskId = inst.GetProperty("tasks")[0].GetProperty("id").GetGuid();
+            (await outDept.Client.Http.PostAsJsonAsync($"/api/v1/workflow/tasks/{taskId}/actions", new { action = "approve" }))
+                .StatusCode.ShouldBe(HttpStatusCode.NotFound);
+            (await InboxAsync(outDept)).ShouldBeEmpty();
+        }
+        finally { await RetireAsync(w.Admin, deptDef); }
+
+        // Cross-branch: the out-of-branch holder cannot act on a branch-scoped task either.
+        var crossDef = await PublishAsync(w.Admin, Step(1, "Branch HR", "role", role, scope: "branch"));
+        try
+        {
+            var inst = await StartAsync(w);
+            foreach (var t in inst.GetProperty("tasks").EnumerateArray())
+                (await outBranch.Client.Http.PostAsJsonAsync($"/api/v1/workflow/tasks/{t.GetProperty("id").GetGuid()}/actions", new { action = "approve" }))
+                    .StatusCode.ShouldBe(HttpStatusCode.NotFound);
+            (await InboxAsync(outBranch)).ShouldNotContain(i => i.GetProperty("workflowInstanceId").GetGuid() == Id(inst));
+        }
+        finally { await RetireAsync(w.Admin, crossDef); }
+
         // Reporting scope: only role holders in the subject's reporting line (the manager), whatever their assignment targets.
         var reportingDef = await PublishAsync(w.Admin, Step(1, "Line HR", "role", role, scope: "reporting"));
         try
@@ -461,6 +500,25 @@ public sealed class WorkflowEngineTests(HrmsFixture f)
         finally { await RetireAsync(w.Admin, def); }
     }
 
+    private async Task SqlAsync(string sql, params (string Name, object Value)[] args)
+    {
+        await using var conn = new NpgsqlConnection(f.ServerCs(await f.TenantDatabaseAsync("acme")));
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        foreach (var (n, v) in args) cmd.Parameters.AddWithValue(n, v);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    private async Task RunSlaJobAsync()
+    {
+        using (var scope = f.Factory.Services.CreateScope())
+            scope.ServiceProvider.GetRequiredService<IJobScheduler>().EnqueueTenant(f.AcmeId, WorkflowJobTypes.SlaTenant);
+        await f.DrainAsync();
+    }
+
+    private static string[] Actions(JsonElement history) =>
+        history.EnumerateArray().Select(h => h.GetProperty("action").GetString()!).ToArray();
+
     [Fact]
     public async Task StandingDelegationsHonourEligibilityWindowAndRevocation()
     {
@@ -469,6 +527,7 @@ public sealed class WorkflowEngineTests(HrmsFixture f)
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         async Task<HttpResponseMessage> Delegate(Guid to, DateOnly from, DateOnly until) =>
             await w.Manager.Client.Http.PostAsJsonAsync("/api/v1/workflow/delegations", new { delegateUserId = to, validFrom = from, validTo = until, reason = "Leave" });
+        Task Sql(string sql, Guid id) => SqlAsync(sql, ("u", w.Other.UserId), ("d", id));
 
         // Invalid delegations are rejected: no act permission, self, past window.
         (await Delegate(viewOnly.UserId, today, today.AddDays(3))).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
@@ -482,36 +541,91 @@ public sealed class WorkflowEngineTests(HrmsFixture f)
             var ok = await Delegate(w.Other.UserId, today, today.AddDays(3));
             ok.StatusCode.ShouldBe(HttpStatusCode.OK, await ok.Content.ReadAsStringAsync());
             var delegationId = Id(await ok.Content.ReadFromJsonAsync<JsonElement>());
-            Assignees(await StartAsync(w)).ShouldBe([w.Other.UserId]);
+            var viaDelegation = await StartAsync(w);
+            Assignees(viaDelegation).ShouldBe([w.Other.UserId]);
 
-            // Delegate who loses the act permission no longer receives tasks.
-            await using var conn = new NpgsqlConnection(f.ServerCs(await f.TenantDatabaseAsync("acme")));
-            await conn.OpenAsync();
-            async Task Sql(string sql)
-            {
-                await using var cmd = new NpgsqlCommand(sql, conn);
-                cmd.Parameters.AddWithValue("u", w.Other.UserId);
-                cmd.Parameters.AddWithValue("d", delegationId);
-                await cmd.ExecuteNonQueryAsync();
-            }
-            await Sql("update identity.user_role_assignments set valid_to = current_date - 1, valid_from = current_date - 2 where user_id = @u");
+            // The delegate gains the task only — no workflow administration or visibility beyond it.
+            (await w.Other.Client.Http.GetAsync("/api/v1/workflow/definitions")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+            (await w.Other.Client.Http.PostAsJsonAsync($"/api/v1/workflow/instances/{Id(viaDelegation)}/resume", new { }))
+                .StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+            (await w.Other.Client.GetJsonAsync("/api/v1/workflow/instances?pageSize=200")).GetProperty("items").EnumerateArray()
+                .ShouldNotContain(i => Id(i) == Id(viaDelegation));
+
+            // A delegate who loses the act permission no longer receives tasks.
+            await Sql("update identity.user_role_assignments set valid_to = current_date - 1, valid_from = current_date - 2 where user_id = @u", delegationId);
             Assignees(await StartAsync(w)).ShouldBe([w.Manager.UserId]);
-            await Sql("update identity.user_role_assignments set valid_to = null where user_id = @u");
-            Assignees(await StartAsync(w)).ShouldBe([w.Other.UserId]);
+            await Sql("update identity.user_role_assignments set valid_to = null where user_id = @u", delegationId);
 
-            // Expired delegation is ignored.
-            await Sql("update workflow.delegations set valid_from = current_date - 10, valid_to = current_date - 1 where id = @d");
+            // Expired delegation: new tasks skip it, the delegate cannot act on tasks it routed, and the SLA job returns them.
+            await Sql("update workflow.delegations set valid_from = current_date - 10, valid_to = current_date - 1 where id = @d", delegationId);
             Assignees(await StartAsync(w)).ShouldBe([w.Manager.UserId]);
+            var otherTask = await ItemForAsync(w.Other, Id(viaDelegation));
+            (await CompleteRawAsync(w.Other, Id(otherTask), "approve")).StatusCode.ShouldBe(HttpStatusCode.Conflict);
+            await RunSlaJobAsync();
+            (await InboxAsync(w.Other)).ShouldNotContain(i => i.GetProperty("workflowInstanceId").GetGuid() == Id(viaDelegation));
+            Status(await CompleteAsync(w.Manager, Id(viaDelegation), "approve")).ShouldBe("approved");
 
-            // Revoked delegation is ignored, and revocation is visible in the delegator's list.
-            await Sql("update workflow.delegations set valid_from = current_date, valid_to = current_date + 3 where id = @d");
-            Assignees(await StartAsync(w)).ShouldBe([w.Other.UserId]);
+            // Revoked delegation: pending tasks return to the delegator immediately and new tasks skip it.
+            await Sql("update workflow.delegations set valid_from = current_date, valid_to = current_date + 3 where id = @d", delegationId);
+            var beforeRevoke = await StartAsync(w);
+            Assignees(beforeRevoke).ShouldBe([w.Other.UserId]);
             (await w.Manager.Client.Http.DeleteAsync($"/api/v1/workflow/delegations/{delegationId}")).IsSuccessStatusCode.ShouldBeTrue();
+            Assignees(await w.Admin.GetJsonAsync($"/api/v1/workflow/instances/{Id(beforeRevoke)}")).ShouldBe([w.Manager.UserId]);
+            (await InboxAsync(w.Other)).ShouldNotContain(i => i.GetProperty("workflowInstanceId").GetGuid() == Id(beforeRevoke));
             Assignees(await StartAsync(w)).ShouldBe([w.Manager.UserId]);
             (await w.Manager.Client.GetJsonAsync("/api/v1/workflow/delegations")).EnumerateArray()
                 .Single(d => Id(d) == delegationId).GetProperty("isActive").GetBoolean().ShouldBeFalse();
+            Actions(await w.Admin.GetJsonAsync($"/api/v1/workflow/instances/{Id(beforeRevoke)}/history")).Count(a => a == "assigned").ShouldBe(2);
         }
         finally { await RetireAsync(w.Admin, def); }
+    }
+
+    [Fact]
+    public async Task SendBackAndResubmitStallWithoutApproverAndResumeKeepsHistory()
+    {
+        var w = await WorldAsync();
+        var def = await PublishAsync(w.Admin, Step(1, "Manager", "reporting_manager"), Step(2, "HR", "role", w.HrRole));
+        try
+        {
+            var sentBackToPrevious = await StartAsync(w);
+            await CompleteAsync(w.Manager, Id(sentBackToPrevious), "approve");
+            var resubmitted = await StartAsync(w);
+            await CompleteAsync(w.Manager, Id(resubmitted), "send_back", "Attach the quote");
+
+            // The manager becomes unavailable: stage 1 has no approver any more.
+            await SqlAsync("update identity.users set status = 0 where id = @u", ("u", w.Manager.UserId));
+
+            var back = await CompleteAsync(w.Hr1, Id(sentBackToPrevious), "send_back", "Manager must re-check", sendBackTo: "previous");
+            Status(back).ShouldBe("stalled");
+            Assignees(back).ShouldBeEmpty();
+            var res = await w.Requester.Client.Http.PostAsJsonAsync($"/api/v1/workflow/instances/{Id(resubmitted)}/resubmit", new { comment = "Quote attached" });
+            res.StatusCode.ShouldBe(HttpStatusCode.OK, await res.Content.ReadAsStringAsync());
+            Status(await res.Content.ReadFromJsonAsync<JsonElement>()).ShouldBe("stalled");
+
+            // Stalled requests are never auto-approved or auto-progressed by the SLA sweep.
+            await RunSlaJobAsync();
+            foreach (var id in new[] { Id(sentBackToPrevious), Id(resubmitted) })
+            {
+                var now = await w.Admin.GetJsonAsync($"/api/v1/workflow/instances/{id}");
+                Status(now).ShouldBe("stalled");
+                Assignees(now).ShouldBeEmpty();
+            }
+
+            // Correction (manager reactivated) + resume re-resolves the original approver; history is preserved in order.
+            await SqlAsync("update identity.users set status = 1 where id = @u", ("u", w.Manager.UserId));
+            var resumed = await w.Admin.Http.PostAsJsonAsync($"/api/v1/workflow/instances/{Id(sentBackToPrevious)}/resume", new { comment = "Manager back" });
+            resumed.StatusCode.ShouldBe(HttpStatusCode.OK, await resumed.Content.ReadAsStringAsync());
+            Assignees(await resumed.Content.ReadFromJsonAsync<JsonElement>()).ShouldBe([w.Manager.UserId]);
+            var actions = Actions(await w.Admin.GetJsonAsync($"/api/v1/workflow/instances/{Id(sentBackToPrevious)}/history"));
+            var order = new[] { "approve", "send_back", "stalled", "resumed" }.Select(a => Array.IndexOf(actions, a)).ToArray();
+            order.ShouldAllBe(i => i >= 0);
+            order.ShouldBeInOrder();
+        }
+        finally
+        {
+            await SqlAsync("update identity.users set status = 1 where id = @u", ("u", w.Manager.UserId));
+            await RetireAsync(w.Admin, def);
+        }
     }
 
     [Fact]

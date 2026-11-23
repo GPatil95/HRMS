@@ -48,6 +48,8 @@ public sealed class WorkflowSlaJob(IWorkflowEngine engine, ILogger<WorkflowSlaJo
 
     public async Task ExecuteAsync(string? payload, CancellationToken ct)
     {
+        var returned = await engine.ReturnEndedDelegationsAsync(ct);
+        if (returned > 0) logger.LogInformation("Workflow returned {Count} tasks from ended delegations", returned);
         var n = await engine.ProcessOverdueAsync(ct);
         if (n > 0) logger.LogInformation("Workflow SLA processed {Count} overdue tasks", n);
     }

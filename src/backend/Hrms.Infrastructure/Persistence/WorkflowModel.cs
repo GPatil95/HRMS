@@ -81,6 +81,7 @@ internal static class WorkflowModel
             e.HasOne<WorkflowInstance>().WithMany().HasForeignKey(x => x.InstanceId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<WorkflowDefinitionStep>().WithMany().HasForeignKey(x => x.DefinitionStepId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<TenantUser>().WithMany().HasForeignKey(x => x.AssigneeUserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<WorkflowDelegation>().WithMany().HasForeignKey(x => x.DelegationId).OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => new { x.InstanceId, x.StepOrder });
             e.HasIndex(x => new { x.AssigneeUserId, x.Status });
             e.HasIndex(x => new { x.Status, x.DueAt });

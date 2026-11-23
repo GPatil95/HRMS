@@ -151,6 +151,8 @@ public sealed class WorkflowInstanceStep : AuditableEntity, IConcurrencyAware
     public string ApprovalMode { get; set; } = "any";
     public Guid AssigneeUserId { get; set; }
     public Guid? DelegatedFromUserId { get; set; }
+    /// <summary>Standing delegation that routed this task; the delegate may act only while it stays active and in window.</summary>
+    public Guid? DelegationId { get; set; }
     public Guid? ClaimedByUserId { get; set; }
     public string Status { get; set; } = WorkflowTaskStatuses.Pending;
     public DateTimeOffset? DueAt { get; set; }

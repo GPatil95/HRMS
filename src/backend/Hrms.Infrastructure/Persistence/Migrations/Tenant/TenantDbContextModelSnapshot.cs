@@ -6516,6 +6516,10 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasColumnType("uuid")
                         .HasColumnName("delegated_from_user_id");
 
+                    b.Property<Guid?>("DelegationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("delegation_id");
+
                     b.Property<DateTimeOffset?>("DueAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("due_at");
@@ -6567,6 +6571,9 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
 
                     b.HasIndex("DefinitionStepId")
                         .HasDatabaseName("ix_instance_steps_definition_step_id");
+
+                    b.HasIndex("DelegationId")
+                        .HasDatabaseName("ix_instance_steps_delegation_id");
 
                     b.HasIndex("AssigneeUserId", "Status")
                         .HasDatabaseName("ix_instance_steps_assignee_user_id_status");
@@ -7654,6 +7661,12 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_instance_steps_definition_steps_definition_step_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.WorkflowDelegation", null)
+                        .WithMany()
+                        .HasForeignKey("DelegationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_instance_steps_workflow_delegations_delegation_id");
 
                     b.HasOne("Hrms.Domain.Tenant.WorkflowInstance", null)
                         .WithMany()

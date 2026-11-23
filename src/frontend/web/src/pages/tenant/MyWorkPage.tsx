@@ -135,7 +135,7 @@ function InboxTab() {
                   const actionable = i.status === 'open' && i.itemType === 'workflow.approval' && (!i.claimed || i.claimedByMe)
                   return (
                     <TableRow key={i.id} hover>
-                      <TableCell>
+                      <TableCell sx={{ minWidth: 240 }}>
                         <Typography variant="body2" sx={{ fontWeight: 600 }}>{i.title}</Typography>
                         {i.claimed && <Chip size="small" label={i.claimedByMe ? 'Claimed by you' : 'Claimed by another approver'} sx={{ mt: 0.5 }} />}
                       </TableCell>

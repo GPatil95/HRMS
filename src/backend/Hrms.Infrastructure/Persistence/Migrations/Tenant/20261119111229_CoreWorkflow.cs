@@ -481,6 +481,29 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                   daterange(valid_from, valid_to, '[]') with &&
                 ) where (is_active);
                 """);
+
+            migrationBuilder.AddColumn<Guid>(
+                name: "delegation_id",
+                schema: "workflow",
+                table: "instance_steps",
+                type: "uuid",
+                nullable: true);
+
+            migrationBuilder.CreateIndex(
+                name: "ix_instance_steps_delegation_id",
+                schema: "workflow",
+                table: "instance_steps",
+                column: "delegation_id");
+
+            migrationBuilder.AddForeignKey(
+                name: "fk_instance_steps_workflow_delegations_delegation_id",
+                schema: "workflow",
+                table: "instance_steps",
+                column: "delegation_id",
+                principalSchema: "workflow",
+                principalTable: "delegations",
+                principalColumn: "id",
+                onDelete: ReferentialAction.Restrict);
         }
 
         /// <inheritdoc />
@@ -494,11 +517,11 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                 schema: "workflow");
 
             migrationBuilder.DropTable(
-                name: "delegations",
+                name: "instance_steps",
                 schema: "workflow");
 
             migrationBuilder.DropTable(
-                name: "instance_steps",
+                name: "delegations",
                 schema: "workflow");
 
             migrationBuilder.DropTable(

@@ -141,6 +141,9 @@ public interface IWorkflowEngine
 
     /// <summary>SLA sweep: reminds or escalates overdue pending tasks per step policy (invoked by a Hangfire job).</summary>
     Task<int> ProcessOverdueAsync(CancellationToken ct);
+
+    /// <summary>Returns pending tasks routed by a revoked or expired standing delegation to the original approver.</summary>
+    Task<int> ReturnEndedDelegationsAsync(CancellationToken ct);
 }
 
 /// <summary>State-change event for a workflow instance, delivered from the transactional outbox.</summary>

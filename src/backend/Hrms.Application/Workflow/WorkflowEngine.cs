@@ -186,7 +186,7 @@ public sealed class WorkflowEngine(
             {
                 foreach (var approver in approvers)
                 {
-                    var (assignee, from) = await ApplyStandingDelegationAsync(approver, instance.RequesterUserId, ct);
+                    var (assignee, from, delegationId) = await ApplyStandingDelegationAsync(approver, instance.RequesterUserId, ct);
                     var task = new WorkflowInstanceStep
                     {
                         InstanceId = instance.Id,
@@ -196,6 +196,7 @@ public sealed class WorkflowEngine(
                         ApprovalMode = s.ApprovalMode,
                         AssigneeUserId = assignee,
                         DelegatedFromUserId = from,
+                        DelegationId = delegationId,
                         DueAt = s.SlaHours is { } h ? Now.AddHours(h) : null,
                     };
                     db.WorkflowInstanceSteps.Add(task);
@@ -235,15 +236,23 @@ public sealed class WorkflowEngine(
             .Distinct().ToListAsync(ct);
     }
 
-    private async Task<(Guid Assignee, Guid? From)> ApplyStandingDelegationAsync(Guid approver, Guid requester, CancellationToken ct)
+    private async Task<(Guid Assignee, Guid? From, Guid? DelegationId)> ApplyStandingDelegationAsync(Guid approver, Guid requester, CancellationToken ct)
     {
         var today = Today;
-        var delegateId = await db.WorkflowDelegations.AsNoTracking()
+        var delegation = await db.WorkflowDelegations.AsNoTracking()
             .Where(d => d.DelegatorUserId == approver && d.IsActive && d.ValidFrom <= today && d.ValidTo >= today)
-            .Select(d => (Guid?)d.DelegateUserId).FirstOrDefaultAsync(ct);
-        if (delegateId is { } del && del != requester && await IsActiveUserAsync(del, ct) && await HoldsActPermissionAsync(del, today, ct))
-            return (del, approver);
-        return (approver, null);
+            .Select(d => new { d.Id, d.DelegateUserId }).FirstOrDefaultAsync(ct);
+        if (delegation is { } del && del.DelegateUserId != requester && await IsActiveUserAsync(del.DelegateUserId, ct)
+            && await HoldsActPermissionAsync(del.DelegateUserId, today, ct))
+            return (del.DelegateUserId, approver, del.Id);
+        return (approver, null, null);
+    }
+
+    private Task<bool> DelegationEndedAsync(Guid delegationId, CancellationToken ct)
+    {
+        var today = Today;
+        return db.WorkflowDelegations.AsNoTracking()
+            .AnyAsync(d => d.Id == delegationId && (!d.IsActive || d.ValidFrom > today || d.ValidTo < today), ct);
     }
 
     // Direct role query: IPermissionService may hit HybridCache, which cannot run inside the retrying transaction.
@@ -422,6 +431,8 @@ public sealed class WorkflowEngine(
                 return Error.Conflict("workflow.task_closed", "This task is no longer pending.");
             var tasks = await db.WorkflowInstanceSteps.Where(t => t.InstanceId == instance.Id).ToListAsync(ct);
             task = tasks.First(t => t.Id == taskId);
+            if (task.DelegationId is { } via && task.AssigneeUserId == me && await DelegationEndedAsync(via, ct))
+                return Error.Conflict("workflow.delegation_ended", "The delegation that routed this task to you has expired or been revoked.");
             if (task.ClaimedByUserId is { } claimer && claimer != me && action.Action != WorkflowActions.Escalate)
                 return Error.Conflict("workflow.task_claimed", "Another approver has claimed this task.");
             var defStep = await db.WorkflowDefinitionSteps.AsNoTracking().FirstAsync(s => s.Id == task.DefinitionStepId, ct);
@@ -606,6 +617,40 @@ public sealed class WorkflowEngine(
         return result.IsSuccess ? await LoadDtoAsync(instanceId, ct) : result.Error!;
     }
 
+    public async Task<int> ReturnEndedDelegationsAsync(CancellationToken ct)
+    {
+        var today = Today;
+        var ended = await db.WorkflowInstanceSteps.AsNoTracking()
+            .Where(t => t.Status == WorkflowTaskStatuses.Pending && t.DelegationId != null && t.DelegatedFromUserId != null)
+            .Join(db.WorkflowDelegations.AsNoTracking().Where(d => !d.IsActive || d.ValidFrom > today || d.ValidTo < today),
+                t => t.DelegationId, d => (Guid?)d.Id, (t, d) => t.Id)
+            .Take(500).ToListAsync(ct);
+        var returned = 0;
+        foreach (var taskId in ended)
+        {
+            var r = await RunAsync(async () =>
+            {
+                var task = await db.WorkflowInstanceSteps.FirstOrDefaultAsync(t => t.Id == taskId && t.Status == WorkflowTaskStatuses.Pending, ct);
+                if (task?.DelegatedFromUserId is not { } original || task.DelegationId is null) return Result.Success();
+                var instance = await db.WorkflowInstances.FirstAsync(i => i.Id == task.InstanceId, ct);
+                var from = task.AssigneeUserId;
+                await workItems.CloseAsync(WorkItemTypes.Approval, task.Id.ToString(), true, ct);
+                task.AssigneeUserId = original;
+                task.DelegatedFromUserId = null;
+                task.DelegationId = null;
+                task.ClaimedByUserId = null;
+                await PublishTaskItemAsync(instance, task, ct);
+                Log(instance, task.Id, WorkflowActions.Assigned, null, original, "Returned to the original approver: delegation ended.", null);
+                Audit(instance, "delegation_ended", new { taskId, from, to = original });
+                Notify(original, "workflow.task_assigned", $"Approval needed: {instance.Title}", "/my-work");
+                returned++;
+                return Result.Success();
+            }, ct);
+            _ = r;
+        }
+        return returned;
+    }
+
     // ---------------- SLA ----------------
     public async Task<int> ProcessOverdueAsync(CancellationToken ct)
     {
@@ -777,6 +822,7 @@ public sealed class WorkflowEngine(
     {
         await workItems.CloseAsync(WorkItemTypes.Approval, task.Id.ToString(), true, ct);
         task.DelegatedFromUserId = task.AssigneeUserId;
+        task.DelegationId = null;
         task.AssigneeUserId = to;
         task.ClaimedByUserId = null;
         await PublishTaskItemAsync(instance, task, ct);
