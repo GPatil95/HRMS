@@ -34,4 +34,5 @@ Status legend: ✅ current · 📝 partial · ⏳ pending (module not yet implem
 | Implementation & setup guide | [implementation/implementation-guide.md](../implementation/implementation-guide.md) | 📝 (live features documented; later milestones marked pending) |
 | Documentation standards | [manuals-shared/standards.md](manuals-shared/standards.md) | ✅ |
 | Per-milestone review checklist | [manuals-shared/review-checklist.md](manuals-shared/review-checklist.md) | ✅ |
+| Authorization notes & limitations | [manuals-shared/authorization-notes.md](manuals-shared/authorization-notes.md) | ✅ |
 | Video training index | [training/video-index.md](../training/video-index.md) | 📝 (scripts as modules ship) |
