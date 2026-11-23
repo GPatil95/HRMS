@@ -67,7 +67,8 @@ public sealed class TenantSeedService(IModuleCatalog catalog)
         }
 
         await db.SaveChangesAsync(ct);
-        await SyncRoleGrantsAsync(db, ct);
+        // Provisioning keeps the M1/M2 seeded grants unchanged and only adds the inbox permissions.
+        await TopUpRoleGrantsAsync(db, includeFoundationGrants: false, ct);
     }
 
     public async Task SyncPermissionsAsync(ITenantDbContext db, CancellationToken ct)
@@ -121,7 +122,9 @@ public sealed class TenantSeedService(IModuleCatalog catalog)
     /// <summary>Additively tops up the built-in manager/employee system roles with permissions they were
     /// seeded to hold (view-level org/employee perms). Never removes grants; custom roles are untouched.
     /// Used by migrate-tenants catalog sync so new permission codes reach existing tenants.</summary>
-    public async Task SyncRoleGrantsAsync(ITenantDbContext db, CancellationToken ct)
+    public Task SyncRoleGrantsAsync(ITenantDbContext db, CancellationToken ct) => TopUpRoleGrantsAsync(db, includeFoundationGrants: true, ct);
+
+    private async Task TopUpRoleGrantsAsync(ITenantDbContext db, bool includeFoundationGrants, CancellationToken ct)
     {
         var permissions = await db.Permissions.Where(p => p.IsActive).ToListAsync(ct);
 
@@ -140,10 +143,14 @@ public sealed class TenantSeedService(IModuleCatalog catalog)
             }
         }
 
-        await GrantMissingAsync(SystemRoles.Manager, ScopeLevel.DirectReports,
-            FoundationPermissions.MasterView, FoundationPermissions.EmployeeView, FoundationPermissions.DashboardView);
-        await GrantMissingAsync(SystemRoles.Employee, ScopeLevel.Own,
-            FoundationPermissions.MasterView, FoundationPermissions.EmployeeView, FoundationPermissions.DashboardView);
+        if (includeFoundationGrants)
+        {
+            await GrantMissingAsync(SystemRoles.Manager, ScopeLevel.DirectReports,
+                FoundationPermissions.MasterView, FoundationPermissions.EmployeeView, FoundationPermissions.DashboardView);
+            await GrantMissingAsync(SystemRoles.Employee, ScopeLevel.Own,
+                FoundationPermissions.MasterView, FoundationPermissions.EmployeeView, FoundationPermissions.DashboardView);
+        }
+
         // Everyone can see and act on their own inbox; WorkItemService only returns items assigned to the caller.
         await GrantMissingAsync(SystemRoles.Manager, ScopeLevel.DirectReports, WorkflowPermissions.WorkItemsView, WorkflowPermissions.WorkItemsAct, WorkflowPermissions.DelegationsManage);
         await GrantMissingAsync(SystemRoles.Employee, ScopeLevel.Own, WorkflowPermissions.WorkItemsView, WorkflowPermissions.WorkItemsAct, WorkflowPermissions.DelegationsManage);
