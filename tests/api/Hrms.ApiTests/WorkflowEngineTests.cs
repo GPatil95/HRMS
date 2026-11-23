@@ -462,6 +462,59 @@ public sealed class WorkflowEngineTests(HrmsFixture f)
     }
 
     [Fact]
+    public async Task StandingDelegationsHonourEligibilityWindowAndRevocation()
+    {
+        var w = await WorldAsync();
+        var viewOnly = await UserAsync(w.Admin, await RoleAsync(w.Admin, TestData.Unique("WFVO"), P.WorkItemsView));
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        async Task<HttpResponseMessage> Delegate(Guid to, DateOnly from, DateOnly until) =>
+            await w.Manager.Client.Http.PostAsJsonAsync("/api/v1/workflow/delegations", new { delegateUserId = to, validFrom = from, validTo = until, reason = "Leave" });
+
+        // Invalid delegations are rejected: no act permission, self, past window.
+        (await Delegate(viewOnly.UserId, today, today.AddDays(3))).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await Delegate(w.Manager.UserId, today, today.AddDays(3))).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await Delegate(w.Other.UserId, today.AddDays(-5), today.AddDays(-1))).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+
+        var def = await PublishAsync(w.Admin, Step(1, "Manager", "reporting_manager"));
+        try
+        {
+            // Active delegation routes new tasks to the delegate.
+            var ok = await Delegate(w.Other.UserId, today, today.AddDays(3));
+            ok.StatusCode.ShouldBe(HttpStatusCode.OK, await ok.Content.ReadAsStringAsync());
+            var delegationId = Id(await ok.Content.ReadFromJsonAsync<JsonElement>());
+            Assignees(await StartAsync(w)).ShouldBe([w.Other.UserId]);
+
+            // Delegate who loses the act permission no longer receives tasks.
+            await using var conn = new NpgsqlConnection(f.ServerCs(await f.TenantDatabaseAsync("acme")));
+            await conn.OpenAsync();
+            async Task Sql(string sql)
+            {
+                await using var cmd = new NpgsqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("u", w.Other.UserId);
+                cmd.Parameters.AddWithValue("d", delegationId);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            await Sql("update identity.user_role_assignments set valid_to = current_date - 1, valid_from = current_date - 2 where user_id = @u");
+            Assignees(await StartAsync(w)).ShouldBe([w.Manager.UserId]);
+            await Sql("update identity.user_role_assignments set valid_to = null where user_id = @u");
+            Assignees(await StartAsync(w)).ShouldBe([w.Other.UserId]);
+
+            // Expired delegation is ignored.
+            await Sql("update workflow.delegations set valid_from = current_date - 10, valid_to = current_date - 1 where id = @d");
+            Assignees(await StartAsync(w)).ShouldBe([w.Manager.UserId]);
+
+            // Revoked delegation is ignored, and revocation is visible in the delegator's list.
+            await Sql("update workflow.delegations set valid_from = current_date, valid_to = current_date + 3 where id = @d");
+            Assignees(await StartAsync(w)).ShouldBe([w.Other.UserId]);
+            (await w.Manager.Client.Http.DeleteAsync($"/api/v1/workflow/delegations/{delegationId}")).IsSuccessStatusCode.ShouldBeTrue();
+            Assignees(await StartAsync(w)).ShouldBe([w.Manager.UserId]);
+            (await w.Manager.Client.GetJsonAsync("/api/v1/workflow/delegations")).EnumerateArray()
+                .Single(d => Id(d) == delegationId).GetProperty("isActive").GetBoolean().ShouldBeFalse();
+        }
+        finally { await RetireAsync(w.Admin, def); }
+    }
+
+    [Fact]
     public async Task SlaJobAutoEscalatesOverdueTasks()
     {
         var w = await WorldAsync();

@@ -241,9 +241,15 @@ public sealed class WorkflowEngine(
         var delegateId = await db.WorkflowDelegations.AsNoTracking()
             .Where(d => d.DelegatorUserId == approver && d.IsActive && d.ValidFrom <= today && d.ValidTo >= today)
             .Select(d => (Guid?)d.DelegateUserId).FirstOrDefaultAsync(ct);
-        if (delegateId is { } del && del != requester && await IsActiveUserAsync(del, ct)) return (del, approver);
+        if (delegateId is { } del && del != requester && await IsActiveUserAsync(del, ct) && await HoldsActPermissionAsync(del, today, ct))
+            return (del, approver);
         return (approver, null);
     }
+
+    // Direct role query: IPermissionService may hit HybridCache, which cannot run inside the retrying transaction.
+    private Task<bool> HoldsActPermissionAsync(Guid userId, DateOnly today, CancellationToken ct) =>
+        db.RoleAssignments.AsNoTracking().AnyAsync(a => a.UserId == userId && a.ValidFrom <= today && (a.ValidTo == null || a.ValidTo >= today)
+            && a.Role!.Permissions.Any(p => p.Permission!.Code == WorkflowPermissions.WorkItemsAct && p.Permission.IsActive), ct);
 
     // ---------------- Approver resolution ----------------
     private async Task<List<Guid>> ResolveApproversAsync(WorkflowDefinitionStep s, WorkflowInstance instance, CancellationToken ct)
