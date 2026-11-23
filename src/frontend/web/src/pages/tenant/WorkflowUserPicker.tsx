@@ -4,9 +4,9 @@ import { useQuery } from '@tanstack/react-query'
 import { workflowApi, type WorkflowUser } from '../../api/workflow'
 
 /** Searchable picker over users eligible to act on approvals (server-side search, first 20 matches).
- * `delegates` excludes the caller; `assignees` (workflow administrators resuming a stalled request) includes them. */
-export function EligibleUserPicker({ value, onChange, label, source = 'delegates' }: {
-  value: WorkflowUser | null; onChange: (u: WorkflowUser | null) => void; label: string; source?: 'delegates' | 'assignees'
+ * Without `instanceId` it lists delegates (never the caller); with it, assignees for resuming that stalled request. */
+export function EligibleUserPicker({ value, onChange, label, instanceId }: {
+  value: WorkflowUser | null; onChange: (u: WorkflowUser | null) => void; label: string; instanceId?: string
 }) {
   const [input, setInput] = useState('')
   const [term, setTerm] = useState('')
@@ -15,8 +15,8 @@ export function EligibleUserPicker({ value, onChange, label, source = 'delegates
     return () => clearTimeout(t)
   }, [input])
   const q = useQuery({
-    queryKey: ['wf-eligible', source, term],
-    queryFn: () => source === 'assignees' ? workflowApi.eligibleAssignees(term, 1, 20) : workflowApi.eligibleDelegates(term, 1, 20),
+    queryKey: ['wf-eligible', instanceId ?? 'delegates', term],
+    queryFn: () => instanceId ? workflowApi.eligibleAssignees(instanceId, term, 1, 20) : workflowApi.eligibleDelegates(term, 1, 20),
   })
   const more = (q.data?.totalCount ?? 0) - (q.data?.items.length ?? 0)
   return (

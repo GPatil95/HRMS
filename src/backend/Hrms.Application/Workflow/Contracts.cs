@@ -193,9 +193,11 @@ public interface IWorkItemService
     /// <summary>Completes a workflow item with approve, reject or send_back.</summary>
     Task<Result<WorkflowInstanceDto>> CompleteAsync(Guid workItemId, WorkflowTaskAction action, CancellationToken ct);
     Task<Result<WorkflowInstanceDto>> DelegateAsync(Guid workItemId, Guid toUserId, string? comment, string? idempotencyKey, CancellationToken ct);
-    /// <summary>Active users who hold <c>workitems.inbox.act</c>, searchable by name or email. Delegation excludes the caller;
-    /// stalled-request reassignment includes them. The engine re-validates the chosen user.</summary>
-    Task<PagedResult<WorkflowUserDto>> EligibleDelegatesAsync(string? search, int page, int pageSize, bool excludeCaller, CancellationToken ct);
+    /// <summary>Active users whose effective permissions include <c>workitems.inbox.act</c>, searchable by name or email.
+    /// Delegation (<paramref name="forInstanceId"/> null) excludes the caller. Stalled-request reassignment passes the instance:
+    /// its requester is excluded, the caller may be listed, and results are limited to users whose employee is within the
+    /// caller's <c>workflow.instances.manage</c> scope. The engine re-validates the chosen user.</summary>
+    Task<PagedResult<WorkflowUserDto>> EligibleDelegatesAsync(string? search, int page, int pageSize, Guid? forInstanceId, CancellationToken ct);
 }
 
 public sealed record WorkflowUserDto(Guid Id, string DisplayName, string Email);

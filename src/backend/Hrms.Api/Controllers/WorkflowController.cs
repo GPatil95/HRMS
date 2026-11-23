@@ -79,10 +79,10 @@ public sealed class WorkflowController(WorkflowDefinitionService definitions, IW
     public async Task<IActionResult> Stalled([FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default) =>
         Ok(await engine.ListStalledAsync(page, pageSize, ct));
 
-    /// <summary>Users a workflow administrator can assign when resuming a stalled request (includes the caller).</summary>
-    [HttpGet("eligible-assignees"), RequirePermission(M, WorkflowPermissions.InstancesManage)]
-    public async Task<IActionResult> EligibleAssignees([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
-        CancellationToken ct = default) => Ok(await items.EligibleDelegatesAsync(search, page, pageSize, false, ct));
+    /// <summary>Users a workflow administrator can assign when resuming the given stalled request (manage scope; never its requester).</summary>
+    [HttpGet("instances/{id:guid}/eligible-assignees"), RequirePermission(M, WorkflowPermissions.InstancesManage)]
+    public async Task<IActionResult> EligibleAssignees(Guid id, [FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
+        CancellationToken ct = default) => Ok(await items.EligibleDelegatesAsync(search, page, pageSize, id, ct));
 
     [HttpGet("instances/{id:guid}"), RequirePermission(WorkItemsModule.ModuleCode, WorkflowPermissions.WorkItemsView)]
     public async Task<IActionResult> Instance(Guid id, CancellationToken ct) =>
@@ -135,7 +135,7 @@ public sealed class WorkItemsController(IWorkItemService items) : ControllerBase
 
     [HttpGet("eligible-delegates"), RequirePermission(M, WorkflowPermissions.WorkItemsAct)]
     public async Task<IActionResult> EligibleDelegates([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
-        CancellationToken ct = default) => Ok(await items.EligibleDelegatesAsync(search, page, pageSize, true, ct));
+        CancellationToken ct = default) => Ok(await items.EligibleDelegatesAsync(search, page, pageSize, null, ct));
 
     [HttpPost("{id:guid}/claim"), RequirePermission(M, WorkflowPermissions.WorkItemsAct)]
     public async Task<IActionResult> Claim(Guid id, CancellationToken ct) =>

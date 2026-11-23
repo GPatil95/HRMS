@@ -97,7 +97,7 @@ approver. Only requests inside your `workflow.instances.manage` data scope
 appear. **Resume** opens a dialog:
 
 * **Assign to (optional)** — searchable list of active users who can act on
-  approvals (you can pick yourself). Leave it empty if you have fixed the cause (role assignment,
+  approvals (you can pick yourself; the requester is never offered). Leave it empty if you have fixed the cause (role assignment,
   reporting line, reactivated user); the engine re-resolves approvers.
 * **Comment** — recorded in the request history.
 

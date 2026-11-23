@@ -228,19 +228,9 @@ public sealed class WorkflowEngine(
     /// <summary>Tenant admins and holders of <c>workflow.instances.manage</c> — the people who can resume a stalled request.</summary>
     private async Task<List<Guid>> WorkflowAdministratorsAsync(CancellationToken ct)
     {
-        var today = Today;
-        var overrides = db.PermissionOverrides.AsNoTracking()
-            .Where(o => o.ValidFrom <= today && (o.ValidTo == null || o.ValidTo >= today)
-                        && o.Permission!.Code == WorkflowPermissions.InstancesManage && o.Permission.IsActive);
-        var denied = overrides.Where(o => o.Effect == PermissionEffect.Deny).Select(o => o.UserId);
-        var viaRoles = db.RoleAssignments.AsNoTracking()
-            .Where(a => a.ValidFrom <= today && (a.ValidTo == null || a.ValidTo >= today)
-                        && (a.Role!.Code == SystemRoles.TenantAdmin
-                            || a.Role.Permissions.Any(p => p.Permission!.Code == WorkflowPermissions.InstancesManage && p.Permission.IsActive)))
-            .Select(a => a.UserId);
-        var granted = overrides.Where(o => o.Effect == PermissionEffect.Grant).Select(o => o.UserId);
-        return await db.Users.AsNoTracking()
-            .Where(u => u.Status == UserStatus.Active && (viaRoles.Contains(u.Id) || granted.Contains(u.Id)) && !denied.Contains(u.Id))
+        // Tenant-wide managers only: scoped managers see in-scope stalled requests in their list, without out-of-scope alerts.
+        var managers = WorkflowEligibility.UsersWithPermission(db, WorkflowPermissions.InstancesManage, Today, tenantWideOnly: true);
+        return await db.Users.AsNoTracking().Where(u => u.Status == UserStatus.Active && managers.Contains(u.Id))
             .Select(u => u.Id).ToListAsync(ct);
     }
 
@@ -265,8 +255,7 @@ public sealed class WorkflowEngine(
 
     // Direct role query: IPermissionService may hit HybridCache, which cannot run inside the retrying transaction.
     private Task<bool> HoldsActPermissionAsync(Guid userId, DateOnly today, CancellationToken ct) =>
-        db.RoleAssignments.AsNoTracking().AnyAsync(a => a.UserId == userId && a.ValidFrom <= today && (a.ValidTo == null || a.ValidTo >= today)
-            && a.Role!.Permissions.Any(p => p.Permission!.Code == WorkflowPermissions.WorkItemsAct && p.Permission.IsActive), ct);
+        WorkflowEligibility.UsersWithPermission(db, WorkflowPermissions.WorkItemsAct, today).AnyAsync(u => u == userId, ct);
 
     // ---------------- Approver resolution ----------------
     private async Task<List<Guid>> ResolveApproversAsync(WorkflowDefinitionStep s, WorkflowInstance instance, CancellationToken ct)

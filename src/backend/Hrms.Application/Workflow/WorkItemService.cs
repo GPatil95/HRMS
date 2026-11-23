@@ -44,7 +44,8 @@ public sealed class WorkItemPublisher(ITenantDbContext db, IClock clock) : IWork
 }
 
 public sealed class WorkItemService(
-    ITenantDbContext db, ICurrentUser user, IClock clock, ITenantContextAccessor tenant, IEntitlementService entitlements, IWorkflowEngine engine)
+    ITenantDbContext db, ICurrentUser user, IClock clock, ITenantContextAccessor tenant, IEntitlementService entitlements, IWorkflowEngine engine,
+    IDataScopeService scopes)
     : IWorkItemService
 {
     private static readonly string[] CompleteActions = [WorkflowActions.Approve, WorkflowActions.Reject, WorkflowActions.SendBack];
@@ -103,17 +104,30 @@ public sealed class WorkItemService(
             : task.Error!;
     }
 
-    public async Task<PagedResult<WorkflowUserDto>> EligibleDelegatesAsync(string? search, int page, int pageSize, bool excludeCaller, CancellationToken ct)
+    public async Task<PagedResult<WorkflowUserDto>> EligibleDelegatesAsync(string? search, int page, int pageSize, Guid? forInstanceId, CancellationToken ct)
     {
-        var me = excludeCaller ? user.UserId ?? Guid.Empty : Guid.Empty;
         var today = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 50);
-        var eligible = db.RoleAssignments.AsNoTracking()
-            .Where(a => a.ValidFrom <= today && (a.ValidTo == null || a.ValidTo >= today)
-                        && a.Role!.Permissions.Any(p => p.Permission!.Code == WorkflowPermissions.WorkItemsAct && p.Permission.IsActive))
-            .Select(a => a.UserId);
-        var q = db.Users.AsNoTracking().Where(u => u.Status == UserStatus.Active && u.Id != me && eligible.Contains(u.Id));
+        var eligible = WorkflowEligibility.UsersWithPermission(db, WorkflowPermissions.WorkItemsAct, today);
+        var q = db.Users.AsNoTracking().Where(u => u.Status == UserStatus.Active && eligible.Contains(u.Id));
+        if (forInstanceId is { } instanceId)
+        {
+            var requester = await db.WorkflowInstances.AsNoTracking().Where(i => i.Id == instanceId).Select(i => (Guid?)i.RequesterUserId).FirstOrDefaultAsync(ct);
+            if (requester is null) return new PagedResult<WorkflowUserDto>([], page, pageSize, 0);
+            q = q.Where(u => u.Id != requester);
+            var scope = await scopes.ResolveAsync(WorkflowPermissions.InstancesManage, ct);
+            if (!scope.All)
+            {
+                var inScope = scopes.ApplyEmployeeScope(db.Employees.AsNoTracking(), e => (Guid?)e.Id, scope).Select(e => (Guid?)e.Id);
+                q = q.Where(u => u.EmployeeId != null && inScope.Contains(u.EmployeeId));
+            }
+        }
+        else
+        {
+            var me = user.UserId ?? Guid.Empty;
+            q = q.Where(u => u.Id != me);
+        }
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim().ToLower();

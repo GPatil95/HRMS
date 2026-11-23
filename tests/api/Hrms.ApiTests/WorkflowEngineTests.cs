@@ -256,10 +256,14 @@ public sealed class WorkflowEngineTests(HrmsFixture f)
             (await wfAdmin.Client.GetJsonAsync("/api/v1/workflow/instances/stalled?pageSize=200")).GetProperty("items").EnumerateArray()
                 .ShouldContain(i => Id(i) == Id(inst));
             (await w.Requester.Client.Http.GetAsync("/api/v1/workflow/instances/stalled")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
-            (await wfAdmin.Client.GetJsonAsync($"/api/v1/workflow/eligible-assignees?search={Uri.EscapeDataString(w.Other.Email)}"))
+            var assignees = $"/api/v1/workflow/instances/{Id(inst)}/eligible-assignees";
+            (await wfAdmin.Client.GetJsonAsync($"{assignees}?search={Uri.EscapeDataString(w.Other.Email)}"))
                 .GetProperty("items").EnumerateArray().Select(Id).ShouldBe([w.Other.UserId]);
-            (await w.Admin.GetJsonAsync("/api/v1/workflow/eligible-assignees?search=admin@acme.test")).GetProperty("totalCount").GetInt32().ShouldBe(1);
-            (await w.Requester.Client.Http.GetAsync("/api/v1/workflow/eligible-assignees")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+            (await w.Admin.GetJsonAsync($"{assignees}?search=admin@acme.test")).GetProperty("totalCount").GetInt32().ShouldBe(1);
+            // The requester is never offered, even though they can act on approvals.
+            (await w.Admin.GetJsonAsync($"{assignees}?search={Uri.EscapeDataString(w.Requester.Email)}")).GetProperty("totalCount").GetInt32().ShouldBe(0);
+            (await w.Requester.Client.Http.GetAsync(assignees)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+
 
             // Only workflow administrators can resume; without a resolvable approver or an assignee it stays stalled.
             (await w.Requester.Client.Http.PostAsJsonAsync($"/api/v1/workflow/instances/{Id(inst)}/resume", new { }))

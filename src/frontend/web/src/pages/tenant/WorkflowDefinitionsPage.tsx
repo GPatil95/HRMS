@@ -146,7 +146,7 @@ function ResumeDialog({ instance, onClose }: { instance: WorkflowInstance; onClo
           Approvers for stage {instance.currentStepOrder} are resolved again. Choose an assignee for any step that still has no approver,
           or leave it empty after fixing the role assignment or reporting line.
         </Typography>
-        <EligibleUserPicker label="Assign to (optional)" source="assignees" value={assignee} onChange={setAssignee} />
+        <EligibleUserPicker label="Assign to (optional)" instanceId={instance.id} value={assignee} onChange={setAssignee} />
         <TextField size="small" multiline minRows={2} label="Comment" value={comment} onChange={e => setComment(e.target.value)} />
       </DialogContent>
       <DialogActions>
@@ -192,7 +192,8 @@ function StalledRequests() {
 
 export function WorkflowDefinitionsPage() {
   const [params, setParams] = useSearchParams()
-  const tab = params.get('tab') === 'stalled' ? 1 : 0
+  const canSeeStalled = usePermissions().has('workflow.instances.manage')
+  const tab = canSeeStalled && params.get('tab') === 'stalled' ? 1 : 0
   const toast = useToast(); const qc = useQueryClient()
   const canManage = usePermissions().has('workflow.definitions.manage')
   const [editing, setEditing] = useState<WorkflowDefinition | null | undefined>(undefined)
@@ -209,7 +210,7 @@ export function WorkflowDefinitionsPage() {
       <PageHeader title="Workflow definitions" subtitle="Versioned approval chains shared by all modules. Published versions are immutable."
         actions={canManage && <Button variant="contained" startIcon={<Add />} onClick={() => setEditing(null)}>New definition</Button>} />
       <Tabs value={tab} onChange={(_, v: number) => setParams(v === 1 ? { tab: 'stalled' } : {})} sx={{ mb: 2 }}>
-        <Tab label="Definitions" /><Tab label="Stalled requests" />
+        <Tab label="Definitions" />{canSeeStalled && <Tab label="Stalled requests" />}
       </Tabs>
       {tab === 1 ? <StalledRequests /> : <SectionCard title="Definitions">
         {q.isLoading ? <TableSkeleton columns={7} /> : q.error ? <ErrorAlert error={q.error} onRetry={() => void q.refetch()} /> :
