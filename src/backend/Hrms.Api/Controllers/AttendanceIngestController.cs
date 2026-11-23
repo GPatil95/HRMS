@@ -57,10 +57,12 @@ public sealed class AttendanceIngestController(DeviceService devices, PunchInges
     public async Task<IActionResult> DevicePush(string code, CancellationToken ct)
     {
         // Entitlement check first: on an unentitled/unmigrated tenant the att tables may not
-        // exist yet, so token lookup must not run before this gate.
-        if (await ingest.CheckModuleEnabledAsync(ct) is { } denied)
+        // exist yet, so token lookup must not run before this gate. It returns the same 401 as
+        // a bad/missing token — distinguishing 403 vs 401 would leak the tenant's entitlement
+        // to anonymous callers, and a real device cannot exist on an unentitled tenant anyway.
+        if (await ingest.CheckModuleEnabledAsync(ct) is { })
         {
-            return ApiResults.Problem(denied);
+            return ApiResults.Problem(Shared.Results.Error.Unauthorized("device.auth", "Device token required."));
         }
         var (device, error) = await ingest.AuthenticateDeviceAsync(Request.Headers.Authorization.ToString(), ct);
         if (error is not null || device is null || !device.Code.Equals(code, StringComparison.OrdinalIgnoreCase))
