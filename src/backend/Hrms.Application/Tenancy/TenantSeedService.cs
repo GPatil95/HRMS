@@ -143,6 +143,9 @@ public sealed class TenantSeedService(IModuleCatalog catalog)
             FoundationPermissions.MasterView, FoundationPermissions.EmployeeView, FoundationPermissions.DashboardView);
         await GrantMissingAsync(SystemRoles.Employee, ScopeLevel.Own,
             FoundationPermissions.MasterView, FoundationPermissions.EmployeeView, FoundationPermissions.DashboardView);
+        // Everyone can see and act on their own inbox; WorkItemService only returns items assigned to the caller.
+        await GrantMissingAsync(SystemRoles.Manager, ScopeLevel.DirectReports, WorkflowPermissions.WorkItemsView, WorkflowPermissions.WorkItemsAct, WorkflowPermissions.DelegationsManage);
+        await GrantMissingAsync(SystemRoles.Employee, ScopeLevel.Own, WorkflowPermissions.WorkItemsView, WorkflowPermissions.WorkItemsAct, WorkflowPermissions.DelegationsManage);
 
         var state = await db.AuthorizationState.FirstOrDefaultAsync(ct);
         if (state is not null)

@@ -23,6 +23,7 @@ public sealed class RecurringSweepWorker(IServiceScopeFactory scopes, IConfigura
             {
                 using var scope = scopes.CreateScope();
                 scope.ServiceProvider.GetRequiredService<IJobScheduler>().EnqueuePlatform(JobTypes.EmployeeLifecycleSweep);
+                scope.ServiceProvider.GetRequiredService<IJobScheduler>().EnqueuePlatform(Hrms.Application.Workflow.WorkflowJobTypes.SlaSweep);
             }
             catch (Exception ex)
             {

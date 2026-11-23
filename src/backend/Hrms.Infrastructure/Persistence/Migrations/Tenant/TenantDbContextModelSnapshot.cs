@@ -5378,6 +5378,93 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                     b.ToTable("work_calendars", "att");
                 });
 
+            modelBuilder.Entity("Hrms.Domain.Tenant.WorkItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AssigneeUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assignee_user_id");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DeepLink")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("deep_link");
+
+                    b.Property<DateTimeOffset?>("DueAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("due_at");
+
+                    b.Property<string>("ItemType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("item_type");
+
+                    b.Property<string>("ModuleCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("module_code");
+
+                    b.Property<string>("Priority")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("priority");
+
+                    b.Property<string>("SourceRef")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("source_ref");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<Guid?>("WorkflowInstanceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("workflow_instance_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_work_items");
+
+                    b.HasIndex("WorkflowInstanceId")
+                        .HasDatabaseName("ix_work_items_workflow_instance_id");
+
+                    b.HasIndex("AssigneeUserId", "Status", "DueAt")
+                        .HasDatabaseName("ix_work_items_assignee_user_id_status_due_at");
+
+                    b.HasIndex("ItemType", "SourceRef", "AssigneeUserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_work_items_item_type_source_ref_assignee_user_id");
+
+                    b.ToTable("work_items", "workitems", t =>
+                        {
+                            t.HasCheckConstraint("ck_work_items_status", "status in ('open','completed','cancelled')");
+                        });
+                });
+
             modelBuilder.Entity("Hrms.Domain.Tenant.WorkLocation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5448,6 +5535,674 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasDatabaseName("ix_work_locations_code");
 
                     b.ToTable("work_locations", "org");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.WorkflowAction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("action");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_user_id");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("comment");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<Guid>("InstanceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("instance_id");
+
+                    b.Property<Guid?>("InstanceStepId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("instance_step_id");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<Guid?>("TargetUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_actions");
+
+                    b.HasIndex("InstanceId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_actions_instance_id_idempotency_key")
+                        .HasFilter("idempotency_key is not null");
+
+                    b.HasIndex("InstanceId", "OccurredAt")
+                        .HasDatabaseName("ix_actions_instance_id_occurred_at");
+
+                    b.ToTable("actions", "workflow");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.WorkflowDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("code");
+
+                    b.Property<Guid?>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("document_type");
+
+                    b.Property<DateOnly?>("EffectiveFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_from");
+
+                    b.Property<DateOnly?>("EffectiveTo")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_to");
+
+                    b.Property<decimal?>("MaxAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("max_amount");
+
+                    b.Property<decimal?>("MinAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("min_amount");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("ModuleCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("module_code");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer")
+                        .HasColumnName("priority");
+
+                    b.Property<DateTimeOffset?>("PublishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("published_at");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_definitions");
+
+                    b.HasIndex("Code", "Version")
+                        .IsUnique()
+                        .HasDatabaseName("ix_definitions_code_version");
+
+                    b.HasIndex("DocumentType", "Status")
+                        .HasDatabaseName("ix_definitions_document_type_status");
+
+                    b.ToTable("definitions", "workflow", t =>
+                        {
+                            t.HasCheckConstraint("ck_definitions_amounts", "min_amount is null or max_amount is null or max_amount >= min_amount");
+
+                            t.HasCheckConstraint("ck_definitions_status", "status in ('draft','published','retired')");
+
+                            t.HasCheckConstraint("ck_definitions_window", "effective_to is null or effective_from is null or effective_to >= effective_from");
+                        });
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.WorkflowDefinitionStep", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("AllowDelegate")
+                        .HasColumnType("boolean")
+                        .HasColumnName("allow_delegate");
+
+                    b.Property<bool>("AllowSendBack")
+                        .HasColumnType("boolean")
+                        .HasColumnName("allow_send_back");
+
+                    b.Property<string>("ApprovalMode")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("approval_mode");
+
+                    b.Property<string>("ApproverParam")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("approver_param");
+
+                    b.Property<string>("ApproverType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("approver_type");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid>("DefinitionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("definition_id");
+
+                    b.Property<string>("EscalationParam")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("escalation_param");
+
+                    b.Property<string>("EscalationType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("escalation_type");
+
+                    b.Property<Guid?>("FallbackUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("fallback_user_id");
+
+                    b.Property<decimal?>("MaxAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("max_amount");
+
+                    b.Property<decimal?>("MinAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("min_amount");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<int?>("SlaHours")
+                        .HasColumnType("integer")
+                        .HasColumnName("sla_hours");
+
+                    b.Property<int>("StepOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("step_order");
+
+                    b.HasKey("Id")
+                        .HasName("pk_definition_steps");
+
+                    b.HasIndex("FallbackUserId")
+                        .HasDatabaseName("ix_definition_steps_fallback_user_id");
+
+                    b.HasIndex("DefinitionId", "StepOrder")
+                        .HasDatabaseName("ix_definition_steps_definition_id_step_order");
+
+                    b.ToTable("definition_steps", "workflow", t =>
+                        {
+                            t.HasCheckConstraint("ck_definition_steps_mode", "approval_mode in ('any','all')");
+
+                            t.HasCheckConstraint("ck_definition_steps_order", "step_order >= 1");
+
+                            t.HasCheckConstraint("ck_definition_steps_sla", "sla_hours is null or sla_hours > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.WorkflowDelegation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid>("DelegateUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("delegate_user_id");
+
+                    b.Property<Guid>("DelegatorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("delegator_user_id");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<DateOnly>("ValidFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("valid_from");
+
+                    b.Property<DateOnly>("ValidTo")
+                        .HasColumnType("date")
+                        .HasColumnName("valid_to");
+
+                    b.HasKey("Id")
+                        .HasName("pk_delegations");
+
+                    b.HasIndex("DelegateUserId")
+                        .HasDatabaseName("ix_delegations_delegate_user_id");
+
+                    b.HasIndex("DelegatorUserId", "ValidFrom")
+                        .HasDatabaseName("ix_delegations_delegator_user_id_valid_from");
+
+                    b.ToTable("delegations", "workflow", t =>
+                        {
+                            t.HasCheckConstraint("ck_delegations_not_self", "delegator_user_id <> delegate_user_id");
+
+                            t.HasCheckConstraint("ck_delegations_window", "valid_to >= valid_from");
+                        });
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.WorkflowInstance", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal?>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<string>("ContextJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("context_json");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("CurrentStepOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("current_step_order");
+
+                    b.Property<string>("DeepLink")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("deep_link");
+
+                    b.Property<Guid>("DefinitionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("definition_id");
+
+                    b.Property<string>("DocumentId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("document_id");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("document_type");
+
+                    b.Property<DateTimeOffset>("LastActionAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_action_at");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("ModuleCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("module_code");
+
+                    b.Property<Guid>("RequesterUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requester_user_id");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid?>("SubjectEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("subject_employee_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.HasKey("Id")
+                        .HasName("pk_instances");
+
+                    b.HasIndex("DefinitionId")
+                        .HasDatabaseName("ix_instances_definition_id");
+
+                    b.HasIndex("SubjectEmployeeId")
+                        .HasDatabaseName("ix_instances_subject_employee_id");
+
+                    b.HasIndex("DocumentType", "DocumentId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_instances_active_document")
+                        .HasFilter("status in ('in_progress','sent_back')");
+
+                    b.HasIndex("RequesterUserId", "Status")
+                        .HasDatabaseName("ix_instances_requester_user_id_status");
+
+                    b.HasIndex("Status", "StartedAt")
+                        .HasDatabaseName("ix_instances_status_started_at");
+
+                    b.ToTable("instances", "workflow", t =>
+                        {
+                            t.HasCheckConstraint("ck_instances_status", "status in ('in_progress','sent_back','approved','rejected','cancelled')");
+                        });
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.WorkflowInstanceStep", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ActedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("acted_at");
+
+                    b.Property<Guid?>("ActedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("acted_by_user_id");
+
+                    b.Property<string>("ApprovalMode")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("approval_mode");
+
+                    b.Property<Guid>("AssigneeUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assignee_user_id");
+
+                    b.Property<Guid?>("ClaimedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("claimed_by_user_id");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("comment");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid>("DefinitionStepId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("definition_step_id");
+
+                    b.Property<Guid?>("DelegatedFromUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("delegated_from_user_id");
+
+                    b.Property<DateTimeOffset?>("DueAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("due_at");
+
+                    b.Property<int>("EscalationLevel")
+                        .HasColumnType("integer")
+                        .HasColumnName("escalation_level");
+
+                    b.Property<Guid>("InstanceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("instance_id");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset?>("ReminderSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reminder_sent_at");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<int>("StepOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("step_order");
+
+                    b.HasKey("Id")
+                        .HasName("pk_instance_steps");
+
+                    b.HasIndex("DefinitionStepId")
+                        .HasDatabaseName("ix_instance_steps_definition_step_id");
+
+                    b.HasIndex("AssigneeUserId", "Status")
+                        .HasDatabaseName("ix_instance_steps_assignee_user_id_status");
+
+                    b.HasIndex("InstanceId", "StepOrder")
+                        .HasDatabaseName("ix_instance_steps_instance_id_step_order");
+
+                    b.HasIndex("Status", "DueAt")
+                        .HasDatabaseName("ix_instance_steps_status_due_at");
+
+                    b.ToTable("instance_steps", "workflow", t =>
+                        {
+                            t.HasCheckConstraint("ck_instance_steps_status", "status in ('pending','approved','rejected','sent_back','superseded','cancelled')");
+                        });
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.WorkflowOutboxEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<string>("DocumentId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("document_id");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("document_type");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("event_type");
+
+                    b.Property<Guid>("InstanceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("instance_id");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("last_error");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("PayloadJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("payload_json");
+
+                    b.Property<DateTimeOffset?>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("processed_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_outbox_events");
+
+                    b.HasIndex("OccurredAt")
+                        .HasDatabaseName("ix_outbox_events_pending")
+                        .HasFilter("processed_at is null");
+
+                    b.ToTable("outbox_events", "workflow");
                 });
 
             modelBuilder.Entity("Hrms.Domain.Tenant.AssignmentScopeTarget", b =>
@@ -6283,6 +7038,16 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                     b.Navigation("Role");
                 });
 
+            modelBuilder.Entity("Hrms.Domain.Tenant.WorkItem", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.TenantUser", null)
+                        .WithMany()
+                        .HasForeignKey("AssigneeUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_work_items_users_assignee_user_id");
+                });
+
             modelBuilder.Entity("Hrms.Domain.Tenant.WorkLocation", b =>
                 {
                     b.HasOne("Hrms.Domain.Tenant.Branch", null)
@@ -6290,6 +7055,96 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasForeignKey("BranchId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_work_locations_branches_branch_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.WorkflowAction", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.WorkflowInstance", null)
+                        .WithMany()
+                        .HasForeignKey("InstanceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_actions_instances_instance_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.WorkflowDefinitionStep", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.WorkflowDefinition", null)
+                        .WithMany("Steps")
+                        .HasForeignKey("DefinitionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_definition_steps_definitions_definition_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.TenantUser", null)
+                        .WithMany()
+                        .HasForeignKey("FallbackUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_definition_steps_users_fallback_user_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.WorkflowDelegation", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.TenantUser", null)
+                        .WithMany()
+                        .HasForeignKey("DelegateUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_delegations_users_delegate_user_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.TenantUser", null)
+                        .WithMany()
+                        .HasForeignKey("DelegatorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_delegations_users_delegator_user_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.WorkflowInstance", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.WorkflowDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("DefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_instances_definitions_definition_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.TenantUser", null)
+                        .WithMany()
+                        .HasForeignKey("RequesterUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_instances_users_requester_user_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("SubjectEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_instances_employees_subject_employee_id");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.WorkflowInstanceStep", b =>
+                {
+                    b.HasOne("Hrms.Domain.Tenant.TenantUser", null)
+                        .WithMany()
+                        .HasForeignKey("AssigneeUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_instance_steps_users_assignee_user_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.WorkflowDefinitionStep", null)
+                        .WithMany()
+                        .HasForeignKey("DefinitionStepId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_instance_steps_definition_steps_definition_step_id");
+
+                    b.HasOne("Hrms.Domain.Tenant.WorkflowInstance", null)
+                        .WithMany()
+                        .HasForeignKey("InstanceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_instance_steps_instances_instance_id");
                 });
 
             modelBuilder.Entity("Hrms.Domain.Tenant.Dashboard", b =>
@@ -6320,6 +7175,11 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
             modelBuilder.Entity("Hrms.Domain.Tenant.UserRoleAssignment", b =>
                 {
                     b.Navigation("ScopeTargets");
+                });
+
+            modelBuilder.Entity("Hrms.Domain.Tenant.WorkflowDefinition", b =>
+                {
+                    b.Navigation("Steps");
                 });
 #pragma warning restore 612, 618
         }

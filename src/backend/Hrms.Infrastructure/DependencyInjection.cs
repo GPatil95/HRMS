@@ -216,6 +216,12 @@ public static class DependencyInjection
         s.AddScoped<LetterIssuanceService>();
         s.AddScoped<SalaryService>();
         s.AddScoped<Hrms.Application.Attendance.AttendanceMasterService>();
+        s.AddSingleton<Hrms.Application.Workflow.IWorkflowDocumentTypeProvider, Hrms.Application.Workflow.BuiltInWorkflowDocumentTypes>();
+        s.AddSingleton<Hrms.Application.Workflow.WorkflowDocumentTypeRegistry>();
+        s.AddScoped<Hrms.Application.Workflow.IWorkItemPublisher, Hrms.Application.Workflow.WorkItemPublisher>();
+        s.AddScoped<Hrms.Application.Workflow.IWorkflowEngine, Hrms.Application.Workflow.WorkflowEngine>();
+        s.AddScoped<Hrms.Application.Workflow.IWorkItemService, Hrms.Application.Workflow.WorkItemService>();
+        s.AddScoped<Hrms.Application.Workflow.WorkflowDefinitionService>();
         s.AddScoped<Hrms.Application.Attendance.AttendanceConfigResolver>();
         s.AddScoped<TenantAuditQueryService>();
         s.AddScoped<PlatformAuditQueryService>();

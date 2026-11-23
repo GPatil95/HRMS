@@ -78,6 +78,14 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
     public DbSet<ShiftAssignment> ShiftAssignments => Set<ShiftAssignment>();
     public DbSet<PolicyAssignment> PolicyAssignments => Set<PolicyAssignment>();
     public DbSet<AttendanceRoster> AttendanceRosters => Set<AttendanceRoster>();
+    public DbSet<WorkflowDefinition> WorkflowDefinitions => Set<WorkflowDefinition>();
+    public DbSet<WorkflowDefinitionStep> WorkflowDefinitionSteps => Set<WorkflowDefinitionStep>();
+    public DbSet<WorkflowInstance> WorkflowInstances => Set<WorkflowInstance>();
+    public DbSet<WorkflowInstanceStep> WorkflowInstanceSteps => Set<WorkflowInstanceStep>();
+    public DbSet<WorkflowAction> WorkflowActions => Set<WorkflowAction>();
+    public DbSet<WorkflowDelegation> WorkflowDelegations => Set<WorkflowDelegation>();
+    public DbSet<WorkflowOutboxEvent> WorkflowOutboxEvents => Set<WorkflowOutboxEvent>();
+    public DbSet<WorkItem> WorkItems => Set<WorkItem>();
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -808,6 +816,7 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, A
             e.HasOne<Shift>().WithMany().HasForeignKey(x => x.ShiftId).OnDelete(DeleteBehavior.Restrict);
         });
 
+        WorkflowModel.Configure(b);
         CommonModel.ConfigureShared(b);
         CommonModel.ApplyConventions(b);
     }
