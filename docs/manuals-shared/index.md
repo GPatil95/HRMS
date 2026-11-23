@@ -9,8 +9,8 @@ Status legend: ✅ current · 📝 partial · ⏳ pending (module not yet implem
 | Module | Manual | Status | Applies to |
 |---|---|---|---|
 | Platform administration | [platform-admin/](platform-admin/) | ⏳ | — |
-| Tenant administration | [tenant-admin/](tenant-admin/) | ⏳ | — |
-| Employee management | [employee-management/](employee-management/) | ⏳ | M2 |
+| Tenant administration | [tenant-admin/tenant-admin-guide.md](tenant-admin/tenant-admin-guide.md) | 📝 (live screens documented; attendance screens pending migration approval) | M1+M2 |
+| Employee management | [employee-management/employee-management.md](employee-management/employee-management.md) | ✅ | M2 |
 | Attendance — masters (shifts, calendars, policies, assignments) | [attendance/](attendance/) | ⏳ | M3.1 |
 | Attendance — punch ingestion & raw records | [attendance/punch-ingestion.md](attendance/punch-ingestion.md) | ✅ | M3.2 (pending merge) |
 | Field workforce | [field-workforce/](field-workforce/) | ⏳ | — |
