@@ -56,6 +56,12 @@ public sealed class AttendanceIngestController(DeviceService devices, PunchInges
     [HttpPost("devices/{code}/punches"), AllowAnonymous] // device-token auth in-body, no session
     public async Task<IActionResult> DevicePush(string code, CancellationToken ct)
     {
+        // Entitlement check first: on an unentitled/unmigrated tenant the att tables may not
+        // exist yet, so token lookup must not run before this gate.
+        if (await ingest.CheckModuleEnabledAsync(ct) is { } denied)
+        {
+            return ApiResults.Problem(denied);
+        }
         var (device, error) = await ingest.AuthenticateDeviceAsync(Request.Headers.Authorization.ToString(), ct);
         if (error is not null || device is null || !device.Code.Equals(code, StringComparison.OrdinalIgnoreCase))
         {

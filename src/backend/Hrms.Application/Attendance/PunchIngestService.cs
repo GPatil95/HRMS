@@ -296,13 +296,20 @@ public sealed class PunchIngestService(ITenantDbContext db, IClock clock, IDataS
 
     // ---------- Device push ----------
 
+    /// <summary>Entitlement gate for anonymous device endpoints — must run before any att query
+    /// so an unentitled (or unmigrated) tenant gets a clean rejection, not a DB error.</summary>
+    public async Task<Error?> CheckModuleEnabledAsync(CancellationToken ct) =>
+        (await entitlements.GetAsync(tenant.Required.TenantId, ct)).IsModuleEnabled(Modules.AttendanceModule.ModuleCode)
+            ? null
+            : Error.Forbidden("module-not-enabled", "Attendance is not enabled for your organisation.");
+
     /// <summary>POST /devices/{code}/punches — device token already authenticated by caller.</summary>
     public async Task<Result<IngestResultDto>> IngestDevicePushAsync(AttendanceDevice device,
         string idempotencyKey, DevicePushRequest req, string payloadHash, CancellationToken ct)
     {
         // The endpoint is anonymous, so it cannot rely on RequirePermission's entitlement gate.
-        if (!(await entitlements.GetAsync(tenant.Required.TenantId, ct)).IsModuleEnabled(Modules.AttendanceModule.ModuleCode))
-            return Error.Forbidden("module-not-enabled", "Attendance is not enabled for your organisation.");
+        if (await CheckModuleEnabledAsync(ct) is { } denied)
+            return denied;
 
         if (req.Punches is not { } items || items.Count == 0)
             return Error.Validation("ingest.empty", "Punch list is empty.");
