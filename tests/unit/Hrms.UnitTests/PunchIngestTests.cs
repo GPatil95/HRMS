@@ -80,7 +80,12 @@ public sealed class PunchIngestTests
         k1.ShouldNotBe(PunchIngestService.BuildDedupKey(PunchSources.Device, dev, "E2", at));
         k1.ShouldNotBe(PunchIngestService.BuildDedupKey(PunchSources.Device, dev, "E1", at.AddSeconds(1)));
         k1.ShouldNotBe(PunchIngestService.BuildDedupKey(PunchSources.Device, Guid.NewGuid(), "E1", at));
-        k1.ShouldNotBe(PunchIngestService.BuildDedupKey(PunchSources.Import, dev, "E1", at));
+        // The channel is ignored for device rows: a CSV offline-sync of the same physical
+        // punch dedups against the device push.
+        k1.ShouldBe(PunchIngestService.BuildDedupKey(PunchSources.Import, dev, "E1", at));
+        // Source still distinguishes non-device rows (e.g. self vs manual at the same instant).
+        PunchIngestService.BuildDedupKey(PunchSources.Self, null, "E1", at)
+            .ShouldNotBe(PunchIngestService.BuildDedupKey(PunchSources.Manual, null, "E1", at));
     }
 }
 

@@ -62,6 +62,14 @@ public sealed class AttendanceIngestController(DeviceService devices, PunchInges
             return ApiResults.Problem(error ?? Shared.Results.Error.Unauthorized("device.auth", "Device token required."));
         }
 
+        // Bound the body before buffering/deserializing — a device credential must not be able to
+        // allocate arbitrary memory. 1 MB comfortably holds the 2000-item batch limit (~200 B/row).
+        const long MaxPushBytes = 1_000_000;
+        if (Request.ContentLength > MaxPushBytes)
+        {
+            return ApiResults.Problem(Shared.Results.Error.Validation("ingest.too_large", "Payload exceeds 1 MB; split the batch."));
+        }
+
         Request.EnableBuffering();
         string body;
         using (var reader = new StreamReader(Request.Body, Encoding.UTF8, leaveOpen: true))
