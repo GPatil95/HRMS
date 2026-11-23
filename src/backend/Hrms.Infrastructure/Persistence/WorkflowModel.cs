@@ -35,10 +35,12 @@ internal static class WorkflowModel
                 t.HasCheckConstraint("ck_definition_steps_order", "step_order >= 1");
                 t.HasCheckConstraint("ck_definition_steps_mode", "approval_mode in ('any','all')");
                 t.HasCheckConstraint("ck_definition_steps_sla", "sla_hours is null or sla_hours > 0");
+                t.HasCheckConstraint("ck_definition_steps_scope", "approver_scope in ('tenant','company','branch','department','reporting')");
             });
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.ApproverType).HasMaxLength(32);
             e.Property(x => x.ApproverParam).HasMaxLength(128);
+            e.Property(x => x.ApproverScope).HasMaxLength(16).HasDefaultValue(WorkflowApproverScopes.Tenant);
             e.Property(x => x.ApprovalMode).HasMaxLength(8);
             e.Property(x => x.EscalationType).HasMaxLength(32);
             e.Property(x => x.EscalationParam).HasMaxLength(128);
@@ -50,7 +52,7 @@ internal static class WorkflowModel
         b.Entity<WorkflowInstance>(e =>
         {
             e.ToTable("instances", "workflow", t =>
-                t.HasCheckConstraint("ck_instances_status", "status in ('in_progress','sent_back','approved','rejected','cancelled')"));
+                t.HasCheckConstraint("ck_instances_status", "status in ('in_progress','sent_back','stalled','approved','rejected','cancelled')"));
             e.Property(x => x.DocumentType).HasMaxLength(64);
             e.Property(x => x.DocumentId).HasMaxLength(128);
             e.Property(x => x.ModuleCode).HasMaxLength(64);
@@ -64,7 +66,7 @@ internal static class WorkflowModel
             e.HasOne<Employee>().WithMany().HasForeignKey(x => x.SubjectEmployeeId).OnDelete(DeleteBehavior.Restrict);
             // One live workflow per document.
             e.HasIndex(x => new { x.DocumentType, x.DocumentId }).IsUnique()
-                .HasFilter("status in ('in_progress','sent_back')").HasDatabaseName("ux_instances_active_document");
+                .HasFilter("status in ('in_progress','sent_back','stalled')").HasDatabaseName("ux_instances_active_document");
             e.HasIndex(x => new { x.RequesterUserId, x.Status });
             e.HasIndex(x => new { x.Status, x.StartedAt });
         });

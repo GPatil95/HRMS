@@ -11,7 +11,8 @@ namespace Hrms.Application.Workflow;
 public sealed record WorkflowStepInput(
     int StepOrder, string Name, string ApproverType, string? ApproverParam, string ApprovalMode = "any",
     decimal? MinAmount = null, decimal? MaxAmount = null, Guid? FallbackUserId = null, int? SlaHours = null,
-    string EscalationType = WorkflowEscalationTypes.None, string? EscalationParam = null, bool AllowSendBack = true, bool AllowDelegate = true);
+    string EscalationType = WorkflowEscalationTypes.None, string? EscalationParam = null, bool AllowSendBack = true, bool AllowDelegate = true,
+    string? ApproverScope = null);
 
 public sealed record WorkflowDefinitionInput(
     string Code, string Name, string DocumentType, string? Description, int Priority,
@@ -20,7 +21,8 @@ public sealed record WorkflowDefinitionInput(
 
 public sealed record WorkflowStepDto(
     Guid Id, int StepOrder, string Name, string ApproverType, string? ApproverParam, string ApprovalMode, decimal? MinAmount,
-    decimal? MaxAmount, Guid? FallbackUserId, int? SlaHours, string EscalationType, string? EscalationParam, bool AllowSendBack, bool AllowDelegate);
+    decimal? MaxAmount, Guid? FallbackUserId, int? SlaHours, string EscalationType, string? EscalationParam, bool AllowSendBack, bool AllowDelegate,
+    string ApproverScope);
 
 public sealed record WorkflowDefinitionDto(
     Guid Id, string Code, int Version, string Name, string DocumentType, string ModuleCode, string? Description, string Status,
@@ -220,6 +222,11 @@ public sealed class WorkflowDefinitionService(ITenantDbContext db, IClock clock,
                 return Error.Validation("workflow_definition.role", "Role steps need a role code.");
             if (s.ApproverType is WorkflowApproverTypes.User && !Guid.TryParse(s.ApproverParam, out _))
                 return Error.Validation("workflow_definition.user", "User steps need a user id.");
+            var scope = s.ApproverScope ?? WorkflowApproverScopes.Tenant;
+            if (!WorkflowApproverScopes.All.Contains(scope))
+                return Error.Validation("workflow_definition.approver_scope", $"Unknown approver scope '{scope}'.");
+            if (scope != WorkflowApproverScopes.Tenant && s.ApproverType != WorkflowApproverTypes.Role)
+                return Error.Validation("workflow_definition.approver_scope", "Approver scope applies to role steps only.");
             if (!WorkflowEscalationTypes.All.Contains(s.EscalationType))
                 return Error.Validation("workflow_definition.escalation", $"Unknown escalation type '{s.EscalationType}'.");
             if (s.SlaHours is <= 0) return Error.Validation("workflow_definition.sla", "SLA hours must be positive.");
@@ -248,6 +255,7 @@ public sealed class WorkflowDefinitionService(ITenantDbContext db, IClock clock,
                 Name = s.Name.Trim(),
                 ApproverType = s.ApproverType,
                 ApproverParam = s.ApproverParam,
+                ApproverScope = s.ApproverScope ?? WorkflowApproverScopes.Tenant,
                 ApprovalMode = s.ApprovalMode,
                 MinAmount = s.MinAmount,
                 MaxAmount = s.MaxAmount,
@@ -265,5 +273,5 @@ public sealed class WorkflowDefinitionService(ITenantDbContext db, IClock clock,
         d.MinAmount, d.MaxAmount, d.CompanyId, d.BranchId, d.DepartmentId, d.PublishedAt, d.RowVersion,
         d.Steps.OrderBy(s => s.StepOrder).ThenBy(s => s.Name).Select(s => new WorkflowStepDto(s.Id, s.StepOrder, s.Name, s.ApproverType,
             s.ApproverParam, s.ApprovalMode, s.MinAmount, s.MaxAmount, s.FallbackUserId, s.SlaHours, s.EscalationType, s.EscalationParam,
-            s.AllowSendBack, s.AllowDelegate)).ToList());
+            s.AllowSendBack, s.AllowDelegate, s.ApproverScope)).ToList());
 }

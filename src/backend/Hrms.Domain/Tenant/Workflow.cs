@@ -17,6 +17,8 @@ public static class WorkflowInstanceStatuses
     public const string Approved = "approved";
     public const string Rejected = "rejected";
     public const string Cancelled = "cancelled";
+    /// <summary>A required step resolved no approver; an administrator must reassign and resume.</summary>
+    public const string Stalled = "stalled";
 }
 
 public static class WorkflowTaskStatuses
@@ -37,6 +39,17 @@ public static class WorkflowApproverTypes
     public const string Role = "role";
     public const string User = "user";
     public static readonly string[] All = [ReportingManager, DepartmentHead, DepartmentField, Role, User];
+}
+
+/// <summary>Where role-based approvers must sit relative to the request's subject employee.</summary>
+public static class WorkflowApproverScopes
+{
+    public const string Tenant = "tenant";
+    public const string Company = "company";
+    public const string Branch = "branch";
+    public const string Department = "department";
+    public const string Reporting = "reporting";
+    public static readonly string[] All = [Tenant, Company, Branch, Department, Reporting];
 }
 
 public static class WorkflowEscalationTypes
@@ -91,6 +104,8 @@ public sealed class WorkflowDefinitionStep : AuditableEntity
     public string ApproverType { get; set; } = WorkflowApproverTypes.ReportingManager;
     /// <summary>Resolver argument: manager level, department field, role code or user id.</summary>
     public string? ApproverParam { get; set; }
+    /// <summary>Role steps only: restricts role holders to the subject's company/branch/department or reporting line.</summary>
+    public string ApproverScope { get; set; } = WorkflowApproverScopes.Tenant;
     /// <summary>When several approvers resolve: "any" (first decision wins) or "all".</summary>
     public string ApprovalMode { get; set; } = "any";
     public decimal? MinAmount { get; set; }

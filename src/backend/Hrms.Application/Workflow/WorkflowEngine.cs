@@ -2,6 +2,7 @@ using System.Text.Json;
 using Hrms.Application.Abstractions;
 using Hrms.Application.Auditing;
 using Hrms.Application.Authorization;
+using Hrms.Application.Identity;
 using Hrms.Application.Jobs;
 using Hrms.Application.Modules;
 using Hrms.Application.Notifications;
@@ -87,7 +88,8 @@ public sealed class WorkflowEngine(
         var result = await RunAsync(async () =>
         {
             if (await db.WorkflowInstances.AnyAsync(i => i.DocumentType == request.DocumentType && i.DocumentId == request.DocumentId
-                    && (i.Status == WorkflowInstanceStatuses.InProgress || i.Status == WorkflowInstanceStatuses.SentBack), ct))
+                    && (i.Status == WorkflowInstanceStatuses.InProgress || i.Status == WorkflowInstanceStatuses.SentBack
+                        || i.Status == WorkflowInstanceStatuses.Stalled), ct))
                 return Error.Conflict("workflow.already_active", "This document already has an active workflow.");
 
             var instance = new WorkflowInstance
@@ -112,19 +114,12 @@ public sealed class WorkflowEngine(
             instanceId = instance.Id;
 
             var steps = definition.Steps.OrderBy(s => s.StepOrder).ToList();
-            // Every applicable step must resolve now; unresolvable routing is rejected up front (doc 19: fallback or fail).
-            foreach (var s in steps.Where(s => ThresholdApplies(s, instance.Amount)))
-            {
-                var approvers = await ResolveApproversAsync(s, instance, ct);
-                if (approvers.Count == 0)
-                    return Error.Rule("workflow.no_approver", $"No approver could be resolved for step '{s.Name}'.");
-            }
 
             Log(instance, null, WorkflowActions.Start, me, null, null, null);
             Audit(instance, WorkflowActions.Start, new { definition.Code, definition.Version });
             AddOutbox(instance, "workflow.instance.started");
             var tasks = new List<WorkflowInstanceStep>();
-            if (!await ActivateStageAsync(instance, steps, tasks, 1, ct))
+            if (await ActivateStageAsync(instance, steps, tasks, 1, ct) == StageOutcome.Completed)
                 return Error.Rule("workflow.no_applicable_step", "The workflow has no applicable step for this document.");
             return Result.Success();
         }, ct);
@@ -156,12 +151,17 @@ public sealed class WorkflowEngine(
         (s.MinAmount is null || (amount is { } a && a >= s.MinAmount)) && (s.MaxAmount is null || (amount ?? 0) <= s.MaxAmount);
 
     // ---------------- Stage activation ----------------
-    /// <summary>Activates the first stage at or after <paramref name="fromOrder"/> that yields at least one task.</summary>
-    private async Task<bool> ActivateStageAsync(WorkflowInstance instance, List<WorkflowDefinitionStep> steps, List<WorkflowInstanceStep> tasks, int fromOrder, CancellationToken ct)
+    private enum StageOutcome { Activated, Stalled, Completed }
+
+    /// <summary>Activates the first stage at or after <paramref name="fromOrder"/> that has an applicable step. If any
+    /// applicable step of that stage resolves no approver the instance becomes <c>stalled</c> (no step is skipped);
+    /// <paramref name="overrideAssignee"/> (admin resume) fills steps that still resolve nobody.</summary>
+    private async Task<StageOutcome> ActivateStageAsync(WorkflowInstance instance, List<WorkflowDefinitionStep> steps, List<WorkflowInstanceStep> tasks,
+        int fromOrder, CancellationToken ct, Guid? overrideAssignee = null)
     {
         foreach (var order in steps.Select(s => s.StepOrder).Where(o => o >= fromOrder).Distinct().Order())
         {
-            var created = 0;
+            var resolved = new List<(WorkflowDefinitionStep Step, List<Guid> Approvers)>();
             foreach (var s in steps.Where(s => s.StepOrder == order))
             {
                 if (!ThresholdApplies(s, instance.Amount))
@@ -170,12 +170,20 @@ public sealed class WorkflowEngine(
                     continue;
                 }
                 var approvers = await ResolveApproversAsync(s, instance, ct);
-                if (approvers.Count == 0)
-                {
-                    Log(instance, null, WorkflowActions.Skipped, null, null, $"No approver resolved for step '{s.Name}'.", null);
-                    Audit(instance, WorkflowActions.Skipped, new { step = s.Name, reason = "no_approver" });
-                    continue;
-                }
+                if (approvers.Count == 0 && overrideAssignee is { } manual) approvers = [manual];
+                resolved.Add((s, approvers));
+            }
+            if (resolved.Count == 0) continue;
+
+            var missing = resolved.Where(r => r.Approvers.Count == 0).Select(r => r.Step.Name).ToList();
+            if (missing.Count > 0)
+            {
+                await StallAsync(instance, order, missing, ct);
+                return StageOutcome.Stalled;
+            }
+
+            foreach (var (s, approvers) in resolved)
+            {
                 foreach (var approver in approvers)
                 {
                     var (assignee, from) = await ApplyStandingDelegationAsync(approver, instance.RequesterUserId, ct);
@@ -196,15 +204,35 @@ public sealed class WorkflowEngine(
                     Log(instance, task.Id, WorkflowActions.Assigned, null, assignee, null, null);
                     Notify(assignee, "workflow.task_assigned", $"Approval needed: {instance.Title}", "/my-work");
                 }
-                created++;
             }
-            if (created > 0)
-            {
-                instance.CurrentStepOrder = order;
-                return true;
-            }
+            instance.CurrentStepOrder = order;
+            return StageOutcome.Activated;
         }
-        return false;
+        return StageOutcome.Completed;
+    }
+
+    private async Task StallAsync(WorkflowInstance instance, int order, List<string> stepNames, CancellationToken ct)
+    {
+        instance.Status = WorkflowInstanceStatuses.Stalled;
+        instance.CurrentStepOrder = order;
+        var reason = $"No approver could be resolved for: {string.Join(", ", stepNames)}.";
+        Log(instance, null, WorkflowActions.Stalled, null, null, reason, null);
+        Audit(instance, WorkflowActions.Stalled, new { stage = order, steps = stepNames });
+        AddOutbox(instance, "workflow.instance.stalled");
+        foreach (var admin in await WorkflowAdministratorsAsync(ct))
+            Notify(admin, "workflow.instance_stalled", $"Workflow stalled (no approver): {instance.Title}", "/workflow/definitions?tab=stalled");
+    }
+
+    /// <summary>Tenant admins and holders of <c>workflow.instances.manage</c> — the people who can resume a stalled request.</summary>
+    private async Task<List<Guid>> WorkflowAdministratorsAsync(CancellationToken ct)
+    {
+        var today = Today;
+        return await db.RoleAssignments.AsNoTracking()
+            .Where(a => a.ValidFrom <= today && (a.ValidTo == null || a.ValidTo >= today)
+                        && (a.Role!.Code == SystemRoles.TenantAdmin
+                            || a.Role.Permissions.Any(p => p.Permission!.Code == WorkflowPermissions.InstancesManage && p.Permission.IsActive)))
+            .Join(db.Users.AsNoTracking().Where(u => u.Status == UserStatus.Active), a => a.UserId, u => u.Id, (a, u) => u.Id)
+            .Distinct().ToListAsync(ct);
     }
 
     private async Task<(Guid Assignee, Guid? From)> ApplyStandingDelegationAsync(Guid approver, Guid requester, CancellationToken ct)
@@ -244,10 +272,12 @@ public sealed class WorkflowEngine(
                 break;
             case WorkflowApproverTypes.Role when !string.IsNullOrWhiteSpace(s.ApproverParam):
                 var today = Today;
-                users.AddRange(await db.RoleAssignments.AsNoTracking()
-                    .Where(a => a.Role!.Code == s.ApproverParam && a.ValidFrom <= today && (a.ValidTo == null || a.ValidTo >= today))
-                    .Join(db.Users.AsNoTracking().Where(u => u.Status == UserStatus.Active), a => a.UserId, u => u.Id, (a, u) => u.Id)
-                    .Distinct().ToListAsync(ct));
+                var holders = await db.RoleAssignments.AsNoTracking()
+                    .Where(a => a.Role!.Code == s.ApproverParam && a.ValidFrom <= today && (a.ValidTo == null || a.ValidTo >= today)
+                                && db.Users.Any(u => u.Id == a.UserId && u.Status == UserStatus.Active))
+                    .Select(a => new RoleHolder(a.UserId, a.ScopeTargets.Select(t => new ScopeTarget(t.Kind, t.TargetId)).ToList()))
+                    .ToListAsync(ct);
+                users.AddRange(await RoleHoldersInScopeAsync(holders, s.ApproverScope, instance, ct));
                 break;
             case WorkflowApproverTypes.User when Guid.TryParse(s.ApproverParam, out var uid):
                 if (await IsActiveUserAsync(uid, ct)) users.Add(uid);
@@ -257,6 +287,54 @@ public sealed class WorkflowEngine(
         if (users.Count == 0 && s.FallbackUserId is { } fb && fb != instance.RequesterUserId && await IsActiveUserAsync(fb, ct))
             users.Add(fb);
         return users;
+    }
+
+    private sealed record ScopeTarget(ScopeTargetKind Kind, Guid Id);
+    private sealed record RoleHolder(Guid UserId, List<ScopeTarget> Targets);
+
+    /// <summary>Keeps role holders whose role assignment covers the subject employee's company/branch/department
+    /// (assignment targets of that kind, or — when the assignment has none of that kind — the holder's own employee
+    /// record), or who are in the subject's reporting line. Tenant scope keeps every holder. The requester's employee
+    /// record is the subject when the request has none.</summary>
+    private async Task<List<Guid>> RoleHoldersInScopeAsync(List<RoleHolder> holders, string scope, WorkflowInstance instance, CancellationToken ct)
+    {
+        var userIds = holders.Select(h => h.UserId).Distinct().ToList();
+        if (scope == WorkflowApproverScopes.Tenant || userIds.Count == 0) return userIds;
+        var subjectId = instance.SubjectEmployeeId
+                        ?? await db.Users.AsNoTracking().Where(u => u.Id == instance.RequesterUserId).Select(u => u.EmployeeId).FirstOrDefaultAsync(ct);
+        var subject = subjectId is null ? null : await db.Employees.AsNoTracking().Where(e => e.Id == subjectId)
+            .Select(e => new { e.Id, e.CompanyId, e.BranchId, e.DepartmentId, e.ManagerEmployeeId }).FirstOrDefaultAsync(ct);
+        if (subject is null) return [];
+        var homes = await db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id) && u.EmployeeId != null)
+            .Join(db.Employees.AsNoTracking(), u => u.EmployeeId, e => e.Id,
+                (u, e) => new { UserId = u.Id, EmployeeId = e.Id, e.CompanyId, e.BranchId, e.DepartmentId })
+            .ToListAsync(ct);
+
+        if (scope == WorkflowApproverScopes.Reporting)
+        {
+            var line = await db.ReportingClosure.AsNoTracking().Where(c => c.DescendantId == subject.Id && c.Depth > 0)
+                .Select(c => c.AncestorId).ToListAsync(ct);
+            if (subject.ManagerEmployeeId is { } mgr) line.Add(mgr);
+            return homes.Where(h => line.Contains(h.EmployeeId)).Select(h => h.UserId).Distinct().ToList();
+        }
+
+        var (kind, value) = scope switch
+        {
+            WorkflowApproverScopes.Company => (ScopeTargetKind.Company, (Guid?)subject.CompanyId),
+            WorkflowApproverScopes.Branch => (ScopeTargetKind.Branch, (Guid?)subject.BranchId),
+            _ => (ScopeTargetKind.Department, subject.DepartmentId),
+        };
+        if (value is null) return [];
+        Guid? HomeValue(Guid userId) => homes.Where(h => h.UserId == userId).Select(h => kind switch
+        {
+            ScopeTargetKind.Company => (Guid?)h.CompanyId,
+            ScopeTargetKind.Branch => h.BranchId,
+            _ => h.DepartmentId,
+        }).FirstOrDefault();
+        return holders.Where(h => h.Targets.Any(t => t.Kind == kind)
+                ? h.Targets.Any(t => t.Kind == kind && t.Id == value)
+                : HomeValue(h.UserId) == value)
+            .Select(h => h.UserId).Distinct().ToList();
     }
 
     public static readonly string[] DepartmentFields =
@@ -370,7 +448,7 @@ public sealed class WorkflowEngine(
                     if (StageComplete(tasks, task))
                     {
                         var steps = await LoadStepsAsync(instance.DefinitionId, ct);
-                        if (!await ActivateStageAsync(instance, steps, tasks, task.StepOrder + 1, ct))
+                        if (await ActivateStageAsync(instance, steps, tasks, task.StepOrder + 1, ct) == StageOutcome.Completed)
                             Finish(instance, WorkflowInstanceStatuses.Approved, "workflow.instance.approved", "approved");
                     }
                     break;
@@ -447,7 +525,7 @@ public sealed class WorkflowEngine(
             if (instance is null || (instance.RequesterUserId != me && !canManage))
                 return Error.NotFound("workflow.instance_not_found", "Workflow instance not found.");
             if (await IsReplayAsync(instance.Id, idempotencyKey, ct)) return Result.Success();
-            if (instance.Status is not (WorkflowInstanceStatuses.InProgress or WorkflowInstanceStatuses.SentBack))
+            if (instance.Status is not (WorkflowInstanceStatuses.InProgress or WorkflowInstanceStatuses.SentBack or WorkflowInstanceStatuses.Stalled))
                 return Error.Conflict("workflow.instance_closed", "Only active workflows can be cancelled.");
             var tasks = await db.WorkflowInstanceSteps.Where(t => t.InstanceId == instance.Id).ToListAsync(ct);
             await CancelPendingAsync(tasks, ct);
@@ -478,8 +556,45 @@ public sealed class WorkflowEngine(
             Audit(instance, WorkflowActions.Resubmit, null);
             AddOutbox(instance, "workflow.instance.resubmitted");
             var tasks = await db.WorkflowInstanceSteps.Where(t => t.InstanceId == instance.Id).ToListAsync(ct);
-            if (!await ActivateStageAsync(instance, await LoadStepsAsync(instance.DefinitionId, ct), tasks, 1, ct))
-                return Error.Rule("workflow.no_approver", "No approver could be resolved.");
+            if (await ActivateStageAsync(instance, await LoadStepsAsync(instance.DefinitionId, ct), tasks, 1, ct) == StageOutcome.Completed)
+                return Error.Rule("workflow.no_applicable_step", "The workflow has no applicable step for this document.");
+            return Result.Success();
+        }, ct);
+        return result.IsSuccess ? await LoadDtoAsync(instanceId, ct) : result.Error!;
+    }
+
+    public async Task<Result<WorkflowInstanceDto>> ResumeAsync(Guid instanceId, Guid? assigneeUserId, string? comment, string? idempotencyKey, CancellationToken ct)
+    {
+        if (user.UserId is not { } me) return Error.Unauthorized("workflow.unauthenticated", "Sign in required.");
+        if (await access.CheckAsync(WorkflowModule.ModuleCode, WorkflowPermissions.InstancesManage, ct) is not null)
+            return Error.Forbidden("workflow.forbidden", "Only workflow administrators can resume stalled requests.");
+        // Resolved before the transaction: the permission cache runs its factory outside the execution strategy.
+        if (assigneeUserId is { } candidate && !await permissions.HasAsync(candidate, WorkflowPermissions.WorkItemsAct, ct))
+            return Error.Validation("workflow.assignee", "The assignee cannot act on approvals.");
+
+        var result = await RunAsync(async () =>
+        {
+            var instance = await db.WorkflowInstances.FirstOrDefaultAsync(i => i.Id == instanceId, ct);
+            if (instance is null) return Error.NotFound("workflow.instance_not_found", "Workflow instance not found.");
+            if (await IsReplayAsync(instance.Id, idempotencyKey, ct)) return Result.Success();
+            if (instance.Status != WorkflowInstanceStatuses.Stalled)
+                return Error.Conflict("workflow.not_stalled", "Only stalled workflows can be resumed.");
+            if (assigneeUserId is { } to)
+            {
+                if (to == instance.RequesterUserId) return Error.Rule("workflow.self_approval", "A request cannot be assigned to its requester.");
+                if (!await IsActiveUserAsync(to, ct)) return Error.Validation("workflow.assignee", "The assignee must be an active user.");
+            }
+            instance.Status = WorkflowInstanceStatuses.InProgress;
+            instance.LastActionAt = Now;
+            Log(instance, null, WorkflowActions.Resumed, me, assigneeUserId, comment, idempotencyKey);
+            Audit(instance, WorkflowActions.Resumed, new { stage = instance.CurrentStepOrder, assignee = assigneeUserId });
+            AddOutbox(instance, "workflow.instance.resumed");
+            var tasks = await db.WorkflowInstanceSteps.Where(t => t.InstanceId == instance.Id).ToListAsync(ct);
+            var outcome = await ActivateStageAsync(instance, await LoadStepsAsync(instance.DefinitionId, ct), tasks, instance.CurrentStepOrder, ct, assigneeUserId);
+            if (outcome == StageOutcome.Stalled)
+                return Error.Rule("workflow.still_no_approver", "Still no approver for this stage. Choose an assignee to resume.");
+            if (outcome == StageOutcome.Completed)
+                Finish(instance, WorkflowInstanceStatuses.Approved, "workflow.instance.approved", "approved");
             return Result.Success();
         }, ct);
         return result.IsSuccess ? await LoadDtoAsync(instanceId, ct) : result.Error!;

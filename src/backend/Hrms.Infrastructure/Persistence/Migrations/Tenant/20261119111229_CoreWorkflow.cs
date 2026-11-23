@@ -156,6 +156,7 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                     name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     approver_type = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
                     approver_param = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: true),
+                    approver_scope = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false, defaultValue: "tenant"),
                     approval_mode = table.Column<string>(type: "character varying(8)", maxLength: 8, nullable: false),
                     min_amount = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: true),
                     max_amount = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: true),
@@ -175,6 +176,7 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                     table.PrimaryKey("pk_definition_steps", x => x.id);
                     table.CheckConstraint("ck_definition_steps_mode", "approval_mode in ('any','all')");
                     table.CheckConstraint("ck_definition_steps_order", "step_order >= 1");
+                    table.CheckConstraint("ck_definition_steps_scope", "approver_scope in ('tenant','company','branch','department','reporting')");
                     table.CheckConstraint("ck_definition_steps_sla", "sla_hours is null or sla_hours > 0");
                     table.ForeignKey(
                         name: "fk_definition_steps_definitions_definition_id",
@@ -222,7 +224,7 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                 constraints: table =>
                 {
                     table.PrimaryKey("pk_instances", x => x.id);
-                    table.CheckConstraint("ck_instances_status", "status in ('in_progress','sent_back','approved','rejected','cancelled')");
+                    table.CheckConstraint("ck_instances_status", "status in ('in_progress','sent_back','stalled','approved','rejected','cancelled')");
                     table.ForeignKey(
                         name: "fk_instances_definitions_definition_id",
                         column: x => x.definition_id,
@@ -432,7 +434,7 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                 table: "instances",
                 columns: new[] { "document_type", "document_id" },
                 unique: true,
-                filter: "status in ('in_progress','sent_back')");
+                filter: "status in ('in_progress','sent_back','stalled')");
 
             migrationBuilder.CreateIndex(
                 name: "ix_outbox_events_pending",

@@ -1,5 +1,7 @@
 using Hrms.Application.Abstractions;
 using Hrms.Application.Authorization;
+using Hrms.Application.Modules;
+using Hrms.Domain.Common;
 using Hrms.Domain.Tenant;
 using Hrms.Shared.Paging;
 using Hrms.Shared.Primitives;
@@ -99,6 +101,28 @@ public sealed class WorkItemService(
         return task.IsSuccess
             ? await engine.ActAsync(task.Value, new WorkflowTaskAction(WorkflowActions.Delegate, comment, toUserId, null, idempotencyKey), ct)
             : task.Error!;
+    }
+
+    public async Task<PagedResult<WorkflowUserDto>> EligibleDelegatesAsync(string? search, int page, int pageSize, CancellationToken ct)
+    {
+        var me = user.UserId ?? Guid.Empty;
+        var today = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 50);
+        var eligible = db.RoleAssignments.AsNoTracking()
+            .Where(a => a.ValidFrom <= today && (a.ValidTo == null || a.ValidTo >= today)
+                        && a.Role!.Permissions.Any(p => p.Permission!.Code == WorkflowPermissions.WorkItemsAct && p.Permission.IsActive))
+            .Select(a => a.UserId);
+        var q = db.Users.AsNoTracking().Where(u => u.Status == UserStatus.Active && u.Id != me && eligible.Contains(u.Id));
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            q = q.Where(u => u.DisplayName.ToLower().Contains(term) || u.Email.ToLower().Contains(term));
+        }
+        var total = await q.CountAsync(ct);
+        var items = await q.OrderBy(u => u.DisplayName).ThenBy(u => u.Email).Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(u => new WorkflowUserDto(u.Id, u.DisplayName, u.Email)).ToListAsync(ct);
+        return new PagedResult<WorkflowUserDto>(items, page, pageSize, total);
     }
 
     private async Task<Result<Guid>> TaskOfAsync(Guid workItemId, CancellationToken ct)

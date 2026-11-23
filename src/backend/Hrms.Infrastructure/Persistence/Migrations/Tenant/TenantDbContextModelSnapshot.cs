@@ -6180,6 +6180,14 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                         .HasColumnType("character varying(128)")
                         .HasColumnName("approver_param");
 
+                    b.Property<string>("ApproverScope")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("tenant")
+                        .HasColumnName("approver_scope");
+
                     b.Property<string>("ApproverType")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -6259,6 +6267,8 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                             t.HasCheckConstraint("ck_definition_steps_mode", "approval_mode in ('any','all')");
 
                             t.HasCheckConstraint("ck_definition_steps_order", "step_order >= 1");
+
+                            t.HasCheckConstraint("ck_definition_steps_scope", "approver_scope in ('tenant','company','branch','department','reporting')");
 
                             t.HasCheckConstraint("ck_definition_steps_sla", "sla_hours is null or sla_hours > 0");
                         });
@@ -6442,7 +6452,7 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
                     b.HasIndex("DocumentType", "DocumentId")
                         .IsUnique()
                         .HasDatabaseName("ux_instances_active_document")
-                        .HasFilter("status in ('in_progress','sent_back')");
+                        .HasFilter("status in ('in_progress','sent_back','stalled')");
 
                     b.HasIndex("RequesterUserId", "Status")
                         .HasDatabaseName("ix_instances_requester_user_id_status");
@@ -6452,7 +6462,7 @@ namespace Hrms.Infrastructure.Persistence.Migrations.Tenant
 
                     b.ToTable("instances", "workflow", t =>
                         {
-                            t.HasCheckConstraint("ck_instances_status", "status in ('in_progress','sent_back','approved','rejected','cancelled')");
+                            t.HasCheckConstraint("ck_instances_status", "status in ('in_progress','sent_back','stalled','approved','rejected','cancelled')");
                         });
                 });
 

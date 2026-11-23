@@ -13,6 +13,7 @@ public sealed record PublishDefinitionRequest(DateOnly? EffectiveFrom);
 public sealed record WorkflowCommentRequest(string? Comment);
 public sealed record WorkItemCompleteRequest(string Action, string? Comment, string? SendBackTo);
 public sealed record WorkItemDelegateRequest(Guid ToUserId, string? Comment);
+public sealed record ResumeWorkflowRequest(Guid? AssigneeUserId, string? Comment);
 
 /// <summary>core.workflow — definitions admin, instance lifecycle and history (doc 19).</summary>
 [ApiController, ApiVersion("1.0"), Route("api/v{version:apiVersion}/workflow")]
@@ -89,6 +90,11 @@ public sealed class WorkflowController(WorkflowDefinitionService definitions, IW
     public async Task<IActionResult> Resubmit(Guid id, WorkflowCommentRequest? body, CancellationToken ct) =>
         (await engine.ResubmitAsync(id, body?.Comment, IdempotencyKey, ct)).ToActionResult(i => Ok(i));
 
+    /// <summary>Resumes a stalled instance; <c>assigneeUserId</c> fills steps that still resolve no approver.</summary>
+    [HttpPost("instances/{id:guid}/resume"), RequirePermission(M, WorkflowPermissions.InstancesManage)]
+    public async Task<IActionResult> Resume(Guid id, ResumeWorkflowRequest? body, CancellationToken ct) =>
+        (await engine.ResumeAsync(id, body?.AssigneeUserId, body?.Comment, IdempotencyKey, ct)).ToActionResult(i => Ok(i));
+
     /// <summary>Task action (approve, reject, send_back, delegate, escalate, claim, comment). Honors Idempotency-Key.</summary>
     [HttpPost("tasks/{taskId:guid}/actions"), RequirePermission(WorkItemsModule.ModuleCode, WorkflowPermissions.WorkItemsAct)]
     public async Task<IActionResult> Act(Guid taskId, WorkflowTaskAction action, CancellationToken ct) =>
@@ -116,6 +122,10 @@ public sealed class WorkItemsController(IWorkItemService items) : ControllerBase
 
     [HttpGet("mine"), RequirePermission(M, WorkflowPermissions.WorkItemsView)]
     public async Task<IActionResult> Mine([FromQuery] WorkItemQuery query, CancellationToken ct) => Ok(await items.MyItemsAsync(query, ct));
+
+    [HttpGet("eligible-delegates"), RequirePermission(M, WorkflowPermissions.WorkItemsAct)]
+    public async Task<IActionResult> EligibleDelegates([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
+        CancellationToken ct = default) => Ok(await items.EligibleDelegatesAsync(search, page, pageSize, ct));
 
     [HttpPost("{id:guid}/claim"), RequirePermission(M, WorkflowPermissions.WorkItemsAct)]
     public async Task<IActionResult> Claim(Guid id, CancellationToken ct) =>

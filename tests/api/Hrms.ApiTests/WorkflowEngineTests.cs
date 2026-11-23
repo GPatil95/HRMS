@@ -17,7 +17,7 @@ public sealed class WorkflowEngineTests(HrmsFixture f)
 {
     private const string DocType = BuiltInWorkflowDocumentTypes.GenericRequest;
 
-    private sealed record Actor(Guid UserId, HrmsClient Client);
+    private sealed record Actor(Guid UserId, HrmsClient Client, string Email = "");
 
     private sealed record World(HrmsClient Admin, Actor Requester, Actor Manager, Actor Hr1, Actor Hr2, Actor Other, string HrRole, Guid RequesterEmployee);
 
@@ -30,8 +30,9 @@ public sealed class WorkflowEngineTests(HrmsFixture f)
 
     private async Task<Actor> UserAsync(HrmsClient admin, params Guid[] roles)
     {
-        var (id, client) = await f.CreateTenantUserAsync(admin, "acme", $"wf-{Guid.NewGuid():N}@acme.test", roles);
-        return new Actor(id, client);
+        var email = $"wf-{Guid.NewGuid():N}@acme.test";
+        var (id, client) = await f.CreateTenantUserAsync(admin, "acme", email, roles);
+        return new Actor(id, client, email);
     }
 
     private static async Task LinkAsync(HrmsClient admin, Guid employeeId, Guid userId)
@@ -62,11 +63,27 @@ public sealed class WorkflowEngineTests(HrmsFixture f)
     }
 
     private static object Step(int order, string name, string type, string? param = null, string mode = "any", decimal? min = null,
-        int? sla = null, string esc = "none", string? escParam = null) => new
+        int? sla = null, string esc = "none", string? escParam = null, string scope = "tenant") => new
     {
         stepOrder = order, name, approverType = type, approverParam = param, approvalMode = mode, minAmount = min, maxAmount = (decimal?)null,
         fallbackUserId = (Guid?)null, slaHours = sla, escalationType = esc, escalationParam = escParam, allowSendBack = true, allowDelegate = true,
+        approverScope = scope,
     };
+
+    private static async Task AssignRoleAsync(HrmsClient admin, Guid userId, Guid roleId, string? targetKind = null, Guid? targetId = null)
+    {
+        var r = await admin.Http.PostAsJsonAsync($"/api/v1/users/{userId}/roles", new
+        {
+            roleId,
+            targets = targetKind is null ? Array.Empty<object>() : new object[] { new { kind = targetKind, targetId } },
+            validFrom = (DateOnly?)null, validTo = (DateOnly?)null,
+        });
+        r.IsSuccessStatusCode.ShouldBeTrue(await r.Content.ReadAsStringAsync());
+    }
+
+    private static Guid[] Assignees(JsonElement inst) =>
+        inst.GetProperty("tasks").EnumerateArray().Where(t => t.GetProperty("status").GetString() == "pending")
+            .Select(t => t.GetProperty("assigneeUserId").GetGuid()).ToArray();
 
     /// <summary>Publishes a definition. A unique department condition keeps it from colliding with other tests' definitions;
     /// the requester's employee has no department so we use priority + amount bands instead.</summary>
@@ -206,15 +223,147 @@ public sealed class WorkflowEngineTests(HrmsFixture f)
         }
         finally { await RetireAsync(w.Admin, def); }
 
-        // A step whose only approver is the requester resolves to nobody → start fails (no self-approval).
+        // A step whose only approver is the requester resolves to nobody → the request stalls (no self-approval, no skip).
         var self = await PublishAsync(w.Admin, Step(1, "Self", "user", w.Requester.UserId.ToString()));
         try
         {
-            var r = await StartRawAsync(w);
-            r.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
-            (await r.Content.ReadAsStringAsync()).ShouldContain("workflow.no_approver");
+            var inst = await StartAsync(w);
+            Status(inst).ShouldBe("stalled");
+            inst.GetProperty("tasks").GetArrayLength().ShouldBe(0);
         }
         finally { await RetireAsync(w.Admin, self); }
+    }
+
+    [Fact]
+    public async Task MissingApproverStallsNotifiesAdminsAndResumes()
+    {
+        var w = await WorldAsync();
+        var def = await PublishAsync(w.Admin, Step(1, "Manager", "reporting_manager"), Step(2, "Nobody", "role", TestData.Unique("NOROLE")));
+        try
+        {
+            var inst = await StartAsync(w);
+            var after1 = await CompleteAsync(w.Manager, Id(inst), "approve");
+            Status(after1).ShouldBe("stalled");
+            after1.GetProperty("currentStepOrder").GetInt32().ShouldBe(2);
+            var history = await w.Admin.GetJsonAsync($"/api/v1/workflow/instances/{Id(inst)}/history");
+            history.EnumerateArray().Select(h => h.GetProperty("action").GetString()).ShouldContain("stalled");
+            (await w.Admin.GetJsonAsync("/api/v1/notifications?pageSize=50")).GetRawText().ShouldContain("Workflow stalled (no approver)");
+            (await w.Admin.GetJsonAsync("/api/v1/workflow/instances?status=stalled&pageSize=200")).GetProperty("items").EnumerateArray()
+                .ShouldContain(i => Id(i) == Id(inst));
+
+            // Only workflow administrators can resume; without a resolvable approver or an assignee it stays stalled.
+            (await w.Requester.Client.Http.PostAsJsonAsync($"/api/v1/workflow/instances/{Id(inst)}/resume", new { }))
+                .StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+            var still = await w.Admin.Http.PostAsJsonAsync($"/api/v1/workflow/instances/{Id(inst)}/resume", new { comment = "retry" });
+            still.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
+            Status(await w.Admin.GetJsonAsync($"/api/v1/workflow/instances/{Id(inst)}")).ShouldBe("stalled");
+            (await w.Admin.Http.PostAsJsonAsync($"/api/v1/workflow/instances/{Id(inst)}/resume", new { assigneeUserId = w.Requester.UserId }))
+                .StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
+
+            var resumed = await w.Admin.Http.PostAsJsonAsync($"/api/v1/workflow/instances/{Id(inst)}/resume", new { assigneeUserId = w.Other.UserId, comment = "Covering" });
+            resumed.StatusCode.ShouldBe(HttpStatusCode.OK, await resumed.Content.ReadAsStringAsync());
+            var body = await resumed.Content.ReadFromJsonAsync<JsonElement>();
+            Status(body).ShouldBe("in_progress");
+            Assignees(body).ShouldBe([w.Other.UserId]);
+            Status(await CompleteAsync(w.Other, Id(inst), "approve")).ShouldBe("approved");
+            (await w.Admin.GetJsonAsync($"/api/v1/workflow/instances/{Id(inst)}/history")).EnumerateArray()
+                .Select(h => h.GetProperty("action").GetString()).ShouldContain("resumed");
+        }
+        finally { await RetireAsync(w.Admin, def); }
+    }
+
+    [Fact]
+    public async Task RoleApproversAreResolvedWithinStepScope()
+    {
+        var w = await WorldAsync();
+        var role = TestData.Unique("WFSC");
+        var roleId = await RoleAsync(w.Admin, role, P.WorkItemsView, P.WorkItemsAct);
+        var reqBranch = (await w.Admin.GetJsonAsync($"/api/v1/employees/{w.RequesterEmployee}")).GetProperty("branchId").GetGuid();
+        var company = await w.Admin.PostForIdAsync("/api/v1/org/companies", new { code = TestData.Unique("C"), name = "Co2", legalName = (string?)null });
+        var otherBranch = await w.Admin.PostForIdAsync("/api/v1/org/branches", new { companyId = company, code = TestData.Unique("B"), name = "Other" });
+
+        var inBranch = await UserAsync(w.Admin);       // assignment targeted at the requester's branch
+        var outBranch = await UserAsync(w.Admin);      // assignment targeted at another branch
+        var homeBranch = await UserAsync(w.Admin);     // untargeted assignment, own employee record in the requester's branch
+        var homeElsewhere = await UserAsync(w.Admin);  // untargeted assignment, own employee record elsewhere
+        await AssignRoleAsync(w.Admin, inBranch.UserId, roleId, "Branch", reqBranch);
+        await AssignRoleAsync(w.Admin, outBranch.UserId, roleId, "Branch", otherBranch);
+        await AssignRoleAsync(w.Admin, homeBranch.UserId, roleId);
+        await AssignRoleAsync(w.Admin, homeElsewhere.UserId, roleId);
+        await AssignRoleAsync(w.Admin, w.Manager.UserId, roleId, "Branch", otherBranch);
+        var homeEmp = await w.Admin.PostForIdAsync("/api/v1/employees", new { employeeCode = TestData.Unique("E"), displayName = "Home", workEmail = (string?)null, branchId = reqBranch, departmentId = (Guid?)null, managerEmployeeId = (Guid?)null });
+        var elsewhereEmp = await w.Admin.PostForIdAsync("/api/v1/employees", new { employeeCode = TestData.Unique("E"), displayName = "Away", workEmail = (string?)null, branchId = otherBranch, departmentId = (Guid?)null, managerEmployeeId = (Guid?)null });
+        await LinkAsync(w.Admin, homeEmp, homeBranch.UserId);
+        await LinkAsync(w.Admin, elsewhereEmp, homeElsewhere.UserId);
+
+        var branchDef = await PublishAsync(w.Admin, Step(1, "Branch HR", "role", role, mode: "all", scope: "branch"));
+        try
+        {
+            Assignees(await StartAsync(w)).OrderBy(x => x).ShouldBe(new[] { inBranch.UserId, homeBranch.UserId }.OrderBy(x => x));
+        }
+        finally { await RetireAsync(w.Admin, branchDef); }
+
+        var tenantDef = await PublishAsync(w.Admin, Step(1, "Any HR", "role", role, mode: "all"));
+        try
+        {
+            Assignees(await StartAsync(w)).Length.ShouldBe(5);
+        }
+        finally { await RetireAsync(w.Admin, tenantDef); }
+
+        // Reporting scope: only role holders in the subject's reporting line (the manager), whatever their assignment targets.
+        var reportingDef = await PublishAsync(w.Admin, Step(1, "Line HR", "role", role, scope: "reporting"));
+        try
+        {
+            Assignees(await StartAsync(w)).ShouldBe([w.Manager.UserId]);
+        }
+        finally { await RetireAsync(w.Admin, reportingDef); }
+
+        // Holders exist but none is in scope → stalled rather than routed to an out-of-scope approver.
+        var outRole = TestData.Unique("WFOUT");
+        var outRoleId = await RoleAsync(w.Admin, outRole, P.WorkItemsView, P.WorkItemsAct);
+        await AssignRoleAsync(w.Admin, outBranch.UserId, outRoleId, "Branch", otherBranch);
+        var outDef = await PublishAsync(w.Admin, Step(1, "Out HR", "role", outRole, scope: "branch"));
+        try
+        {
+            Status(await StartAsync(w)).ShouldBe("stalled");
+        }
+        finally { await RetireAsync(w.Admin, outDef); }
+
+        var bad = await w.Admin.Http.PostAsJsonAsync("/api/v1/workflow/definitions", new
+        {
+            code = TestData.Unique("WFX"), name = "bad", documentType = DocType, description = (string?)null, priority = 0,
+            minAmount = (decimal?)null, maxAmount = (decimal?)null, companyId = (Guid?)null, branchId = (Guid?)null, departmentId = (Guid?)null,
+            steps = new[] { Step(1, "M", "reporting_manager", scope: "branch") },
+        });
+        bad.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task EligibleDelegateLookupIsSearchablePaginatedAndRestricted()
+    {
+        var w = await WorldAsync();
+        var noPerms = await UserAsync(w.Admin);
+        (await noPerms.Client.Http.GetAsync("/api/v1/workitems/eligible-delegates")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+
+        async Task<JsonElement> Lookup(string search, int page = 1, int pageSize = 20) =>
+            await w.Manager.Client.GetJsonAsync($"/api/v1/workitems/eligible-delegates?search={Uri.EscapeDataString(search)}&page={page}&pageSize={pageSize}");
+        Guid[] Ids(JsonElement r) => r.GetProperty("items").EnumerateArray().Select(Id).ToArray();
+
+        Ids(await Lookup(w.Other.Email)).ShouldBe([w.Other.UserId]);
+        Ids(await Lookup(w.Other.Email.ToUpperInvariant())).ShouldBe([w.Other.UserId]);
+        Ids(await Lookup(noPerms.Email)).ShouldBeEmpty();      // no workitems.inbox.act
+        Ids(await Lookup(w.Manager.Email)).ShouldBeEmpty();    // never the caller
+
+        var p1 = await Lookup("@acme.test", 1, 1);
+        var p2 = await Lookup("@acme.test", 2, 1);
+        p1.GetProperty("totalCount").GetInt32().ShouldBeGreaterThanOrEqualTo(2);
+        Ids(p1).Length.ShouldBe(1);
+        Ids(p2).Length.ShouldBe(1);
+        Ids(p1)[0].ShouldNotBe(Ids(p2)[0]);
+        (await Lookup("", 1, 500)).GetProperty("pageSize").GetInt32().ShouldBe(50);
+        var first = (await Lookup(w.Other.Email)).GetProperty("items")[0];
+        first.GetProperty("displayName").GetString().ShouldNotBeNullOrEmpty();
+        first.TryGetProperty("email", out _).ShouldBeTrue();
     }
 
     [Fact]

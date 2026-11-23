@@ -80,6 +80,8 @@ public static class WorkflowActions
     public const string Skipped = "skipped";
     public const string Reminder = "reminder";
     public const string Completed = "completed";
+    public const string Stalled = "stalled";
+    public const string Resumed = "resumed";
     public static readonly string[] TaskActions = [Approve, Reject, SendBack, Delegate, Escalate, Claim, Comment];
 }
 
@@ -120,6 +122,10 @@ public interface IWorkflowEngine
 
     /// <summary>Requester re-submits a sent-back instance; routing restarts at the first stage of the pinned version.</summary>
     Task<Result<WorkflowInstanceDto>> ResubmitAsync(Guid instanceId, string? comment, string? idempotencyKey, CancellationToken ct);
+
+    /// <summary>Administrator correction of a <c>stalled</c> instance: re-runs approver resolution for the stalled stage,
+    /// assigning <paramref name="assigneeUserId"/> to steps that still resolve nobody, and resumes it.</summary>
+    Task<Result<WorkflowInstanceDto>> ResumeAsync(Guid instanceId, Guid? assigneeUserId, string? comment, string? idempotencyKey, CancellationToken ct);
 
     /// <summary>Instance visible to the caller (requester, any assignee, or scoped <c>workflow.instances.view</c>).</summary>
     Task<Result<WorkflowInstanceDto>> GetAsync(Guid instanceId, CancellationToken ct);
@@ -181,4 +187,9 @@ public interface IWorkItemService
     /// <summary>Completes a workflow item with approve, reject or send_back.</summary>
     Task<Result<WorkflowInstanceDto>> CompleteAsync(Guid workItemId, WorkflowTaskAction action, CancellationToken ct);
     Task<Result<WorkflowInstanceDto>> DelegateAsync(Guid workItemId, Guid toUserId, string? comment, string? idempotencyKey, CancellationToken ct);
+    /// <summary>Active users (other than the caller) who hold <c>workitems.inbox.act</c>, searchable by name or email.
+    /// Used for delegation and stalled-request reassignment; the engine re-validates the chosen user.</summary>
+    Task<PagedResult<WorkflowUserDto>> EligibleDelegatesAsync(string? search, int page, int pageSize, CancellationToken ct);
 }
+
+public sealed record WorkflowUserDto(Guid Id, string DisplayName, string Email);
