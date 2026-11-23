@@ -10,7 +10,13 @@ Sections whose module is not yet built are marked **PENDING**.
 Prereq: the platform is deployed and `seed-platform` has run (catalog +
 cluster + super admin).
 
-1. Sign in at `http://admin.<base-domain>` with the seeded super admin.
+> **URLs in this guide** (`http://<code>.localhost:5174` style) are local
+> development examples. Every production/staging deployment must serve all
+> portals over **HTTPS only** — admin credentials must never travel over
+> plain HTTP.
+
+1. Sign in at `https://admin.<base-domain>` (`http://admin.localhost` in local
+   dev) with the seeded super admin.
 2. Verify **Modules** catalog — module list and permission manifests sync from
    the application manifest automatically.
 3. Verify **Plans** — each plan binds a set of modules + features; create or
@@ -31,7 +37,8 @@ cluster + super admin).
    registers tenant domains. **Retry** from the tenant detail page if it fails
    — provisioning is idempotent.
 4. Activation: tenant moves to active when provisioning succeeds; admin signs
-   in at `http://<code>.<base-domain>`.
+   in at `https://<code>.<base-domain>` (`http://<code>.localhost` in local
+   dev).
 
 ## 3. Subscription & feature enablement
 
