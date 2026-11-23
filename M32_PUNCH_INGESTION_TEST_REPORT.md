@@ -6,7 +6,7 @@ Base: `main` @ `5517b3d` (M3.1 squash-merge). Branch: `m3.2-attendance` @ `2ede1
 
 | Suite | Result |
 |---|---|
-| `dotnet test tests/api/Hrms.ApiTests -c Release` | **151/151 passed** (10 new ingest cases + regression) |
+| `dotnet test tests/api/Hrms.ApiTests -c Release` | **150/150 passed** (11 new ingest cases + full regression) |
 | `dotnet test tests/unit/Hrms.UnitTests -c Release` | **45/45 passed** (12 new: dedup/idempotency + deferred `shift_based`/`RotationRule`/`WeeklyOffRules`) |
 | `pnpm exec tsc -b` | 0 errors |
 | `pnpm exec eslint` (changed dirs) | 0 errors |
