@@ -44,3 +44,22 @@ Base: `main` @ `5517b3d` (M3.1 squash-merge). Branch: `m3.2-attendance` @ `2ede1
 ## Working demonstration
 
 Verified via the API suite (Testcontainers postgres:17-alpine): device token auth → push → dedup replay → unmapped→mapped back-fill → manual/self punches → void → CSV import with mixed good/bad rows → cross-tenant rejection → append-only enforcement. A live devtest walkthrough requires applying the migration to devtest (approval needed).
+
+## Update — 2026-11-23 (commit 043b6fe)
+
+**Bug found in live demo and fixed:** `NormalizeTimestamp` threw
+`ArgumentException` → HTTP 500 when a `device_local` punch carried an
+explicit UTC offset (e.g. `+05:30`). `DateTime.TryParse` returns `Kind=Local`
+for offset input; `new DateTimeOffset(local, offset)` rejects that.
+Fixed: offset-qualified input now keeps its absolute instant and projects the
+wall time into the device zone. Covered by
+`DeviceLocalHonoursExplicitOffsetAndProjectsWallTime` (matching + cross-zone
+offset cases). Verified live on `docsdemo` (2/2 accepted, correct wall times).
+
+**Live demo tenant `docsdemo` (1007):** provisioned fresh (own DB
+`hrms_tenant_1007`, additive migrations only, dummy data): 3 employees, GEN
+shift + WC26 calendar + STD policy published, device `BIO-HQ-01` + badge map
+42→EMP001, 43→EMP002 (77 intentionally unmapped), 14 punches via push / CSV /
+manual. Recreation steps: `docs/implementation/docsdemo-recreation.md`.
+
+Tests after fix: API 150/150 · unit 46/46.
